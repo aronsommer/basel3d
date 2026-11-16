@@ -51,7 +51,7 @@ const loadFloats = (url) =>
 const progress = document.getElementById("progress");
 const [gltf, terrainInfo, heights, treePositions] = await Promise.all([
   new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("public/basel.glb", (e) => {
-    if (e.total) progress.textContent = `${Math.round((e.loaded / e.total) * 100)} %`;
+    progress.textContent = `${Math.round(e.loaded / 1e6)} MB`;
   }),
   fetch("public/terrain/terrain.json").then((r) => r.json()),
   loadFloats("public/terrain/heights.bin"),
