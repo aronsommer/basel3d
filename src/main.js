@@ -97,7 +97,7 @@ async function groundTextures(paths, buffers) {
 // Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
 // (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs) and the ground
 // shown first.
-let groundKind = "map";
+let groundKind = "photo";
 const progress = document.getElementById("progress");
 const [terrainJson, heightsBuffer, glb, bridgesGlb, treesBuffer, waterBuffer, ...groundBuffers] =
   await load(

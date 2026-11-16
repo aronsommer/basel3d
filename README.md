@@ -29,8 +29,8 @@ basel3d/
 │   ├── bridges.glb    Brücken in 3D (Kanton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
 │   ├── terrain/       Gelände: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
 │   ├── ground/        Bodenbilder, je 64 Kacheln (KTX2, 1 km, Name Spalte_Zeile)
-│   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), wird beim Start gezeigt
-│   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), lädt erst beim Umschalten
+│   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), lädt erst beim Umschalten
+│   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), wird beim Start gezeigt
 │   ├── trees.bin      Baumstandorte (x, z)
 │   ├── water.ktx2     Wassermaske des ganzen Gebiets für den Wasser-Shader (tools/map.mjs)
 │   └── size.json      Grösse jeder Datei, für die Prozentanzeige beim Laden
