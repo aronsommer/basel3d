@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
@@ -9,6 +10,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 const EYE = 1.7; // eye height when walking
 const WALK_SPEED = 5;
 const RUN_SPEED = 20;
+const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -25,7 +27,8 @@ const sun = new THREE.DirectionalLight(0xfff4e0, 3);
 sun.position.set(-1, 1, 1); // from the south-west
 scene.add(sun);
 
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, 20000);
+// Nothing beyond the fog's end is visible anyway.
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, scene.fog.far);
 const orbit = new MapControls(camera, renderer.domElement);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = 1.45;
@@ -42,10 +45,7 @@ renderer.domElement.addEventListener(
   { capture: true },
 );
 
-const loadFloats = (url) =>
-  fetch(url)
-    .then((r) => r.arrayBuffer())
-    .then((b) => new Float32Array(b));
+const loadBuffer = (url) => fetch(url).then((r) => r.arrayBuffer());
 
 // Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs) and the trees (tools/trees.mjs).
 const progress = document.getElementById("progress");
@@ -54,8 +54,10 @@ const [gltf, terrainInfo, heights, treePositions] = await Promise.all([
     progress.textContent = `${Math.round(e.loaded / 1e6)} MB`;
   }),
   fetch("public/terrain/terrain.json").then((r) => r.json()),
-  loadFloats("public/terrain/heights.bin"),
-  loadFloats("public/trees.bin"),
+  loadBuffer("public/terrain/heights.bin").then((b) =>
+    Float32Array.from(new Int16Array(b), (cm) => cm / 100),
+  ),
+  loadBuffer("public/trees.bin").then((b) => new Float32Array(b)),
 ]);
 
 // The GLB has no normals; flat shading derives them per pixel.
@@ -78,9 +80,12 @@ scene.add(gltf.scene);
 
 const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
-scene.add(createTrees(treePositions));
+const tree = createTrees(treePositions);
+scene.add(...tree.meshes);
 
-// All trees as one instanced low-poly model (trunk + crown, 1 unit tall), with varied size and colour.
+// Trees as instanced low-poly models (1 unit tall) with varied size and colour, one mesh per
+// terrain chunk so they are frustum-culled. Near the camera a chunk gets a trunk and an
+// icosahedron crown, further away only an octahedron crown.
 function createTrees(positions) {
   const colored = (geometry, color) => {
     const g = geometry.index ? geometry.toNonIndexed() : geometry;
@@ -95,37 +100,61 @@ function createTrees(positions) {
   trunk.translate(0, 0.25, 0);
   const crown = new THREE.IcosahedronGeometry(0.33);
   crown.translate(0, 0.67, 0);
-  const geometry = mergeGeometries([colored(trunk, 0x6b5a45), colored(crown, 0x5d7f3e)]);
-  const material = new THREE.MeshLambertMaterial({
-    vertexColors: true,
-    flatShading: true,
-  });
+  const simpleCrown = new THREE.OctahedronGeometry(0.33);
+  simpleCrown.translate(0, 0.67, 0);
+  const near = mergeGeometries([colored(trunk, 0x6b5a45), colored(crown, 0x5d7f3e)]);
+  const far = colored(simpleCrown, 0x5d7f3e);
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 
-  const count = positions.length / 2;
-  const trees = new THREE.InstancedMesh(geometry, material, count);
+  // Tree indices per chunk.
+  const { x0, z0, chunk } = terrainInfo;
+  const chunks = new Map();
+  for (let i = 0; i < positions.length / 2; i++) {
+    const ix = Math.floor((positions[2 * i] - x0) / chunk);
+    const iz = Math.floor((positions[2 * i + 1] - z0) / chunk);
+    const key = `${ix}_${iz}`;
+    if (!chunks.has(key)) chunks.set(key, []);
+    chunks.get(key).push(i);
+  }
+
   const matrix = new THREE.Matrix4();
   const rotation = new THREE.Quaternion();
   const scale = new THREE.Vector3();
   const position = new THREE.Vector3();
   const tint = new THREE.Color();
   const up = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < count; i++) {
-    const [x, z] = [positions[2 * i], positions[2 * i + 1]];
-    const random = (Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * 43758.5453) % 1; // stable per tree
-    const height = 8 + random * 10;
-    rotation.setFromAxisAngle(up, random * 2 * Math.PI);
-    matrix.compose(position.set(x, heightAt(x, z), z), rotation, scale.setScalar(height));
-    trees.setMatrixAt(i, matrix);
-    trees.setColorAt(i, tint.setScalar(0.75 + random * 0.25));
-  }
-  trees.computeBoundingSphere();
-  return trees;
+  const meshes = [...chunks.values()].map((indices) => {
+    // Bounds are computed once, from the larger near model.
+    const mesh = new THREE.InstancedMesh(near, material, indices.length);
+    indices.forEach((i, n) => {
+      const [x, z] = [positions[2 * i], positions[2 * i + 1]];
+      const random = (Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * 43758.5453) % 1; // stable per tree
+      const height = 8 + random * 10;
+      rotation.setFromAxisAngle(up, random * 2 * Math.PI);
+      matrix.compose(position.set(x, heightAt(x, z), z), rotation, scale.setScalar(height));
+      mesh.setMatrixAt(n, matrix);
+      mesh.setColorAt(n, tint.setScalar(0.75 + random * 0.25));
+    });
+    mesh.computeBoundingSphere();
+    mesh.computeBoundingBox();
+    return mesh;
+  });
+  return { meshes, near, far };
 }
 
-// One mesh per chunk, textured with that chunk's aerial photo (public/terrain/<column>_<row>.jpg).
+// Detailed trees only near the camera.
+function updateTrees() {
+  for (const mesh of tree.meshes)
+    mesh.geometry =
+      mesh.boundingBox.distanceToPoint(camera.position) < TREE_DETAIL ? tree.near : tree.far;
+}
+
+// One mesh per chunk, textured with that chunk's aerial photo (public/terrain/<column>_<row>.ktx2).
 function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   const group = new THREE.Group();
-  const loader = new THREE.TextureLoader();
+  const loader = new KTX2Loader()
+    .setTranscoderPath(import.meta.resolve("three/addons/libs/basis/"))
+    .detectSupport(renderer);
   const segments = chunk / cell;
   for (let iz = 0; iz < (nz - 1) / segments; iz++)
     for (let ix = 0; ix < (nx - 1) / segments; ix++) {
@@ -137,10 +166,13 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
         for (let col = 0; col <= segments; col++, i++)
           position.setY(i, heights[(iz * segments + row) * nx + ix * segments + col]);
       geometry.computeVertexNormals();
-      const map = loader.load(`public/terrain/${ix}_${iz}.jpg`);
-      map.colorSpace = THREE.SRGBColorSpace;
-      map.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      group.add(new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map })));
+      const material = new THREE.MeshLambertMaterial();
+      loader.load(`public/terrain/${ix}_${iz}.ktx2`, (map) => {
+        map.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        material.map = map;
+        material.needsUpdate = true;
+      });
+      group.add(new THREE.Mesh(geometry, material));
     }
   return group;
 }
@@ -243,5 +275,6 @@ renderer.setAnimationLoop((time) => {
   last = time;
   if (walk.isLocked) updateWalk(dt);
   else updateOrbit();
+  updateTrees();
   renderer.render(scene, camera);
 });
