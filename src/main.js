@@ -185,6 +185,227 @@ function otherGround() {
 }
 const tree = createTrees(treePositions);
 scene.add(...tree.meshes);
+// In the Rhine in front of the Roche towers, its head as high as the taller one (205 m), looking
+// at the middle between the two towers.
+const serpent = createSerpent(1717, 68, 8.5, 1739, -196);
+scene.add(serpent.group);
+// Circling over the monster and the Roche towers (around the point between them), six times life
+// size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking) stays 40 m
+// above the monster's horns (221 m) and 50 m above the taller tower (213 m).
+const helicopter = createHelicopter(1728, -64, 150, 300, 6);
+scene.add(helicopter.group);
+
+// A low-poly helicopter circling (cx, cz) at the given radius and height (scene metres), banking
+// into the turn, with spinning rotors and blinking lights. Bright yellow, to stand out against the
+// sky as well as the red roofs.
+function createHelicopter(cx, cz, radius, height, scale) {
+  // A part at [x, y, z], coloured by a colour or by a function of its own (untranslated) position.
+  const part = (geometry, color, [x, y, z]) => {
+    const g = geometry.index ? geometry.toNonIndexed() : geometry;
+    g.deleteAttribute("normal");
+    g.deleteAttribute("uv");
+    const position = g.attributes.position;
+    const colors = new Float32Array(position.count * 3);
+    for (let i = 0; i < position.count; i++) {
+      const c = typeof color === "function" ? color(position.getY(i), position.getZ(i)) : color;
+      new THREE.Color(c).toArray(colors, 3 * i);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    g.translate(x, y, z);
+    return g;
+  };
+  const YELLOW = 0xffd000;
+  const DARK = 0x2a3038;
+  // Fuselage, nose towards +z; sizes in metres before scaling.
+  const cabin = new THREE.IcosahedronGeometry(1, 1);
+  cabin.scale(1.3, 1.2, 2.2);
+  const windows = new THREE.IcosahedronGeometry(1, 1);
+  windows.scale(1.05, 0.8, 1.2);
+  const boom = new THREE.CylinderGeometry(0.25, 0.45, 5, 6);
+  boom.rotateX(Math.PI / 2);
+  const fin = new THREE.BoxGeometry(0.15, 1.6, 0.9);
+  const skids = [-1, 1].map((side) => {
+    const skid = new THREE.BoxGeometry(0.15, 0.15, 3.6);
+    return part(skid, DARK, [side * 1.1, -1.5, 0.2]);
+  });
+  const struts = [-1, 1].flatMap((side) =>
+    [-0.8, 1.0].map((z) => part(new THREE.BoxGeometry(0.1, 0.6, 0.1), DARK, [side * 1.0, -1.2, z])),
+  );
+  const mast = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 5);
+  const body = mergeGeometries([
+    part(cabin, (y) => (y < -0.7 ? DARK : YELLOW), [0, 0, 0]), // dark belly
+    part(windows, DARK, [0, 0.25, 1.2]),
+    part(boom, YELLOW, [0, 0.3, -3.6]),
+    part(fin, DARK, [0, 0.9, -5.8]),
+    part(mast, DARK, [0, 1.45, 0]),
+    ...skids,
+    ...struts,
+  ]);
+  const rotor = mergeGeometries(
+    [0, Math.PI / 2].map((angle) => {
+      const blade = new THREE.BoxGeometry(9, 0.08, 0.35);
+      blade.rotateY(angle);
+      return part(blade, DARK, [0, 0, 0]);
+    }),
+  );
+  const tailRotor = part(new THREE.BoxGeometry(0.06, 1.8, 0.2), DARK, [0, 0, 0]);
+
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const group = new THREE.Group();
+  const main = new THREE.Mesh(rotor, material);
+  main.position.set(0, 1.8, 0);
+  const tail = new THREE.Mesh(tailRotor, material);
+  tail.position.set(0.25, 0.9, -5.8);
+  // Blinking lights: a red beacon on top, a white strobe at the tail; unlit, so they glow.
+  const light = (color, [x, y, z]) => {
+    const mesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.3, 0),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3) }),
+    );
+    mesh.position.set(x, y, z);
+    return mesh;
+  };
+  const beacon = light(0xff2010, [0, 1.25, -1.2]);
+  const strobe = light(0xffffff, [0, 1.75, -6.1]);
+  group.add(new THREE.Mesh(body, material), main, tail, beacon, strobe);
+  group.scale.setScalar(scale);
+  group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
+
+  const update = (seconds) => {
+    const angle = seconds * 0.5; // about 13 s per round
+    const y = height + 25 * Math.sin(seconds * 0.35); // gently up and down, ±25 m
+    group.position.set(cx + radius * Math.cos(angle), y, cz + radius * Math.sin(angle));
+    group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle)); // along the circle
+    group.rotation.x = 0.12; // nose down, flying forward
+    group.rotation.z = 0.5; // banking towards the centre
+    main.rotation.y = seconds * 25;
+    tail.rotation.x = seconds * 40;
+    beacon.visible = seconds % 1 < 0.15; // once a second
+    strobe.visible = seconds % 1.5 < 0.06 || (seconds % 1.5 > 0.18 && seconds % 1.5 < 0.24); // double flash
+  };
+  return { group, update };
+}
+
+// A creepy sea serpent looking at (lookX, lookZ): a pale, ringed neck with spines that sways, an
+// angular head with horns, fangs and glowing red eyes. It slowly rises and sinks a little, and
+// every 10 s it leans back, then strikes forward. The terrain hides what is below the water.
+function createSerpent(x, z, scale, lookX, lookZ) {
+  const NECK = 24; // metres before scaling
+  // Non-indexed, coloured by a function of the position, without normals and uvs.
+  const colored = (geometry, colorAt) => {
+    const g = geometry.index ? geometry.toNonIndexed() : geometry;
+    g.deleteAttribute("normal");
+    g.deleteAttribute("uv");
+    const position = g.attributes.position;
+    const colors = new Float32Array(position.count * 3);
+    const color = new THREE.Color();
+    for (let i = 0; i < position.count; i++)
+      colorAt(color, position.getX(i), position.getY(i), position.getZ(i)).toArray(colors, 3 * i);
+    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return g;
+  };
+  const eyeColor = new THREE.Color(0xff2010);
+  const back = new THREE.Color(0x6f8556);
+  const belly = new THREE.Color(0xd6cc8f);
+  const bone = new THREE.Color(0xe2d8bc);
+  // Mossy back with darker rings, a pale yellow throat and belly towards the front (+z).
+  const skin = (c, px, py, pz) =>
+    c
+      .copy(back)
+      .lerp(belly, THREE.MathUtils.smoothstep(pz, -0.2, 0.8))
+      .multiplyScalar(py < NECK ? 0.8 + 0.2 * Math.sin(py * 1.6) : 1);
+  const plain = (color) => (c) => c.copy(color);
+
+  const neck = new THREE.CylinderGeometry(0.9, 2.2, NECK, 8, 16, true);
+  neck.translate(0, NECK / 2, 0);
+  const head = new THREE.IcosahedronGeometry(1, 1);
+  head.scale(1.6, 1.1, 3.4);
+  head.translate(0, NECK + 0.6, 1.8); // snout towards +z
+  const horns = [-1, 1].map((side) => {
+    const horn = new THREE.ConeGeometry(0.35, 2.4, 4);
+    horn.rotateX(-0.9);
+    horn.translate(side * 0.7, NECK + 1.6, -0.8);
+    return colored(horn, plain(bone));
+  });
+  const fangs = [-1, 1].map((side) => {
+    const fang = new THREE.ConeGeometry(0.16, 1.1, 4);
+    fang.rotateX(Math.PI); // pointing down
+    fang.translate(side * 0.55, NECK - 0.2, 4.3);
+    return colored(fang, plain(bone));
+  });
+  // Spines down the back of the neck, smaller towards the water.
+  const spines = [...Array(10)].map((_, i) => {
+    const y = NECK - 1 - i * 2;
+    const radius = 0.9 + ((2.2 - 0.9) * (NECK - y)) / NECK;
+    const spine = new THREE.ConeGeometry(0.25, 1.6 - i * 0.08, 4);
+    spine.rotateX(-1.2);
+    spine.translate(0, y, -radius - 0.4);
+    return colored(spine, plain(bone));
+  });
+  const body = mergeGeometries([
+    colored(neck, skin),
+    colored(head, skin),
+    ...horns,
+    ...fangs,
+    ...spines,
+  ]);
+  const eyes = mergeGeometries(
+    [-1, 1].map((side) => {
+      const eye = new THREE.IcosahedronGeometry(0.45, 0);
+      eye.translate(side * 1.3, NECK + 0.95, 3.0); // half out of the head's side
+      return colored(eye, plain(eyeColor));
+    }),
+  );
+
+  // The neck sways like a snake; the head (above the neck) moves with its top.
+  const time = { value: 0 };
+  const sway = (shader) => {
+    shader.uniforms.serpentTime = time;
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "uniform float serpentTime;\nvoid main() {")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        float h = clamp(transformed.y / ${NECK.toFixed(1)}, 0.0, 1.0);
+        transformed.x += sin(serpentTime * 0.9 - h * 2.5) * h * h * 3.0;
+        transformed.z += sin(serpentTime * 0.6 - h * 2.0 + 1.3) * h * h * 2.0;`,
+      );
+  };
+  const skinMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // Unlit and not tone-mapped, so the eyes are always the same red.
+  const glow = new THREE.MeshBasicMaterial({ color: eyeColor, toneMapped: false });
+  const group = new THREE.Group();
+  for (const [geometry, material] of [
+    [body, skinMaterial],
+    [eyes, glow],
+  ]) {
+    material.onBeforeCompile = sway;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.frustumCulled = false; // the sway moves it beyond its bounds
+    group.add(mesh);
+  }
+  group.scale.setScalar(scale);
+  group.position.set(x, heightAt(x, z), z);
+  group.rotation.order = "YXZ"; // lean forward and back after turning to the target
+  group.rotation.y = Math.atan2(lookX - x, lookZ - z); // the head points along +z
+  const surface = group.position.y; // the water surface
+
+  const ease = THREE.MathUtils.smoothstep;
+  const update = (seconds) => {
+    time.value = seconds;
+    // Rises and sinks slowly, down to a quarter of the neck under water.
+    group.position.y = surface - NECK * scale * (0.125 - 0.125 * Math.sin(seconds * 0.2));
+    // Every 10 s: lean back for 6 s, strike forward in 0.4 s, straighten up again.
+    const t = seconds % 10;
+    group.rotation.x =
+      t < 6
+        ? -0.18 * ease(t, 0, 6)
+        : t < 6.4
+          ? -0.18 + 0.48 * ease(t, 6, 6.4)
+          : 0.3 * (1 - ease(t, 6.4, 10));
+  };
+  return { group, update };
+}
 
 // Trees as instanced low-poly models (1 unit tall) with varied size and colour, one mesh per
 // terrain chunk so they are frustum-culled. Near the camera a chunk gets a trunk and an
@@ -450,5 +671,7 @@ renderer.setAnimationLoop((time) => {
   else updateOrbit(dt);
   updateTrees();
   water.waterTime.value = time / 1000;
+  serpent.update(time / 1000);
+  helicopter.update(time / 1000);
   renderer.render(scene, camera);
 });
