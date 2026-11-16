@@ -117,9 +117,8 @@ export function* shpLinesZ(file, [eMin, nMin, eMax, nMax]) {
     const z = xy + 16 * count + 16; // after the points and the z range
     const starts = [...Array(parts)].map((_, p) => buf.readInt32LE(r + 44 + 4 * p));
     for (const [p, start] of starts.entries()) {
-      const end = starts[p + 1] ?? count;
       const points = [];
-      for (let k = start; k < end; k++)
+      for (let k = start; k < (starts[p + 1] ?? count); k++)
         points.push([
           buf.readDoubleLE(xy + 16 * k),
           buf.readDoubleLE(xy + 16 * k + 8),

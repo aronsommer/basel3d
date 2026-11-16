@@ -2,19 +2,29 @@
 // or trees) and writes it to public/ground/map/ as one KTX2 per 1 km tile, like the aerial photo.
 // Also writes public/water.ktx2 for the water shader in src/main.js: red marks all visible water,
 // green and blue the downstream direction.
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { E_MIN, E_MAX, N_MIN, N_MAX, PUBLIC } from "./area.mjs";
-import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, riverBridges } from "./osm.mjs";
+import { E_MIN, E_MAX, N_MIN, N_MAX, PUBLIC, toX, toZ } from "./area.mjs";
+import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, onBridge } from "./osm.mjs";
+import { underBridges, BRIDGES_FILE } from "./bsbridges.mjs";
 import { writeTiles, encodeTexture } from "./tiles.mjs";
 
 const PX_PER_M = 1.024; // 1024 px per 1 km tile
 const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m per px)
 const BACKGROUND = "#d8d0c2"; // built-up land
 const elements = await osmElements();
-// Bridges over the rivers are built in 3D by tools/bridges.mjs.
-const bridgeWays = new Set(riverBridges(elements).flatMap((c) => c.members.map((m) => m.way)));
+// Bridges built in 3D (tools/bridges.mjs, run it first): hide the OSM bridges whose middle lies
+// under one of them.
+const underBridge = underBridges(
+  new Float32Array(new Uint8Array(readFileSync(BRIDGES_FILE)).buffer),
+);
+function hiddenBridge(way) {
+  if (!onBridge(way.tags ?? {})) return false;
+  const points = way.geometry.filter(Boolean);
+  const [a, b] = [points[(points.length - 1) >> 1], points[points.length >> 1]].map(toLV95);
+  return underBridge({ x: toX((a[0] + b[0]) / 2), z: toZ((a[1] + b[1]) / 2) });
+}
 
 // --- Style: what to draw, in which colour, how wide (metres) and in which order.
 const GREEN = "#8cc06a";
@@ -111,7 +121,7 @@ for (const el of elements) {
       shapes.push({ ...style, d: rings(ways).map((r) => pathData(r, true)) });
     continue;
   }
-  if (!el.geometry || bridgeWays.has(el)) continue;
+  if (!el.geometry || hiddenBridge(el)) continue;
   const closed = el.nodes[0] === el.nodes.at(-1);
   const area = closed && areaStyle(tags);
   const line = lineStyle(tags);

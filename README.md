@@ -26,7 +26,7 @@ basel3d/
 ├── src/main.js        Viewer (three.js)
 ├── public/            fertige Modelldaten, die der Viewer lädt
 │   ├── basel.glb      Gebäude (auch für Unity/Blender)
-│   ├── bridges.glb    Brücken über Rhein und Birs in 3D (swissTLM3D, tools/bridges.mjs)
+│   ├── bridges.glb    Brücken in 3D (Kanton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
 │   ├── terrain/       Gelände: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
 │   ├── ground/        Bodenbilder, je 64 Kacheln (KTX2, 1 km, Name Spalte_Zeile)
 │   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), wird beim Start gezeigt
@@ -36,12 +36,13 @@ basel3d/
 │   └── size.json      Grösse jeder Datei, für die Prozentanzeige beim Laden
 ├── tools/             Konverter, die public/ erzeugen
 │   ├── area.mjs       gemeinsames Gebiet und Koordinaten
-│   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog, einzelne swissTLM3D-Ebenen) und Shapefile-Leser
+│   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog, einzelne swissTLM3D-Ebenen)
 │   ├── buildings.mjs  swissBUILDINGS3D → basel.glb
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
-│   ├── osm.mjs        OpenStreetMap-Download und gemeinsame Hilfen für map.mjs und bridges.mjs
+│   ├── osm.mjs        OpenStreetMap-Download, WGS84 → LV95, Strassenbreiten
 │   ├── map.mjs        OpenStreetMap → ground/map/
-│   ├── bridges.mjs    swissTLM3D-Brücken → bridges.glb
+│   ├── bsbridges.mjs  Brückenmodelle von Basel-Stadt laden und umrechnen
+│   ├── bridges.mjs    Brücken von Basel-Stadt → bridges.glb
 │   ├── tiles.mjs      schneidet ein Bild des Gebiets in KTX2-Kacheln (für ground/)
 │   ├── trees.mjs      swissTLM3D Einzelbäume → trees.bin
 │   └── size.mjs       → size.json, läuft nach jedem Konverter
@@ -61,8 +62,10 @@ basel3d/
 2. **Gelände und Luftbild:** `npm run terrain` lädt die Daten selbst nach `data/` herunter:
    - swissALTI3D aus dem STAC-Katalog, als Raster mit 10 m Abstand (Int16 in cm),
    - SWISSIMAGE aus dem WMTS-Dienst `wmts.geo.admin.ch` mit 1 m pro Pixel, zugeschnitten auf 1-km-Kacheln und als GPU-komprimierte KTX2-Texturen (ETC1S, 1024 px) gespeichert. Das dauert etwa 6 Minuten.
-3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Dazu schreibt es `water.ktx2` (2048 px, etwa 4 m pro Pixel): eine Maske aller sichtbaren Gewässer und die Fliessrichtung aus den OSM-Flusslinien. Dort zeichnet der Boden-Shader im Viewer Wasser, dessen Muster mit hellen Lichtflecken flussabwärts treibt, auf Karte und Luftbild. Tunnels fehlen, und die Brücken über Rhein und Birs entstehen in 3D (siehe unten). Alle anderen Brücken sind flach eingezeichnet. Das dauert etwa 2 Minuten.
-4. **Brücken:** `npm run bridges` baut alle Brücken über Rhein und Birs in 3D, auch die Dreiländerbrücke und den Weg über das Kraftwerk Birsfelden (etwa 50 Stück, 3'300 Dreiecke, 16 KB). Sie stammen aus swissTLM3D, den Ebenen `TLM_STRASSE` und `TLM_EISENBAHN`, die wie die Bäume per HTTP-Range aus dem ZIP geholt werden (etwa 530 MB Download, 3,3 GB in `data/`). Die Fahrbahnhöhe ist gemessen, die Breite folgt aus der Strassenart beziehungsweise der Anzahl Gleise. Trams auf Strassenbrücken bekommen keine eigenen. Ob eine Brücke über Rhein oder Birs führt, entscheidet der Flusslauf aus OSM. Diese Brücken fehlen in der Karte.
+3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Dazu schreibt es `water.ktx2` (2048 px, etwa 4 m pro Pixel): eine Maske aller sichtbaren Gewässer und die Fliessrichtung aus den OSM-Flusslinien. Dort zeichnet der Boden-Shader im Viewer Wasser, dessen Muster mit hellen Lichtflecken flussabwärts treibt, auf Karte und Luftbild. Tunnels fehlen. Brücken, die in 3D gebaut werden (siehe unten), fehlen in der Karte, alle anderen sind flach eingezeichnet. Das dauert etwa 2 Minuten.
+4. **Brücken:** `npm run bridges` nimmt die modellierten Brücken des Kantons Basel-Stadt (Amtliche Vermessung, Dienst 3D-Tiles BS, `https://3d.geo.bs.ch/cesium/tiles/av-bruecken/tileset.json`, etwa 10 MB in `data/bs-bruecken/`), mit Pfeilern, Bögen und Geländern. Das Skript rechnet sie aus Erdkoordinaten (ECEF) in die Szene um. Aufbauten wie das Käppelijoch auf der Mittleren Brücke kommen aus den swisstopo-Gebäuden und stehen genau auf der Fahrbahn.
+   - Überquerungen von Rhein und Birs, die der Kanton nur teilweise (an der Kantonsgrenze) oder gar nicht modelliert hat, baut das Skript ganz aus swissTLM3D: eine einfache Fahrbahn mit Seitenwänden auf der gemessenen Linie, statt des Kantonsmodells. Das betrifft das Kraftwerk Birsfelden, die Dreiländerbrücke und die Birs-Brücken an der Grenze und in Baselland. Die swissTLM3D-Ebenen `TLM_STRASSE` und `TLM_EISENBAHN` kommen wie die Bäume per HTTP-Range aus dem ZIP (etwa 530 MB Download, 3 GB in `data/`).
+   - Zusammen etwa 114'000 Dreiecke und 300 KB in `bridges.glb`. Alle gebauten Dreiecke landen auch in `data/bridges.bin`. Damit blendet `npm run map` die OSM-Brücken darunter aus, deshalb zuerst `npm run bridges` laufen lassen.
 5. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
 
 ## Steuerung
@@ -79,4 +82,6 @@ basel3d/
 
 ## Lizenz der Daten
 
-Quelle: Bundesamt für Landestopografie swisstopo. Die Daten sind Open Government Data und frei nutzbar, wenn man die Quelle angibt.
+- Gebäude, Gelände, Luftbild, Bäume: Quelle: Bundesamt für Landestopografie swisstopo. Open Government Data, frei nutzbar mit Quellenangabe.
+- Brücken: Quelle: Geodaten Kanton Basel-Stadt. Öffentliche Geodaten mit Download-Dienst, CC BY 4.0.
+- Karte und Gewässer: © OpenStreetMap-Mitwirkende, ODbL.

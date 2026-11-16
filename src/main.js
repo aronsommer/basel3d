@@ -146,8 +146,7 @@ const materials = {
     flatShading: true,
     side: THREE.DoubleSide,
   }),
-  deck: new THREE.MeshLambertMaterial({ color: 0x8e9094, flatShading: true }), // like map roads
-  side: new THREE.MeshLambertMaterial({
+  bridge: new THREE.MeshLambertMaterial({
     color: 0xc8c3ba,
     flatShading: true,
     side: THREE.DoubleSide,

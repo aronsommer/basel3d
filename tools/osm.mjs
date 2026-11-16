@@ -1,6 +1,5 @@
-// Shared OpenStreetMap helpers for tools/map.mjs and tools/bridges.mjs: the download (once, via the
-// Overpass API into data/osm.json), WGS84 → LV95, the widths of roads and the bridges over the
-// rivers that are built in 3D.
+// Shared OpenStreetMap helpers: the download (once, via the Overpass API into data/osm.json),
+// WGS84 → LV95, the widths of roads and the courses of the Rhine and the Birs.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BBOX_WGS84, DATA, toX, toZ } from "./area.mjs";
@@ -68,51 +67,17 @@ export const SIDEWALK_WIDTH = 3; // metres added to roads at least 4 m wide
 
 export const onBridge = (tags) => Boolean(tags.bridge) && tags.bridge !== "no";
 
-// A way's points in scene coordinates.
-export const scenePoints = (way) =>
-  way.geometry.map((p) => {
-    const [e, n] = toLV95(p);
-    return { x: toX(e), z: toZ(n) };
-  });
-
-// --- Bridges over these rivers are built in 3D (tools/bridges.mjs) instead of drawn in the map.
+// --- Rivers whose crossings swissTLM3D fills in where Basel-Stadt has no bridge model.
 const RIVERS = new Set(["Rhein", "Birs"]);
 export const riverLines = (elements) =>
   elements
     .filter((el) => el.tags?.waterway === "river" && RIVERS.has(el.tags["name:de"] ?? el.tags.name))
-    .map(scenePoints);
-
-// Joins lines { points, start, end, group } that share an end key and a group into chains
-// { points, members }.
-export function joinLines(lines) {
-  const byEnd = new Map();
-  for (const line of lines)
-    for (const key of [line.start, line.end]) byEnd.set(key, [...(byEnd.get(key) ?? []), line]);
-  const used = new Set();
-  const chains = [];
-  for (const line of lines) {
-    if (used.has(line)) continue;
-    used.add(line);
-    const chain = { points: line.points, members: [line] };
-    let [first, last] = [line.start, line.end];
-    for (const atEnd of [true, false])
-      for (;;) {
-        const key = atEnd ? last : first;
-        const next = byEnd.get(key).find((o) => !used.has(o) && o.group === line.group);
-        if (!next) break;
-        used.add(next);
-        chain.members.push(next);
-        const forward = next.start === key;
-        const other = forward ? next.end : next.start;
-        // Appended points must start at the shared end, prepended ones end there.
-        const p = forward === atEnd ? next.points : next.points.toReversed();
-        if (atEnd) [chain.points, last] = [chain.points.concat(p.slice(1)), other];
-        else [chain.points, first] = [p.slice(0, -1).concat(chain.points), other];
-      }
-    chains.push(chain);
-  }
-  return chains;
-}
+    .map((way) =>
+      way.geometry.filter(Boolean).map((p) => {
+        const [e, n] = toLV95(p);
+        return { x: toX(e), z: toZ(n) };
+      }),
+    );
 
 // Whether a polyline crosses any of the given polylines (all { x, z }).
 const ccw = (a, b, c) => (c.z - a.z) * (b.x - a.x) > (b.z - a.z) * (c.x - a.x);
@@ -124,21 +89,3 @@ export const crossesAny = (points, lines) =>
       i > 0 &&
       lines.some((l) => l.some((q, j) => j > 0 && segmentsCross(points[i - 1], p, l[j - 1], q))),
   );
-
-// OSM bridges over the rivers, joined per layer so each chain ends on land: { points, members }
-// with the ways as members' .way.
-export function riverBridges(elements) {
-  const rivers = riverLines(elements);
-  const lines = elements
-    .filter(
-      (el) => el.type === "way" && el.tags && onBridge(el.tags) && !el.geometry.includes(null),
-    )
-    .map((way) => ({
-      way,
-      points: scenePoints(way),
-      start: way.nodes[0],
-      end: way.nodes.at(-1),
-      group: way.tags.layer ?? "1",
-    }));
-  return joinLines(lines).filter((chain) => crossesAny(chain.points, rivers));
-}
