@@ -26,17 +26,22 @@ basel3d/
 ├── src/main.js        Viewer (three.js)
 ├── public/            fertige Modelldaten, die der Viewer lädt
 │   ├── basel.glb      Gebäude (auch für Unity/Blender)
-│   ├── terrain/       Gelände (heights.bin, terrain.json) + 64 Luftbild-Kacheln (KTX2)
+│   ├── terrain/       Gelände: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
+│   ├── ground/        Bodenbilder, je 64 Kacheln (KTX2, 1 km, Name Spalte_Zeile)
+│   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), wird beim Start gezeigt
+│   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), lädt erst beim Umschalten
 │   ├── trees.bin      Baumstandorte (x, z)
-│   └── size.json      Gesamtgrösse aller Dateien, für die Prozentanzeige beim Laden
+│   └── size.json      Grösse jeder Datei, für die Prozentanzeige beim Laden
 ├── tools/             Konverter, die public/ erzeugen
 │   ├── area.mjs       gemeinsames Gebiet und Koordinaten
 │   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog)
 │   ├── buildings.mjs  swissBUILDINGS3D → basel.glb
-│   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/
+│   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
+│   ├── map.mjs        OpenStreetMap → ground/map/
+│   ├── tiles.mjs      schneidet ein Bild des Gebiets in KTX2-Kacheln (für ground/)
 │   ├── trees.mjs      swissTLM3D Einzelbäume → trees.bin
 │   └── size.mjs       → size.json, läuft nach jedem Konverter
-└── data/              Rohdaten von swisstopo (nicht im Repo, ~2 GB, wird automatisch geladen)
+└── data/              Rohdaten von swisstopo und OSM (nicht im Repo, ~2 GB, wird automatisch geladen)
 ```
 
 ## Daten neu erzeugen
@@ -52,7 +57,8 @@ basel3d/
 2. **Gelände und Luftbild:** `npm run terrain` lädt die Daten selbst nach `data/` herunter:
    - swissALTI3D aus dem STAC-Katalog, als Raster mit 10 m Abstand (Int16 in cm),
    - SWISSIMAGE aus dem WMTS-Dienst `wmts.geo.admin.ch` mit 1 m pro Pixel, zugeschnitten auf 1-km-Kacheln und als GPU-komprimierte KTX2-Texturen (ETC1S, 1024 px) gespeichert. Das dauert etwa 6 Minuten.
-3. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
+3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Brücken sind vorerst flach eingezeichnet, Tunnels fehlen. Das dauert etwa 2 Minuten.
+4. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
 
 ## Steuerung
 
@@ -60,6 +66,7 @@ basel3d/
   - Ziehen verschiebt.
   - Rechte Maustaste oder Alt/Cmd + Ziehen dreht.
   - Das Mausrad zoomt.
+  - Der Knopf oben rechts wechselt zwischen Karte und Luftbild.
 - **Herumlaufen:** auf den Boden doppelklicken.
   - WASD oder die Pfeiltasten gehen, Shift rennt.
   - Die Maus sieht sich um.

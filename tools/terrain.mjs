@@ -1,13 +1,13 @@
 // Downloads swissALTI3D (terrain, 2 m) and SWISSIMAGE (aerial photo, 1 m) for the area into data/
-// and writes public/terrain/: terrain.json, heights.bin (Int16, cm) and one aerial-photo KTX2
-// per 1 km tile.
+// and writes public/terrain/ (terrain.json, heights.bin as Int16 in cm) and public/ground/photo/
+// (one aerial-photo KTX2 per 1 km tile).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fromArrayBuffer } from "geotiff";
 import sharp from "sharp";
-import { encodeToKTX2 } from "ktx2-encoder";
 import { E_MIN, E_MAX, N_MIN, N_MAX, Y0, CHUNK, DATA, PUBLIC, toX, toZ } from "./area.mjs";
 import { newestTiles, download, forEachParallel } from "./swisstopo.mjs";
+import { writeTiles } from "./tiles.mjs";
 
 const CELL = 10; // terrain grid spacing in metres (must divide CHUNK)
 const ALTI_DIR = join(DATA, "swissalti3d");
@@ -119,7 +119,6 @@ const WMTS = "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/cu
 const WMTS_E = 2420000; // top-left corner of the WMTS tile matrix
 const WMTS_N = 1350000;
 const TILE = 256;
-const TEXTURE = 1024; // px per chunk texture: compressed mipmaps need sizes divisible by 4
 
 async function buildPhotos() {
   mkdirSync(PHOTO_DIR, { recursive: true });
@@ -150,24 +149,7 @@ async function buildPhotos() {
     }
   }
 
-  // One ETC1S KTX2 per terrain chunk, named column_row from the north-west corner. Flipped,
-  // because compressed textures are uploaded without flipY.
-  for (let iz = 0; iz < h / CHUNK; iz++)
-    for (let ix = 0; ix < w / CHUNK; ix++) {
-      const data = await sharp(mosaic, { raw: { width: w, height: h, channels: 3 } })
-        .extract({ left: ix * CHUNK, top: iz * CHUNK, width: CHUNK, height: CHUNK })
-        .resize(TEXTURE, TEXTURE)
-        .ensureAlpha()
-        .raw()
-        .toBuffer();
-      const ktx2 = await encodeToKTX2(data, {
-        isUASTC: false,
-        qualityLevel: 255,
-        isYFlip: true,
-        imageDecoder: async () => ({ width: TEXTURE, height: TEXTURE, data }),
-      });
-      writeFileSync(join(OUT, `${ix}_${iz}.ktx2`), ktx2);
-    }
+  await writeTiles(mosaic, w, h, 3, join(PUBLIC, "ground", "photo"));
 }
 
 mkdirSync(OUT, { recursive: true });

@@ -6,6 +6,7 @@
     "buildings": "node tools/buildings.mjs && node tools/size.mjs",
     "terrain": "node tools/terrain.mjs && node tools/size.mjs",
     "trees": "node tools/trees.mjs && node tools/size.mjs",
+    "map": "node tools/map.mjs && node tools/size.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {

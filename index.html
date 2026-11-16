@@ -62,11 +62,34 @@
       #hint {
         left: 8px;
       }
+      #ground {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        padding: 8px 14px;
+        font: inherit;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.9);
+        border: 0;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      /* Invisible longest label (main.js GROUND_LABELS), so the width never changes. */
+      #ground::after {
+        content: "Luftbild";
+        height: 0;
+        visibility: hidden;
+      }
       #credit {
         right: 8px;
       }
       body:not([data-mode="loading"]) #loading,
       body:not([data-mode="orbit"]) #hint,
+      body:not([data-mode="orbit"]) #ground,
       body:not([data-mode="walk"]) #walkhelp,
       body:not([data-mode="walk"]) #crosshair {
         display: none;
@@ -87,13 +110,14 @@
   <body data-mode="loading">
     <div id="loading">Lade Basel <span id="progress">0 %</span></div>
     <div id="crosshair"></div>
+    <button id="ground"></button>
     <p id="walkhelp">WASD / Pfeiltasten: gehen · Shift: rennen · Maus: umsehen · Esc: zurück</p>
     <p id="hint">
       Ziehen: verschieben · Rechts oder Alt/Cmd + Ziehen: drehen · Doppelklick: herumlaufen
     </p>
     <p id="credit">
       swissBUILDINGS3D 3.0, swissALTI3D, SWISSIMAGE · Quelle: Bundesamt für Landestopografie
-      swisstopo
+      swisstopo · Karte © OpenStreetMap-Mitwirkende
     </p>
     <script type="importmap">
       {

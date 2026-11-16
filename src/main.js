@@ -53,44 +53,69 @@ renderer.domElement.addEventListener(
 for (const type of ["pointerup", "pointercancel"])
   addEventListener(type, (e) => pointers.delete(e.pointerId));
 
-// Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs) and the trees
-// (tools/trees.mjs). Every file in public/ is loaded once, so counting the decompressed bytes
-// against their total in public/size.json (tools/size.mjs) gives the exact percentage.
-const progress = document.getElementById("progress");
-const total = await fetch("public/size.json").then((r) => r.json());
-let loaded = 0;
-const load = async (path) => {
-  const counter = new TransformStream({
-    transform(chunk, controller) {
-      loaded += chunk.byteLength;
-      progress.textContent = `${Math.min(Math.floor((loaded / total) * 100), 100)} %`;
-      controller.enqueue(chunk);
-    },
-  });
-  return new Response((await fetch(`public/${path}`)).body.pipeThrough(counter)).arrayBuffer();
-};
+// Loads files from public/; show(percent) gets the exact share of their decompressed bytes,
+// measured against the sizes in public/size.json (tools/size.mjs).
+const sizes = await fetch("public/size.json").then((r) => r.json());
+function load(paths, show) {
+  const total = paths.reduce((sum, path) => sum + sizes[path], 0);
+  let loaded = 0;
+  return Promise.all(
+    paths.map(async (path) => {
+      const counter = new TransformStream({
+        transform(chunk, controller) {
+          loaded += chunk.byteLength;
+          show(Math.min(Math.floor((loaded / total) * 100), 100));
+          controller.enqueue(chunk);
+        },
+      });
+      return new Response((await fetch(`public/${path}`)).body.pipeThrough(counter)).arrayBuffer();
+    }),
+  );
+}
 
-const terrainInfo = JSON.parse(new TextDecoder().decode(await load("terrain/terrain.json")));
-const columns = (terrainInfo.nx - 1) / (terrainInfo.chunk / terrainInfo.cell);
-const rows = (terrainInfo.nz - 1) / (terrainInfo.chunk / terrainInfo.cell);
+// Ground textures in public/ground/<kind>/, one per 1 km tile named column_row: "map" from
+// OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs).
+const GROUND_LABELS = { map: "Karte", photo: "Luftbild" };
+const groundPaths = (kind) =>
+  Object.keys(sizes).filter((path) => path.startsWith(`ground/${kind}/`));
 const ktx2 = new KTX2Loader()
   .setTranscoderPath(import.meta.resolve("three/addons/libs/basis/"))
   .detectSupport(renderer);
-const [gltf, heights, treePositions, maps] = await Promise.all([
-  load("basel.glb").then((b) =>
-    new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(b, ""),
-  ),
-  load("terrain/heights.bin").then((b) => Float32Array.from(new Int16Array(b), (cm) => cm / 100)),
-  load("trees.bin").then((b) => new Float32Array(b)),
-  // Aerial photos in row order from the north-west, named column_row.
-  Promise.all(
-    Array.from({ length: columns * rows }, (_, i) =>
-      load(`terrain/${i % columns}_${Math.floor(i / columns)}.ktx2`).then(
-        (b) => new Promise((resolve, reject) => ktx2.parse(b, resolve, reject)),
-      ),
-    ),
-  ),
+// Textures by tile name ("column_row").
+async function groundTextures(paths, buffers) {
+  const textures = await Promise.all(
+    buffers.map((b) => new Promise((resolve, reject) => ktx2.parse(b, resolve, reject))),
+  );
+  return new Map(
+    textures.map((texture, i) => {
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return [paths[i].split("/").pop().replace(".ktx2", ""), texture];
+    }),
+  );
+}
+
+// Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs), the trees
+// (tools/trees.mjs) and the ground shown first.
+let groundKind = "map";
+const progress = document.getElementById("progress");
+const [terrainJson, heightsBuffer, glb, treesBuffer, ...groundBuffers] = await load(
+  [
+    "terrain/terrain.json",
+    "terrain/heights.bin",
+    "basel.glb",
+    "trees.bin",
+    ...groundPaths(groundKind),
+  ],
+  (percent) => (progress.textContent = `${percent} %`),
+);
+const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
+const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 100);
+const treePositions = new Float32Array(treesBuffer);
+const [gltf, firstGround] = await Promise.all([
+  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(glb, ""),
+  groundTextures(groundPaths(groundKind), groundBuffers),
 ]);
+const ground = { [groundKind]: firstGround }; // textures by tile name, per kind once loaded
 
 // The GLB has no normals; flat shading derives them per pixel.
 const materials = {
@@ -112,6 +137,28 @@ scene.add(gltf.scene);
 
 const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
+
+// The button switches the ground between map and aerial photo, loading each on first use. Only
+// the shown textures stay in GPU memory; the others are re-uploaded when shown again.
+const groundButton = document.getElementById("ground");
+groundButton.addEventListener("click", async () => {
+  const kind = otherGround();
+  if (!ground[kind]) {
+    groundButton.disabled = true;
+    const paths = groundPaths(kind);
+    const buffers = await load(paths, (percent) => (groundButton.textContent = `${percent} %`));
+    ground[kind] = await groundTextures(paths, buffers);
+    groundButton.disabled = false;
+  }
+  for (const texture of ground[groundKind].values()) texture.dispose();
+  groundKind = kind;
+  for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
+  groundButton.textContent = GROUND_LABELS[otherGround()];
+});
+groundButton.textContent = GROUND_LABELS[otherGround()];
+function otherGround() {
+  return groundKind === "map" ? "photo" : "map";
+}
 const tree = createTrees(treePositions);
 scene.add(...tree.meshes);
 
@@ -181,12 +228,12 @@ function updateTrees() {
       mesh.boundingBox.distanceToPoint(camera.position) < TREE_DETAIL ? tree.near : tree.far;
 }
 
-// One mesh per chunk, textured with that chunk's aerial photo.
-function createTerrain({ x0, z0, cell, nx, chunk }) {
+// One mesh per chunk, named column_row like its ground texture.
+function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   const group = new THREE.Group();
   const segments = chunk / cell;
-  for (let iz = 0; iz < rows; iz++)
-    for (let ix = 0; ix < columns; ix++) {
+  for (let iz = 0; iz < (nz - 1) / segments; iz++)
+    for (let ix = 0; ix < (nx - 1) / segments; ix++) {
       const geometry = new THREE.PlaneGeometry(chunk, chunk, segments, segments);
       geometry.rotateX(-Math.PI / 2); // rows now run north → south, like heights
       geometry.translate(x0 + (ix + 0.5) * chunk, 0, z0 + (iz + 0.5) * chunk);
@@ -195,9 +242,12 @@ function createTerrain({ x0, z0, cell, nx, chunk }) {
         for (let col = 0; col <= segments; col++, i++)
           position.setY(i, heights[(iz * segments + row) * nx + ix * segments + col]);
       geometry.computeVertexNormals();
-      const map = maps[iz * columns + ix];
-      map.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      group.add(new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map })));
+      const mesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshLambertMaterial({ map: ground[groundKind].get(`${ix}_${iz}`) }),
+      );
+      mesh.name = `${ix}_${iz}`;
+      group.add(mesh);
     }
   return group;
 }
