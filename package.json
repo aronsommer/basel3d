@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "buildings": "node tools/buildings.mjs",
-    "terrain": "node tools/terrain.mjs",
-    "trees": "node tools/trees.mjs",
+    "buildings": "node tools/buildings.mjs && node tools/size.mjs",
+    "terrain": "node tools/terrain.mjs && node tools/size.mjs",
+    "trees": "node tools/trees.mjs && node tools/size.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {

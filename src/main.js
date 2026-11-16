@@ -22,8 +22,9 @@ document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 3000, 9000);
-scene.add(new THREE.HemisphereLight(0xdfeaf5, 0x8a8170, 1.5));
-const sun = new THREE.DirectionalLight(0xfff4e0, 3);
+// Strong sky light keeps the sides facing away from the sun bright.
+scene.add(new THREE.HemisphereLight(0xdfeaf5, 0xb5ab95, 2));
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
 sun.position.set(-1, 1, 1); // from the south-west
 scene.add(sun);
 
@@ -45,19 +46,43 @@ renderer.domElement.addEventListener(
   { capture: true },
 );
 
-const loadBuffer = (url) => fetch(url).then((r) => r.arrayBuffer());
-
-// Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs) and the trees (tools/trees.mjs).
+// Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs) and the trees
+// (tools/trees.mjs). Every file in public/ is loaded once, so counting the decompressed bytes
+// against their total in public/size.json (tools/size.mjs) gives the exact percentage.
 const progress = document.getElementById("progress");
-const [gltf, terrainInfo, heights, treePositions] = await Promise.all([
-  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("public/basel.glb", (e) => {
-    progress.textContent = `${Math.round(e.loaded / 1e6)} MB`;
-  }),
-  fetch("public/terrain/terrain.json").then((r) => r.json()),
-  loadBuffer("public/terrain/heights.bin").then((b) =>
-    Float32Array.from(new Int16Array(b), (cm) => cm / 100),
+const total = await fetch("public/size.json").then((r) => r.json());
+let loaded = 0;
+const load = async (path) => {
+  const counter = new TransformStream({
+    transform(chunk, controller) {
+      loaded += chunk.byteLength;
+      progress.textContent = `${Math.min(Math.floor((loaded / total) * 100), 100)} %`;
+      controller.enqueue(chunk);
+    },
+  });
+  return new Response((await fetch(`public/${path}`)).body.pipeThrough(counter)).arrayBuffer();
+};
+
+const terrainInfo = JSON.parse(new TextDecoder().decode(await load("terrain/terrain.json")));
+const columns = (terrainInfo.nx - 1) / (terrainInfo.chunk / terrainInfo.cell);
+const rows = (terrainInfo.nz - 1) / (terrainInfo.chunk / terrainInfo.cell);
+const ktx2 = new KTX2Loader()
+  .setTranscoderPath(import.meta.resolve("three/addons/libs/basis/"))
+  .detectSupport(renderer);
+const [gltf, heights, treePositions, maps] = await Promise.all([
+  load("basel.glb").then((b) =>
+    new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(b, ""),
   ),
-  loadBuffer("public/trees.bin").then((b) => new Float32Array(b)),
+  load("terrain/heights.bin").then((b) => Float32Array.from(new Int16Array(b), (cm) => cm / 100)),
+  load("trees.bin").then((b) => new Float32Array(b)),
+  // Aerial photos in row order from the north-west, named column_row.
+  Promise.all(
+    Array.from({ length: columns * rows }, (_, i) =>
+      load(`terrain/${i % columns}_${Math.floor(i / columns)}.ktx2`).then(
+        (b) => new Promise((resolve, reject) => ktx2.parse(b, resolve, reject)),
+      ),
+    ),
+  ),
 ]);
 
 // The GLB has no normals; flat shading derives them per pixel.
@@ -149,15 +174,12 @@ function updateTrees() {
       mesh.boundingBox.distanceToPoint(camera.position) < TREE_DETAIL ? tree.near : tree.far;
 }
 
-// One mesh per chunk, textured with that chunk's aerial photo (public/terrain/<column>_<row>.ktx2).
-function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
+// One mesh per chunk, textured with that chunk's aerial photo.
+function createTerrain({ x0, z0, cell, nx, chunk }) {
   const group = new THREE.Group();
-  const loader = new KTX2Loader()
-    .setTranscoderPath(import.meta.resolve("three/addons/libs/basis/"))
-    .detectSupport(renderer);
   const segments = chunk / cell;
-  for (let iz = 0; iz < (nz - 1) / segments; iz++)
-    for (let ix = 0; ix < (nx - 1) / segments; ix++) {
+  for (let iz = 0; iz < rows; iz++)
+    for (let ix = 0; ix < columns; ix++) {
       const geometry = new THREE.PlaneGeometry(chunk, chunk, segments, segments);
       geometry.rotateX(-Math.PI / 2); // rows now run north → south, like heights
       geometry.translate(x0 + (ix + 0.5) * chunk, 0, z0 + (iz + 0.5) * chunk);
@@ -166,13 +188,9 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
         for (let col = 0; col <= segments; col++, i++)
           position.setY(i, heights[(iz * segments + row) * nx + ix * segments + col]);
       geometry.computeVertexNormals();
-      const material = new THREE.MeshLambertMaterial();
-      loader.load(`public/terrain/${ix}_${iz}.ktx2`, (map) => {
-        map.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        material.map = map;
-        material.needsUpdate = true;
-      });
-      group.add(new THREE.Mesh(geometry, material));
+      const map = maps[iz * columns + ix];
+      map.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      group.add(new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map })));
     }
   return group;
 }

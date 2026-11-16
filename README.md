@@ -27,13 +27,15 @@ basel3d/
 ├── public/            fertige Modelldaten, die der Viewer lädt
 │   ├── basel.glb      Gebäude (auch für Unity/Blender)
 │   ├── terrain/       Gelände (heights.bin, terrain.json) + 64 Luftbild-Kacheln (KTX2)
-│   └── trees.bin      Baumstandorte (x, z)
+│   ├── trees.bin      Baumstandorte (x, z)
+│   └── size.json      Gesamtgrösse aller Dateien, für die Prozentanzeige beim Laden
 ├── tools/             Konverter, die public/ erzeugen
 │   ├── area.mjs       gemeinsames Gebiet und Koordinaten
 │   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog)
 │   ├── buildings.mjs  swissBUILDINGS3D → basel.glb
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/
-│   └── trees.mjs      swissTLM3D Einzelbäume → trees.bin
+│   ├── trees.mjs      swissTLM3D Einzelbäume → trees.bin
+│   └── size.mjs       → size.json, läuft nach jedem Konverter
 └── data/              Rohdaten von swisstopo (nicht im Repo, ~2 GB, wird automatisch geladen)
 ```
 
