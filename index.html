@@ -22,35 +22,16 @@
       p {
         margin: 0;
       }
-      #loading,
-      #walkhelp {
+      #loading {
         position: absolute;
+        top: 50%;
         left: 50%;
+        transform: translate(-50%, -50%);
         padding: 10px 16px;
+        font-size: 18px;
         background: rgba(255, 255, 255, 0.9);
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-      }
-      #loading {
-        top: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 18px;
-      }
-      #walkhelp {
-        bottom: 40px;
-        transform: translateX(-50%);
-        white-space: nowrap;
-      }
-      #crosshair {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 6px;
-        height: 6px;
-        margin: -3px 0 0 -3px;
-        border-radius: 50%;
-        background: #fff;
-        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
       }
       #ground {
         position: absolute;
@@ -102,24 +83,14 @@
         text-decoration: none;
       }
       body:not([data-mode="loading"]) #loading,
-      body:not([data-mode="orbit"]) #ground,
-      body:not([data-mode="walk"]) #walkhelp,
-      body:not([data-mode="walk"]) #crosshair {
+      body:not([data-mode="orbit"]) #ground {
         display: none;
-      }
-      @media (max-width: 600px) {
-        #walkhelp {
-          white-space: normal;
-          width: calc(100% - 64px);
-        }
       }
     </style>
   </head>
   <body data-mode="loading">
     <div id="loading">Lade Basel <span id="progress">0 %</span></div>
-    <div id="crosshair"></div>
     <button id="ground"></button>
-    <p id="walkhelp">WASD / Pfeiltasten: gehen · Shift: rennen · Maus: umsehen · Esc: zurück</p>
     <div id="credit">
       <span
         >©

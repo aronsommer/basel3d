@@ -12,7 +12,7 @@ import { writeTiles, encodeTexture } from "./tiles.mjs";
 
 const PX_PER_M = 1.024; // 1024 px per 1 km tile
 const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m per px)
-const BACKGROUND = "#d8d0c2"; // built-up land
+const BACKGROUND = "#b8b0a2"; // built-up land, dark enough for the light roads
 const elements = await osmElements();
 // Bridges built in 3D (tools/bridges.mjs, run it first): hide the OSM bridges whose middle lies
 // under one of them.
@@ -27,14 +27,14 @@ function hiddenBridge(way) {
 }
 
 // --- Style: what to draw, in which colour, how wide (metres) and in which order.
-const GREEN = "#8cc06a";
+const GREEN = "#5f8f45"; // greens about as dark as in the aerial photo
 const WATER = "#4f8fc6";
-const PAVED = "#e0d6c4"; // squares and pedestrian areas
-const SIDEWALK = "#ece6da"; // drawn on both sides of every road
-const MINOR_ROAD = "#9a9ca0";
-const MAJOR_ROAD = "#7f8186";
-const FOOTWAY = "#c9b48f";
-const RAIL = "#6b625a";
+const PAVED = "#d2c8b6"; // squares and pedestrian areas
+const SIDEWALK = "#d6d0c4"; // drawn on both sides of every road, a little darker than it
+const MINOR_ROAD = "#eceae4";
+const MAJOR_ROAD = "#f5d77e";
+const FOOTWAY = "#e2cfa6";
+const RAIL = "#5a524a";
 const MAJOR = new Set(["motorway", "trunk", "primary", "secondary"]);
 const has = (value, ...values) => values.includes(value);
 
@@ -44,10 +44,10 @@ function areaStyle(t) {
   if (t.leisure === "swimming_pool") return { order: 5, fill: WATER };
   if (t["area:highway"] || t.place === "square" || (t.highway && t.area === "yes"))
     return { order: 6, fill: PAVED };
-  if (t.amenity === "parking") return { order: 4, fill: "#b9b8b5" };
+  if (t.amenity === "parking") return { order: 4, fill: "#a8a6a2" };
   if (has(t.natural, "beach", "sand")) return { order: 4, fill: "#e8d9a6" };
-  if (t.leisure === "pitch") return { order: 4, fill: "#6fb553" };
-  if (t.landuse === "forest" || t.natural === "wood") return { order: 3, fill: "#5e9a4c" };
+  if (t.leisure === "pitch") return { order: 4, fill: "#5a9a42" };
+  if (t.landuse === "forest" || t.natural === "wood") return { order: 3, fill: "#3f6b35" };
   if (
     has(t.landuse, "grass", "meadow", "village_green", "recreation_ground", "cemetery") ||
     has(t.landuse, "allotments", "flowerbed", "orchard", "vineyard", "plant_nursery") ||
@@ -55,9 +55,9 @@ function areaStyle(t) {
     has(t.natural, "grassland", "scrub", "heath", "wetland")
   )
     return { order: 3, fill: GREEN };
-  if (t.landuse === "farmland") return { order: 2, fill: "#d4cf8a" };
-  if (t.landuse === "railway") return { order: 1, fill: "#bfb3a3" };
-  if (has(t.landuse, "industrial", "commercial", "retail")) return { order: 0, fill: "#cdc6c0" };
+  if (t.landuse === "farmland") return { order: 2, fill: "#a9a66a" };
+  if (t.landuse === "railway") return { order: 1, fill: "#a99d8d" };
+  if (has(t.landuse, "industrial", "commercial", "retail")) return { order: 0, fill: "#b0aaa4" };
   return null;
 }
 

@@ -104,11 +104,7 @@ Alles Bewegte ist im Viewer ([src/main.js](src/main.js)) selbst gebaut, im Low-P
   - Rechte Maustaste oder Alt/Cmd + Ziehen dreht.
   - Das Mausrad zoomt.
   - Der Knopf oben rechts wechselt zwischen Karte und Luftbild.
-- **Herumlaufen:** auf den Boden doppelklicken.
-  - WASD oder die Pfeiltasten gehen, Shift rennt.
-  - Die Maus sieht sich um.
-  - Esc führt zurück zur Ansicht.
-- **Mitfahren:** auf ein Tram, einen Zug oder ein Auto doppelklicken. Die Kamera sitzt vorne im Führerstand. Esc führt zurück zur Ansicht.
+- **Mitfahren:** auf ein Tram, einen Zug oder ein Auto doppelklicken (auf dem Handy doppelt tippen). Die Kamera sitzt vorne im Führerstand. Esc (auf dem Handy ein Tipp) führt zurück zur Ansicht.
 - **Taste L:** zeigt alle Wege als Linien, zum Prüfen.
 
 ## Lizenz der Daten

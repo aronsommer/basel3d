@@ -2,14 +2,10 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MapControls } from "three/addons/controls/MapControls.js";
-import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
-const EYE = 1.7; // eye height when walking
-const WALK_SPEED = 5;
-const RUN_SPEED = 20;
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
@@ -45,7 +41,6 @@ orbit.enableDamping = true;
 orbit.maxPolarAngle = 1.45;
 orbit.minDistance = 30;
 orbit.maxDistance = 9000;
-const walk = new PointerLockControls(camera, renderer.domElement);
 
 const pointers = new Set(); // pressed mouse buttons and fingers
 const fling = new THREE.Vector3(); // metres per second the view keeps gliding after a drag
@@ -1167,26 +1162,7 @@ function heightAt(x, z) {
   );
 }
 
-// --- Walk mode: double-click the ground, then pointer lock, WASD, feet on the ground.
-const keys = new Set();
-addEventListener("keydown", (e) => keys.add(e.code));
-addEventListener("keyup", (e) => keys.delete(e.code));
-addEventListener("blur", () => keys.clear());
-
-let walkStart = null; // where to stand once the browser grants pointer lock
-
-walk.addEventListener("lock", () => {
-  const { x, z } = walkStart;
-  const view = orbit.target.clone().sub(camera.position);
-  camera.position.set(x, heightAt(x, z) + EYE, z);
-  camera.quaternion.setFromEuler(new THREE.Euler(0, Math.atan2(-view.x, -view.z), 0, "YXZ"));
-  orbit.enabled = false;
-  camera.near = 0.3;
-  camera.updateProjectionMatrix();
-  document.body.dataset.mode = "walk";
-});
-
-// Back from walking or riding to the overview, looking at where the camera was.
+// Back from riding to the overview, looking at where the camera was.
 function backToOverview() {
   const forward = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
   orbit.target.copy(camera.position);
@@ -1196,8 +1172,6 @@ function backToOverview() {
   orbit.enabled = true;
   document.body.dataset.mode = "orbit";
 }
-// Leaving pointer lock (Esc) ends walking.
-walk.addEventListener("unlock", backToOverview);
 
 // --- Riding: double-click a tram, train or car to ride along, Esc to get off.
 let riding = null; // { mover, vehicle } the camera rides in
@@ -1208,11 +1182,26 @@ addEventListener("keydown", (e) => {
 });
 
 const raycaster = new THREE.Raycaster();
-renderer.domElement.addEventListener("dblclick", (e) => {
-  if (walk.isLocked || riding) return;
+// Double-click (or double-tap on a touch screen) a tram, train or car to ride along.
+renderer.domElement.addEventListener("dblclick", (e) => doubleClick(e.clientX, e.clientY));
+let lastTap = { time: 0, x: 0, y: 0 };
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (e.pointerType !== "touch") return;
+  if (riding) {
+    riding = null; // a tap gets off; touch screens have no Esc
+    backToOverview();
+    return;
+  }
+  const quick = e.timeStamp - lastTap.time < 350;
+  const close = Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+  lastTap = { time: e.timeStamp, x: e.clientX, y: e.clientY };
+  if (quick && close) doubleClick(e.clientX, e.clientY);
+});
+function doubleClick(clientX, clientY) {
+  if (riding) return;
   const pointer = new THREE.Vector2(
-    (e.clientX / innerWidth) * 2 - 1,
-    -(e.clientY / innerHeight) * 2 + 1,
+    (clientX / innerWidth) * 2 - 1,
+    -(clientY / innerHeight) * 2 + 1,
   );
   raycaster.setFromCamera(pointer, camera);
   for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
@@ -1224,25 +1213,7 @@ renderer.domElement.addEventListener("dblclick", (e) => {
     camera.near = 0.3;
     camera.updateProjectionMatrix();
     document.body.dataset.mode = "ride";
-    return;
   }
-  const hit = raycaster.intersectObject(terrain)[0];
-  if (!hit) return;
-  walkStart = { x: hit.point.x, z: hit.point.z };
-  walk.lock();
-});
-
-function updateWalk(dt) {
-  const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? RUN_SPEED : WALK_SPEED;
-  const forward =
-    Number(keys.has("KeyW") || keys.has("ArrowUp")) -
-    Number(keys.has("KeyS") || keys.has("ArrowDown"));
-  const right =
-    Number(keys.has("KeyD") || keys.has("ArrowRight")) -
-    Number(keys.has("KeyA") || keys.has("ArrowLeft"));
-  walk.moveForward(forward * speed * dt);
-  walk.moveRight(right * speed * dt);
-  camera.position.y = heightAt(camera.position.x, camera.position.z) + EYE;
 }
 
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
@@ -1279,8 +1250,7 @@ let last = performance.now();
 renderer.setAnimationLoop((time) => {
   const dt = Math.min((time - last) / 1000, 0.1);
   last = time;
-  if (walk.isLocked) updateWalk(dt);
-  else if (!riding) updateOrbit(dt);
+  if (!riding) updateOrbit(dt);
   updateTrees();
   water.waterTime.value = time / 1000;
   serpent.update(time / 1000);
