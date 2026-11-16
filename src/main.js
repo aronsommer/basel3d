@@ -10,6 +10,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 const EYE = 1.7; // eye height when walking
 const WALK_SPEED = 5;
 const RUN_SPEED = 20;
+const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
 
@@ -37,14 +38,20 @@ orbit.minDistance = 30;
 orbit.maxDistance = 9000;
 const walk = new PointerLockControls(camera, renderer.domElement);
 
-// Alt + left drag rotates (MapControls already does this for Cmd, Ctrl and Shift).
+const pointers = new Set(); // pressed mouse buttons and fingers
+const fling = new THREE.Vector3(); // metres per second the view keeps gliding after a drag
 renderer.domElement.addEventListener(
   "pointerdown",
   (e) => {
+    // Alt + left drag rotates (MapControls already does this for Cmd, Ctrl and Shift).
     orbit.mouseButtons.LEFT = e.altKey ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
+    pointers.add(e.pointerId);
+    fling.set(0, 0, 0);
   },
   { capture: true },
 );
+for (const type of ["pointerup", "pointercancel"])
+  addEventListener(type, (e) => pointers.delete(e.pointerId));
 
 // Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs) and the trees
 // (tools/trees.mjs). Every file in public/ is loaded once, so counting the decompressed bytes
@@ -268,8 +275,19 @@ function updateWalk(dt) {
   camera.position.y = heightAt(camera.position.x, camera.position.z) + EYE;
 }
 
-function updateOrbit() {
+// While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
+const lastTarget = new THREE.Vector3();
+const velocity = new THREE.Vector3();
+function updateOrbit(dt) {
+  if (!pointers.size) {
+    orbit.target.addScaledVector(fling, dt);
+    camera.position.addScaledVector(fling, dt);
+    fling.multiplyScalar(Math.exp(-FLING_FRICTION * dt));
+  }
   orbit.update();
+  if (pointers.size && dt > 0)
+    fling.lerp(velocity.subVectors(orbit.target, lastTarget).divideScalar(dt), 0.5);
+  lastTarget.copy(orbit.target);
   camera.position.y = Math.max(
     camera.position.y,
     heightAt(camera.position.x, camera.position.z) + 10,
@@ -292,7 +310,7 @@ renderer.setAnimationLoop((time) => {
   const dt = Math.min((time - last) / 1000, 0.1);
   last = time;
   if (walk.isLocked) updateWalk(dt);
-  else updateOrbit();
+  else updateOrbit(dt);
   updateTrees();
   renderer.render(scene, camera);
 });
