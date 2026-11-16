@@ -8,6 +8,10 @@
     "trees": "node tools/trees.mjs && node tools/size.mjs",
     "map": "node tools/map.mjs && node tools/size.mjs",
     "bridges": "node tools/bridges.mjs && node tools/size.mjs",
+    "trams": "node tools/paths.mjs tram && node tools/size.mjs",
+    "trains": "node tools/paths.mjs train && node tools/size.mjs",
+    "cars": "node tools/paths.mjs car && node tools/size.mjs",
+    "ships": "node tools/ships.mjs && node tools/size.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {

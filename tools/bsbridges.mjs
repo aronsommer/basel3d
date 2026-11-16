@@ -89,8 +89,8 @@ export async function bridgeTriangles() {
   return new Float32Array(out);
 }
 
-// Whether a scene point { x, z } lies under one of the triangles (seen from above).
-export function underBridges(triangles) {
+// The height of the highest triangle above a scene point { x, z }, or -Infinity if none is.
+export function bridgeTop(triangles) {
   const CELL = 20; // metres
   const grid = new Map();
   for (let t = 0; t < triangles.length; t += 9) {
@@ -109,12 +109,23 @@ export function underBridges(triangles) {
         grid.set(`${cx} ${cz}`, [...(grid.get(`${cx} ${cz}`) ?? []), t]);
   }
   const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
-  return ({ x, z }) =>
-    (grid.get(`${Math.floor(x / CELL)} ${Math.floor(z / CELL)}`) ?? []).some((t) => {
-      const [ax, az, bx, bz, cx, cz] = [0, 2, 3, 5, 6, 8].map((o) => triangles[t + o]);
+  return ({ x, z }) => {
+    let top = -Infinity;
+    for (const t of grid.get(`${Math.floor(x / CELL)} ${Math.floor(z / CELL)}`) ?? []) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = triangles.subarray(t, t + 9);
       const d1 = side(ax, az, bx, bz, x, z);
       const d2 = side(bx, bz, cx, cz, x, z);
       const d3 = side(cx, cz, ax, az, x, z);
-      return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
-    });
+      const sum = d1 + d2 + d3; // twice the signed area; 0 for walls seen edge-on
+      if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
+      top = Math.max(top, (ay * d2 + by * d3 + cy * d1) / sum); // barycentric
+    }
+    return top;
+  };
+}
+
+// Whether a scene point { x, z } lies under one of the triangles (seen from above).
+export function underBridges(triangles) {
+  const top = bridgeTop(triangles);
+  return (p) => top(p) > -Infinity;
 }

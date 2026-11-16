@@ -1,6 +1,8 @@
 {
  "basel.glb": 11504936,
  "bridges.glb": 296312,
+ "cars.bin": 517476,
+ "cars.json": 53902,
  "ground/map/0_0.ktx2": 79259,
  "ground/map/0_1.ktx2": 70506,
  "ground/map/0_2.ktx2": 56637,
@@ -129,8 +131,13 @@
  "ground/photo/7_5.ktx2": 296794,
  "ground/photo/7_6.ktx2": 301473,
  "ground/photo/7_7.ktx2": 288310,
+ "ships.bin": 30672,
  "terrain/heights.bin": 1283202,
  "terrain/terrain.json": 64,
+ "trains.bin": 911520,
+ "trains.json": 8135,
+ "trams.bin": 574680,
+ "trams.json": 3230,
  "trees.bin": 692288,
  "water.ktx2": 227669
 }
