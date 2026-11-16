@@ -1,62 +1,26 @@
 // Draws a map of the area from OpenStreetMap (roads, rail, water, green areas; no text, buildings
 // or trees) and writes it to public/ground/map/ as one KTX2 per 1 km tile, like the aerial photo.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
-import { E_MIN, E_MAX, N_MIN, N_MAX, BBOX_WGS84, DATA, PUBLIC } from "./area.mjs";
+import { E_MIN, E_MAX, N_MIN, N_MAX, PUBLIC } from "./area.mjs";
+import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, riverBridges } from "./osm.mjs";
 import { writeTiles } from "./tiles.mjs";
 
-const OSM_FILE = join(DATA, "osm.json");
 const PX_PER_M = 1.024; // 1024 px per 1 km tile
 const BACKGROUND = "#d8d0c2"; // built-up land
-
-// --- Download (once) everything the map shows, with geometry.
-if (!existsSync(OSM_FILE)) {
-  const [w, s, e, n] = BBOX_WGS84.split(",");
-  const keys = ["landuse", "natural", "leisure", "waterway", "amenity", "area:highway", "place"];
-  const query = `[out:json][timeout:300][bbox:${s},${w},${n},${e}];(
-    way[highway];way[railway];${keys.map((k) => `way["${k}"];`).join("")}
-    ${keys.map((k) => `relation[type=multipolygon]["${k}"];`).join("")});out geom;`;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "User-Agent": "basel3d-converter" },
-    body: new URLSearchParams({ data: query }),
-  });
-  if (!res.ok) throw new Error(`Overpass: ${res.status}`);
-  mkdirSync(DATA, { recursive: true });
-  writeFileSync(OSM_FILE, Buffer.from(await res.arrayBuffer()));
-}
-const { elements } = JSON.parse(readFileSync(OSM_FILE, "utf8"));
+const elements = await osmElements();
+// Bridges over the rivers are built in 3D by tools/bridges.mjs.
+const bridgeWays = new Set(riverBridges(elements).flatMap((c) => c.members.map((m) => m.way)));
 
 // --- Style: what to draw, in which colour, how wide (metres) and in which order.
 const GREEN = "#8cc06a";
 const WATER = "#4f8fc6";
 const PAVED = "#e0d6c4"; // squares and pedestrian areas
 const SIDEWALK = "#ece6da"; // drawn on both sides of every road
-const SIDEWALK_WIDTH = 3; // metres added to the road width
 const MINOR_ROAD = "#9a9ca0";
 const MAJOR_ROAD = "#7f8186";
 const FOOTWAY = "#c9b48f";
 const RAIL = "#6b625a";
-const ROAD_WIDTH = {
-  motorway: 22,
-  trunk: 18,
-  primary: 14,
-  secondary: 12,
-  tertiary: 10,
-  residential: 8,
-  unclassified: 8,
-  living_street: 7,
-  road: 7,
-  pedestrian: 6,
-  service: 5,
-  track: 3,
-  footway: 2,
-  path: 2,
-  cycleway: 2,
-  steps: 2,
-  bridleway: 2,
-};
 const MAJOR = new Set(["motorway", "trunk", "primary", "secondary"]);
 const has = (value, ...values) => values.includes(value);
 
@@ -91,29 +55,23 @@ function lineStyle(t) {
   if (has(t.railway, "rail", "light_rail", "narrow_gauge"))
     return { order: 8, stroke: RAIL, width: 3.5 };
   if (t.railway === "tram") return { order: 11, stroke: RAIL, width: 1.2 }; // on the road
-  const type = t.highway?.replace("_link", "");
-  if (!ROAD_WIDTH[type] || t.area === "yes") return null;
-  const width = ROAD_WIDTH[type] * (t.highway.endsWith("_link") ? 0.6 : 1);
+  const width = roadWidth(t.highway);
+  if (!width || t.area === "yes") return null;
   if (width < 4) return { order: 8, stroke: FOOTWAY, width };
   // Sidewalks first under all roads, so junctions stay clean; wider roads on top.
   return [
     { order: 9, stroke: SIDEWALK, width: width + SIDEWALK_WIDTH },
-    { order: 10 + width / 100, stroke: MAJOR.has(type) ? MAJOR_ROAD : MINOR_ROAD, width },
+    {
+      order: 10 + width / 100,
+      stroke: MAJOR.has(t.highway.replace("_link", "")) ? MAJOR_ROAD : MINOR_ROAD,
+      width,
+    },
   ];
 }
 
-// --- Geometry: WGS84 → LV95 (swisstopo's approximate formulas, about 1 m) → SVG metres.
-function toSvg({ lat, lon }) {
-  const p = (lat * 3600 - 169028.66) / 10000;
-  const l = (lon * 3600 - 26782.5) / 10000;
-  const e = 2600072.37 + 211455.93 * l - 10938.51 * l * p - 0.36 * l * p * p - 44.54 * l ** 3;
-  const n =
-    1200147.07 +
-    308807.95 * p +
-    3745.25 * l * l +
-    76.63 * p * p -
-    194.56 * l * l * p +
-    119.79 * p ** 3;
+// --- Geometry: WGS84 → LV95 → SVG metres from the north-west corner.
+function toSvg(point) {
+  const [e, n] = toLV95(point);
   return `${(e - E_MIN).toFixed(1)} ${(N_MAX - n).toFixed(1)}`;
 }
 const pathData = (points, close) =>
@@ -149,7 +107,7 @@ for (const el of elements) {
       shapes.push({ ...style, d: rings(ways).map((r) => pathData(r, true)) });
     continue;
   }
-  if (!el.geometry) continue;
+  if (!el.geometry || bridgeWays.has(el)) continue;
   const closed = el.nodes[0] === el.nodes.at(-1);
   const area = closed && areaStyle(tags);
   const line = lineStyle(tags);

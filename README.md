@@ -26,6 +26,7 @@ basel3d/
 ├── src/main.js        Viewer (three.js)
 ├── public/            fertige Modelldaten, die der Viewer lädt
 │   ├── basel.glb      Gebäude (auch für Unity/Blender)
+│   ├── bridges.glb    Brücken über Rhein und Birs in 3D (swissTLM3D, tools/bridges.mjs)
 │   ├── terrain/       Gelände: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
 │   ├── ground/        Bodenbilder, je 64 Kacheln (KTX2, 1 km, Name Spalte_Zeile)
 │   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), wird beim Start gezeigt
@@ -34,14 +35,16 @@ basel3d/
 │   └── size.json      Grösse jeder Datei, für die Prozentanzeige beim Laden
 ├── tools/             Konverter, die public/ erzeugen
 │   ├── area.mjs       gemeinsames Gebiet und Koordinaten
-│   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog)
+│   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog, einzelne swissTLM3D-Ebenen) und Shapefile-Leser
 │   ├── buildings.mjs  swissBUILDINGS3D → basel.glb
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
+│   ├── osm.mjs        OpenStreetMap-Download und gemeinsame Hilfen für map.mjs und bridges.mjs
 │   ├── map.mjs        OpenStreetMap → ground/map/
+│   ├── bridges.mjs    swissTLM3D-Brücken → bridges.glb
 │   ├── tiles.mjs      schneidet ein Bild des Gebiets in KTX2-Kacheln (für ground/)
 │   ├── trees.mjs      swissTLM3D Einzelbäume → trees.bin
 │   └── size.mjs       → size.json, läuft nach jedem Konverter
-└── data/              Rohdaten von swisstopo und OSM (nicht im Repo, ~2 GB, wird automatisch geladen)
+└── data/              Rohdaten von swisstopo und OSM (nicht im Repo, ~5 GB, wird automatisch geladen)
 ```
 
 ## Daten neu erzeugen
@@ -57,8 +60,9 @@ basel3d/
 2. **Gelände und Luftbild:** `npm run terrain` lädt die Daten selbst nach `data/` herunter:
    - swissALTI3D aus dem STAC-Katalog, als Raster mit 10 m Abstand (Int16 in cm),
    - SWISSIMAGE aus dem WMTS-Dienst `wmts.geo.admin.ch` mit 1 m pro Pixel, zugeschnitten auf 1-km-Kacheln und als GPU-komprimierte KTX2-Texturen (ETC1S, 1024 px) gespeichert. Das dauert etwa 6 Minuten.
-3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Brücken sind vorerst flach eingezeichnet, Tunnels fehlen. Das dauert etwa 2 Minuten.
-4. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
+3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Tunnels fehlen, und die Brücken über Rhein und Birs entstehen in 3D (siehe unten). Alle anderen Brücken sind flach eingezeichnet. Das dauert etwa 2 Minuten.
+4. **Brücken:** `npm run bridges` baut alle Brücken über Rhein und Birs in 3D, auch die Dreiländerbrücke und den Weg über das Kraftwerk Birsfelden (etwa 50 Stück, 3'300 Dreiecke, 16 KB). Sie stammen aus swissTLM3D, den Ebenen `TLM_STRASSE` und `TLM_EISENBAHN`, die wie die Bäume per HTTP-Range aus dem ZIP geholt werden (etwa 530 MB Download, 3,3 GB in `data/`). Die Fahrbahnhöhe ist gemessen, die Breite folgt aus der Strassenart beziehungsweise der Anzahl Gleise. Trams auf Strassenbrücken bekommen keine eigenen. Ob eine Brücke über Rhein oder Birs führt, entscheidet der Flusslauf aus OSM. Diese Brücken fehlen in der Karte.
+5. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
 
 ## Steuerung
 

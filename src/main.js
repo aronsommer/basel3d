@@ -94,15 +94,16 @@ async function groundTextures(paths, buffers) {
   );
 }
 
-// Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs), the trees
-// (tools/trees.mjs) and the ground shown first.
+// Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
+// (tools/terrain.mjs), the trees (tools/trees.mjs) and the ground shown first.
 let groundKind = "map";
 const progress = document.getElementById("progress");
-const [terrainJson, heightsBuffer, glb, treesBuffer, ...groundBuffers] = await load(
+const [terrainJson, heightsBuffer, glb, bridgesGlb, treesBuffer, ...groundBuffers] = await load(
   [
     "terrain/terrain.json",
     "terrain/heights.bin",
     "basel.glb",
+    "bridges.glb",
     "trees.bin",
     ...groundPaths(groundKind),
   ],
@@ -111,13 +112,15 @@ const [terrainJson, heightsBuffer, glb, treesBuffer, ...groundBuffers] = await l
 const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
 const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 100);
 const treePositions = new Float32Array(treesBuffer);
-const [gltf, firstGround] = await Promise.all([
-  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(glb, ""),
+const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const [buildings, bridges, firstGround] = await Promise.all([
+  gltfLoader.parseAsync(glb, ""),
+  gltfLoader.parseAsync(bridgesGlb, ""),
   groundTextures(groundPaths(groundKind), groundBuffers),
 ]);
 const ground = { [groundKind]: firstGround }; // textures by tile name, per kind once loaded
 
-// The GLB has no normals; flat shading derives them per pixel.
+// The GLBs have no normals; flat shading derives them per pixel.
 const materials = {
   roof: new THREE.MeshLambertMaterial({
     color: 0xa0523f,
@@ -129,11 +132,19 @@ const materials = {
     flatShading: true,
     side: THREE.DoubleSide,
   }),
+  deck: new THREE.MeshLambertMaterial({ color: 0x8e9094, flatShading: true }), // like map roads
+  side: new THREE.MeshLambertMaterial({
+    color: 0xc8c3ba,
+    flatShading: true,
+    side: THREE.DoubleSide,
+  }),
 };
-gltf.scene.traverse((o) => {
-  if (o.isMesh) o.material = materials[o.material.name];
-});
-scene.add(gltf.scene);
+for (const { scene: model } of [buildings, bridges]) {
+  model.traverse((o) => {
+    if (o.isMesh) o.material = materials[o.material.name];
+  });
+  scene.add(model);
+}
 
 const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
