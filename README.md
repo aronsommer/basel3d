@@ -32,6 +32,7 @@ basel3d/
 │   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), wird beim Start gezeigt
 │   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), lädt erst beim Umschalten
 │   ├── trees.bin      Baumstandorte (x, z)
+│   ├── water.ktx2     Wassermaske des ganzen Gebiets für den Wasser-Shader (tools/map.mjs)
 │   └── size.json      Grösse jeder Datei, für die Prozentanzeige beim Laden
 ├── tools/             Konverter, die public/ erzeugen
 │   ├── area.mjs       gemeinsames Gebiet und Koordinaten
@@ -60,7 +61,7 @@ basel3d/
 2. **Gelände und Luftbild:** `npm run terrain` lädt die Daten selbst nach `data/` herunter:
    - swissALTI3D aus dem STAC-Katalog, als Raster mit 10 m Abstand (Int16 in cm),
    - SWISSIMAGE aus dem WMTS-Dienst `wmts.geo.admin.ch` mit 1 m pro Pixel, zugeschnitten auf 1-km-Kacheln und als GPU-komprimierte KTX2-Texturen (ETC1S, 1024 px) gespeichert. Das dauert etwa 6 Minuten.
-3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Tunnels fehlen, und die Brücken über Rhein und Birs entstehen in 3D (siehe unten). Alle anderen Brücken sind flach eingezeichnet. Das dauert etwa 2 Minuten.
+3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Dazu schreibt es `water.ktx2` (2048 px, etwa 4 m pro Pixel): eine Maske aller sichtbaren Gewässer und die Fliessrichtung aus den OSM-Flusslinien. Dort zeichnet der Boden-Shader im Viewer Wasser, dessen Muster mit hellen Lichtflecken flussabwärts treibt, auf Karte und Luftbild. Tunnels fehlen, und die Brücken über Rhein und Birs entstehen in 3D (siehe unten). Alle anderen Brücken sind flach eingezeichnet. Das dauert etwa 2 Minuten.
 4. **Brücken:** `npm run bridges` baut alle Brücken über Rhein und Birs in 3D, auch die Dreiländerbrücke und den Weg über das Kraftwerk Birsfelden (etwa 50 Stück, 3'300 Dreiecke, 16 KB). Sie stammen aus swissTLM3D, den Ebenen `TLM_STRASSE` und `TLM_EISENBAHN`, die wie die Bäume per HTTP-Range aus dem ZIP geholt werden (etwa 530 MB Download, 3,3 GB in `data/`). Die Fahrbahnhöhe ist gemessen, die Breite folgt aus der Strassenart beziehungsweise der Anzahl Gleise. Trams auf Strassenbrücken bekommen keine eigenen. Ob eine Brücke über Rhein oder Birs führt, entscheidet der Flusslauf aus OSM. Diese Brücken fehlen in der Karte.
 5. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
 

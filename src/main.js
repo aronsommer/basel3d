@@ -95,32 +95,46 @@ async function groundTextures(paths, buffers) {
 }
 
 // Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
-// (tools/terrain.mjs), the trees (tools/trees.mjs) and the ground shown first.
+// (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs) and the ground
+// shown first.
 let groundKind = "map";
 const progress = document.getElementById("progress");
-const [terrainJson, heightsBuffer, glb, bridgesGlb, treesBuffer, ...groundBuffers] = await load(
-  [
-    "terrain/terrain.json",
-    "terrain/heights.bin",
-    "basel.glb",
-    "bridges.glb",
-    "trees.bin",
-    ...groundPaths(groundKind),
-  ],
-  (percent) => (progress.textContent = `${percent} %`),
-);
+const [terrainJson, heightsBuffer, glb, bridgesGlb, treesBuffer, waterBuffer, ...groundBuffers] =
+  await load(
+    [
+      "terrain/terrain.json",
+      "terrain/heights.bin",
+      "basel.glb",
+      "bridges.glb",
+      "trees.bin",
+      "water.ktx2",
+      ...groundPaths(groundKind),
+    ],
+    (percent) => (progress.textContent = `${percent} %`),
+  );
 const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
 const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 100);
 const treePositions = new Float32Array(treesBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-const [buildings, bridges, firstGround] = await Promise.all([
+const [buildings, bridges, waterMask, firstGround] = await Promise.all([
   gltfLoader.parseAsync(glb, ""),
   gltfLoader.parseAsync(bridgesGlb, ""),
+  new Promise((resolve, reject) => ktx2.parse(waterBuffer, resolve, reject)),
   groundTextures(groundPaths(groundKind), groundBuffers),
 ]);
 const ground = { [groundKind]: firstGround }; // textures by tile name, per kind once loaded
 
-// The GLBs have no normals; flat shading derives them per pixel.
+// Water on the ground wherever the mask (tools/map.mjs) is red: two blues with light patches,
+// carried downstream along the flow stored in the mask's green and blue, the same from every
+// viewpoint. The terrain already lies at the water surface there.
+waterMask.colorSpace = THREE.NoColorSpace; // raw values, not colours
+const water = {
+  waterMask: { value: waterMask },
+  waterTime: { value: 0 },
+  waterArea: { value: new THREE.Vector4() }, // x0, z0, width, depth of the mask
+  waterDark: { value: new THREE.Color(0x225d8a) },
+  waterLight: { value: new THREE.Color(0x74b4de) },
+}; // The GLBs have no normals; flat shading derives them per pixel.
 const materials = {
   roof: new THREE.MeshLambertMaterial({
     color: 0xa0523f,
@@ -239,8 +253,69 @@ function updateTrees() {
       mesh.boundingBox.distanceToPoint(camera.position) < TREE_DETAIL ? tree.near : tree.far;
 }
 
+function addWater(shader) {
+  Object.assign(shader.uniforms, water);
+  shader.vertexShader = shader.vertexShader
+    .replace("void main() {", "varying vec3 vWorld;\nvoid main() {")
+    .replace(
+      "#include <project_vertex>",
+      "#include <project_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;",
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      "void main() {",
+      `uniform sampler2D waterMask;
+      uniform float waterTime;
+      uniform vec4 waterArea;
+      uniform vec3 waterDark, waterLight;
+      varying vec3 vWorld;
+      // Smooth value noise in [0, 1] (hash without sine, stable for large coordinates).
+      float hash(vec2 p) {
+        vec3 q = fract(p.xyx * 0.1031);
+        q += dot(q, q.yzx + 33.33);
+        return fract((q.x + q.y) * q.z);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x),
+          mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+      }
+      // A coarse and a fine layer; the fine one fades out far away against shimmering.
+      float waterPattern(vec2 q, float fine) {
+        return 0.65 * noise(q * 0.03) + 0.35 * mix(0.5, noise(q * 0.1 + 17.0), fine);
+      }
+      void main() {`,
+    )
+    .replace(
+      "#include <opaque_fragment>",
+      `vec2 waterUv = vec2(vWorld.x - waterArea.x, waterArea.y + waterArea.w - vWorld.z) / waterArea.zw;
+      vec4 mask = texture2D(waterMask, waterUv);
+      float wet = smoothstep(0.3, 0.7, mask.r);
+      if (wet > 0.0) {
+        vec2 p = vWorld.xz;
+        float fine = 1.0 / (1.0 + length(cameraPosition - vWorld) / 500.0);
+        // Downstream direction; still water without a river drifts slowly.
+        vec2 flow = mask.gb * 2.0 - 1.0;
+        flow = mix(vec2(0.15, 0.05), flow, smoothstep(0.1, 0.4, length(flow)));
+        // Two copies carried 80 m downstream every 4 s, each restarting while the other is fully
+        // shown, so the pattern never stretches at bends.
+        float phase = fract(waterTime * 0.25);
+        float shade = mix(
+          waterPattern(p - flow * phase * 80.0, fine),
+          waterPattern(p - flow * fract(phase + 0.5) * 80.0 + 37.0, fine),
+          abs(2.0 * phase - 1.0));
+        vec3 surface = mix(waterDark, waterLight, shade) + 0.35 * smoothstep(0.66, 0.8, shade);
+        outgoingLight = mix(outgoingLight, surface, wet);
+      }
+      #include <opaque_fragment>`,
+    );
+}
+
 // One mesh per chunk, named column_row like its ground texture.
 function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
+  water.waterArea.value.set(x0, z0, (nx - 1) * cell, (nz - 1) * cell);
   const group = new THREE.Group();
   const segments = chunk / cell;
   for (let iz = 0; iz < (nz - 1) / segments; iz++)
@@ -253,10 +328,12 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
         for (let col = 0; col <= segments; col++, i++)
           position.setY(i, heights[(iz * segments + row) * nx + ix * segments + col]);
       geometry.computeVertexNormals();
-      const mesh = new THREE.Mesh(
-        geometry,
-        new THREE.MeshLambertMaterial({ map: ground[groundKind].get(`${ix}_${iz}`) }),
-      );
+      const material = new THREE.MeshLambertMaterial({
+        map: ground[groundKind].get(`${ix}_${iz}`),
+      });
+      material.onBeforeCompile = addWater;
+      material.customProgramCacheKey = () => "water"; // all chunks share one program
+      const mesh = new THREE.Mesh(geometry, material);
       mesh.name = `${ix}_${iz}`;
       group.add(mesh);
     }
@@ -373,5 +450,6 @@ renderer.setAnimationLoop((time) => {
   if (walk.isLocked) updateWalk(dt);
   else updateOrbit(dt);
   updateTrees();
+  water.waterTime.value = time / 1000;
   renderer.render(scene, camera);
 });

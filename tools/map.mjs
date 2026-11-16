@@ -1,12 +1,16 @@
 // Draws a map of the area from OpenStreetMap (roads, rail, water, green areas; no text, buildings
 // or trees) and writes it to public/ground/map/ as one KTX2 per 1 km tile, like the aerial photo.
+// Also writes public/water.ktx2 for the water shader in src/main.js: red marks all visible water,
+// green and blue the downstream direction.
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { E_MIN, E_MAX, N_MIN, N_MAX, PUBLIC } from "./area.mjs";
 import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, riverBridges } from "./osm.mjs";
-import { writeTiles } from "./tiles.mjs";
+import { writeTiles, encodeTexture } from "./tiles.mjs";
 
 const PX_PER_M = 1.024; // 1024 px per 1 km tile
+const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m per px)
 const BACKGROUND = "#d8d0c2"; // built-up land
 const elements = await osmElements();
 // Bridges over the rivers are built in 3D by tools/bridges.mjs.
@@ -118,20 +122,57 @@ for (const el of elements) {
 shapes.sort((a, b) => a.order - b.order);
 
 // --- Render the whole area at once and cut it into tiles.
-const width = Math.round((E_MAX - E_MIN) * PX_PER_M);
-const height = Math.round((N_MAX - N_MIN) * PX_PER_M);
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"
-  viewBox="0 0 ${E_MAX - E_MIN} ${N_MAX - N_MIN}">
-  <rect width="100%" height="100%" fill="${BACKGROUND}"/>
+const svg = (size, background, paint) => `<svg xmlns="http://www.w3.org/2000/svg"
+  width="${size[0]}" height="${size[1]}" viewBox="0 0 ${E_MAX - E_MIN} ${N_MAX - N_MIN}">
+  <rect width="100%" height="100%" fill="${background}"/>
   ${shapes
     .map((s) =>
       s.fill
-        ? `<path fill="${s.fill}" fill-rule="evenodd" d="${s.d.join("")}"/>`
-        : `<path fill="none" stroke="${s.stroke}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" d="${s.d.join("")}"/>`,
+        ? `<path fill="${paint(s.fill)}" fill-rule="evenodd" d="${s.d.join("")}"/>`
+        : `<path fill="none" stroke="${paint(s.stroke)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" d="${s.d.join("")}"/>`,
     )
     .join("\n")}
 </svg>`;
+const render = (svgText) => sharp(Buffer.from(svgText), { limitInputPixels: false });
 console.time("map");
-const raster = await sharp(Buffer.from(svg), { limitInputPixels: false }).raw().toBuffer();
+const width = Math.round((E_MAX - E_MIN) * PX_PER_M);
+const height = Math.round((N_MAX - N_MIN) * PX_PER_M);
+const raster = await render(svg([width, height], BACKGROUND, (c) => c))
+  .raw()
+  .toBuffer();
 await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"));
+
+// Water white, everything else black, in the same order, so roads drawn over water stay dry.
+const mask = svg([MASK_SIZE, MASK_SIZE], "#000", (c) => (c === WATER ? "#fff" : "#000"));
+const maskData = await render(mask).ensureAlpha().raw().toBuffer();
+
+// Flow: OSM rivers and streams point downstream. Each segment is drawn wide in a colour for its
+// direction (green = east, blue = south, 128 = none), rivers over streams, then blurred so bends
+// and junctions turn smoothly.
+const FLOW_WIDTH = { stream: 60, ditch: 60, drain: 60, river: 400, canal: 400 }; // metres
+const segments = elements
+  .filter((el) => el.type === "way" && FLOW_WIDTH[el.tags?.waterway])
+  .sort((a, b) => FLOW_WIDTH[a.tags.waterway] - FLOW_WIDTH[b.tags.waterway])
+  .flatMap((way) => {
+    const points = way.geometry.filter(Boolean).map((p) => {
+      const [e, n] = toLV95(p);
+      return [e - E_MIN, N_MAX - n];
+    });
+    return points.slice(1).map(([bx, by], i) => {
+      const [ax, ay] = points[i];
+      const length = Math.hypot(bx - ax, by - ay) || 1;
+      const green = Math.round(128 + (127 * (bx - ax)) / length);
+      const blue = Math.round(128 + (127 * (by - ay)) / length);
+      return `<path stroke="rgb(0,${green},${blue})" stroke-width="${FLOW_WIDTH[way.tags.waterway]}" stroke-linecap="round" d="M${ax} ${ay}L${bx} ${by}"/>`;
+    });
+  });
+const flowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${MASK_SIZE}" height="${MASK_SIZE}"
+  viewBox="0 0 ${E_MAX - E_MIN} ${N_MAX - N_MIN}"><rect width="100%" height="100%"
+  fill="rgb(0,128,128)"/>${segments.join("")}</svg>`;
+const flow = await render(flowSvg).removeAlpha().blur(6).raw().toBuffer();
+for (let i = 0; i < MASK_SIZE * MASK_SIZE; i++) {
+  maskData[4 * i + 1] = flow[3 * i + 1];
+  maskData[4 * i + 2] = flow[3 * i + 2];
+}
+writeFileSync(join(PUBLIC, "water.ktx2"), await encodeTexture(maskData, MASK_SIZE));
 console.timeEnd("map");
