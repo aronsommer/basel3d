@@ -3,15 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
     "buildings": "node tools/buildings.mjs",
     "terrain": "node tools/terrain.mjs",
     "trees": "node tools/trees.mjs",
     "format": "prettier --write ."
-  },
-  "dependencies": {
-    "three": "^0.187.0"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.1",
@@ -21,7 +16,6 @@
     "meshoptimizer": "^1.3.0",
     "prettier": "^3.10.1",
     "shapefile": "^0.6.6",
-    "sharp": "^0.35.5",
-    "vite": "^8.3.8"
+    "sharp": "^0.35.5"
   }
 }

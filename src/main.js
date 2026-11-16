@@ -50,12 +50,12 @@ const loadFloats = (url) =>
 // Load the buildings (tools/buildings.mjs), the terrain (tools/terrain.mjs) and the trees (tools/trees.mjs).
 const progress = document.getElementById("progress");
 const [gltf, terrainInfo, heights, treePositions] = await Promise.all([
-  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("basel.glb", (e) => {
+  new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync("public/basel.glb", (e) => {
     if (e.total) progress.textContent = `${Math.round((e.loaded / e.total) * 100)} %`;
   }),
-  fetch("terrain/terrain.json").then((r) => r.json()),
-  loadFloats("terrain/heights.bin"),
-  loadFloats("trees.bin"),
+  fetch("public/terrain/terrain.json").then((r) => r.json()),
+  loadFloats("public/terrain/heights.bin"),
+  loadFloats("public/trees.bin"),
 ]);
 
 // The GLB has no normals; flat shading derives them per pixel.
@@ -122,7 +122,7 @@ function createTrees(positions) {
   return trees;
 }
 
-// One mesh per chunk, textured with that chunk's aerial photo (terrain/<column>_<row>.jpg).
+// One mesh per chunk, textured with that chunk's aerial photo (public/terrain/<column>_<row>.jpg).
 function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   const group = new THREE.Group();
   const loader = new THREE.TextureLoader();
@@ -137,7 +137,7 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
         for (let col = 0; col <= segments; col++, i++)
           position.setY(i, heights[(iz * segments + row) * nx + ix * segments + col]);
       geometry.computeVertexNormals();
-      const map = loader.load(`terrain/${ix}_${iz}.jpg`);
+      const map = loader.load(`public/terrain/${ix}_${iz}.jpg`);
       map.colorSpace = THREE.SRGBColorSpace;
       map.anisotropy = renderer.capabilities.getMaxAnisotropy();
       group.add(new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map })));

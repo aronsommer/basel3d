@@ -95,6 +95,14 @@
       swissBUILDINGS3D 3.0, swissALTI3D, SWISSIMAGE · Quelle: Bundesamt für Landestopografie
       swisstopo
     </p>
-    <script type="module" src="/src/main.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="src/main.js"></script>
   </body>
 </html>

@@ -4,10 +4,13 @@ Die ganze Stadt Basel in 3D im Browser, gebaut mit three.js. Gebäude, Gelände,
 
 ## Starten
 
+Eine statische Website ohne Build. three.js kommt per Import-Map von jsDelivr. GitHub Pages liefert das Repo direkt aus `main` aus. Lokal reicht ein beliebiger statischer Server im Repo-Ordner, etwa:
+
 ```
-npm install
-npm run dev
+npx serve
 ```
+
+`npm install` braucht es nur für die Konverter und Prettier.
 
 Formatieren mit Prettier, Zeilenbreite 100 laut `.prettierrc`:
 
@@ -19,7 +22,7 @@ npm run format
 
 ```
 basel3d/
-├── index.html
+├── index.html         Seite mit Import-Map für three.js
 ├── src/main.js        Viewer (three.js)
 ├── public/            fertige Modelldaten, die der Viewer lädt
 │   ├── basel.glb      Gebäude (auch für Unity/Blender)
