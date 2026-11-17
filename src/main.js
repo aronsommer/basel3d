@@ -723,6 +723,7 @@ function createMovers({ step, routes }, points, kind) {
   const SLOW = 3;
   let frame = 0;
   const blockers = new Int32Array(vehicles.length).fill(-1);
+  const walks = new Int32Array(vehicles.length); // per vehicle: 1 + the vehicle whose walk reached it
   const update = (dt) => {
     frame++;
     // Place the cars and note their points.
@@ -754,19 +755,32 @@ function createMovers({ step, routes }, points, kind) {
     });
     mesh.instanceMatrix.needsUpdate = true;
 
-    // Move every vehicle whose way is clear; of two blocking each other, the first one goes.
+    // Move every vehicle whose way is clear; one at the end of its path goes back to the start
+    // once that is clear. In a ring of vehicles waiting for each other, the first one goes.
     vehicles.forEach(({ line, d, far }, v) => {
       if (far && (v + frame) % SLOW) return;
       blockers[v] = -1;
-      for (let s = ALONG; s <= LOOK && blockers[v] < 0; s += ALONG)
-        blockers[v] = occupied(line, d + s, v);
+      if (d >= line.length) blockers[v] = occupied(line, LOOK, v);
+      else
+        for (let s = ALONG; s <= LOOK && blockers[v] < 0; s += ALONG)
+          blockers[v] = occupied(line, d + s, v);
     });
+    walks.fill(0);
+    for (let v = 0; v < vehicles.length; v++) {
+      let u = v;
+      while (u >= 0 && !walks[u]) {
+        walks[u] = v + 1;
+        u = blockers[u];
+      }
+      if (u < 0 || walks[u] !== v + 1) continue; // no new ring
+      let first = u;
+      for (let w = blockers[u]; w !== u; w = blockers[w]) first = Math.min(first, w);
+      blockers[first] = -1;
+    }
     vehicles.forEach((vehicle, v) => {
-      const b = blockers[v];
-      if (b >= 0 && !(blockers[b] === v && v < b)) return;
-      if (vehicle.d < vehicle.line.length)
-        vehicle.d = Math.min(vehicle.d + SPEED * dt, vehicle.line.length);
-      else if (occupied(vehicle.line, LOOK, v) < 0) vehicle.d = 0; // back to the start
+      if (blockers[v] >= 0) return;
+      vehicle.d =
+        vehicle.d < vehicle.line.length ? Math.min(vehicle.d + SPEED * dt, vehicle.line.length) : 0; // back to the start
     });
   };
   // The front of vehicle v: the camera just ahead of it at eye height, looking 40 m ahead.
