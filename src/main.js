@@ -10,6 +10,7 @@ const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
+const HIGHLIGHT = new THREE.Color(0x4fc3ff); // tint of the vehicle under the mouse
 // Far from the camera, moving things grow so they can be seen from above: from BOOST_FROM metres
 // on, linearly up to BOOST_MAX times. Up close they have their real size. Vehicles on tracks and
 // ships grow only in width and height, so their lengths and distances stay right; vehicles on
@@ -792,7 +793,18 @@ function createMovers({ step, routes }, points, kind) {
     view.lookAt(ahead.x, ahead.y + EYE * 0.8, ahead.z);
   };
   const vehicleOf = (instanceId) => Math.floor(instanceId / CARS);
-  return { mesh, routes: routeLines, update, cab, vehicleOf };
+  // Tints vehicle v (-1: none) towards HIGHLIGHT; the one tinted before gets its colour back.
+  let highlighted = -1;
+  const highlight = (v) => {
+    if (v === highlighted) return;
+    for (let c = 0; c < CARS; c++) {
+      if (highlighted >= 0) mesh.setColorAt(highlighted * CARS + c, vehicles[highlighted].color);
+      if (v >= 0) mesh.setColorAt(v * CARS + c, color.copy(vehicles[v].color).lerp(HIGHLIGHT, 0.6));
+    }
+    highlighted = v;
+    mesh.instanceColor.needsUpdate = true;
+  };
+  return { mesh, routes: routeLines, update, cab, vehicleOf, highlight };
 }
 
 // A low-poly helicopter circling (cx, cz) at the given radius and height (scene metres), banking
@@ -1187,7 +1199,8 @@ function backToOverview() {
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: double-click a tram, train or car to ride along, Esc to get off.
+// --- Riding: click (on touch screens double-tap) a tram, train or car to ride along, Esc (a tap)
+// to get off.
 let riding = null; // { mover, vehicle } the camera rides in
 addEventListener("keydown", (e) => {
   if (e.code !== "Escape" || !riding) return;
@@ -1196,38 +1209,68 @@ addEventListener("keydown", (e) => {
 });
 
 const raycaster = new THREE.Raycaster();
-// Double-click (or double-tap on a touch screen) a tram, train or car to ride along.
-renderer.domElement.addEventListener("dblclick", (e) => doubleClick(e.clientX, e.clientY));
+// A click that did not drag the map, or a double-tap, as a single tap stops the gliding map.
+let down = { x: 0, y: 0 }; // where the last button or finger went down
+renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 let lastTap = { time: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.pointerType !== "touch") return;
+  if (e.button !== 0) return;
+  const mouse = e.pointerType === "mouse";
   if (riding) {
+    if (mouse) return;
     riding = null; // a tap gets off; touch screens have no Esc
     backToOverview();
+    return;
+  }
+  if (mouse) {
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) ride(e.clientX, e.clientY);
     return;
   }
   const quick = e.timeStamp - lastTap.time < 350;
   const close = Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
   lastTap = { time: e.timeStamp, x: e.clientX, y: e.clientY };
-  if (quick && close) doubleClick(e.clientX, e.clientY);
+  if (quick && close) ride(e.clientX, e.clientY);
 });
-function doubleClick(clientX, clientY) {
-  if (riding) return;
+function ride(clientX, clientY) {
+  riding = vehicleAt(clientX, clientY);
+  if (!riding) return;
+  orbit.enabled = false;
+  camera.near = 0.3;
+  camera.updateProjectionMatrix();
+  document.body.dataset.mode = "ride";
+  hover = { x: clientX, y: clientY }; // clears the highlight, as riding
+}
+// The { mover, vehicle } at a screen point, if visible: not in a tunnel under the terrain or
+// behind a building or bridge.
+function vehicleAt(clientX, clientY) {
   const pointer = new THREE.Vector2(
     (clientX / innerWidth) * 2 - 1,
     -(clientY / innerHeight) * 2 + 1,
   );
   raycaster.setFromCamera(pointer, camera);
   for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
-  const vehicle = raycaster.intersectObjects(movers.map((mover) => mover.mesh))[0];
-  if (vehicle) {
-    const mover = movers.find((m) => m.mesh === vehicle.object);
-    riding = { mover, vehicle: mover.vehicleOf(vehicle.instanceId) };
-    orbit.enabled = false;
-    camera.near = 0.3;
-    camera.updateProjectionMatrix();
-    document.body.dataset.mode = "ride";
-  }
+  const hit = raycaster.intersectObjects(movers.map((mover) => mover.mesh))[0];
+  if (!hit) return null;
+  raycaster.far = hit.distance;
+  const hidden = raycaster.intersectObjects([terrain, buildings.scene, bridges.scene]).length > 0;
+  raycaster.far = Infinity;
+  if (hidden) return null;
+  const mover = movers.find((m) => m.mesh === hit.object);
+  return { mover, vehicle: mover.vehicleOf(hit.instanceId) };
+}
+
+// The vehicle under the mouse is tinted and gets the hand cursor; checked at most once per frame,
+// only after the mouse moved, and not while dragging or riding.
+let hover = null; // { x, y } of the mouse since the last check
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
+});
+function updateHover() {
+  if (!hover) return;
+  const found = riding || pointers.size ? null : vehicleAt(hover.x, hover.y);
+  hover = null;
+  for (const mover of movers) mover.highlight(found?.mover === mover ? found.vehicle : -1);
+  renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
@@ -1265,6 +1308,7 @@ renderer.setAnimationLoop((time) => {
   const dt = Math.min((time - last) / 1000, 0.1);
   last = time;
   if (!riding) updateOrbit(dt);
+  updateHover();
   updateTrees();
   water.waterTime.value = time / 1000;
   serpent.update(time / 1000);

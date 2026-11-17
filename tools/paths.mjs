@@ -240,6 +240,11 @@ function addPath(way, tags) {
     }
     carry -= length;
   }
+  // No height known anywhere (all on OSM bridges without a deck): left out.
+  if (points.findLastIndex((v, k) => k % 3 === 1 && k >= start * 3 && !Number.isNaN(v)) < 0) {
+    points.length = start * 3;
+    return;
+  }
   // Open stretches run straight between the heights before and after them.
   for (let i = start; i < points.length / 3; i++) {
     if (!Number.isNaN(points[3 * i + 1])) continue;
