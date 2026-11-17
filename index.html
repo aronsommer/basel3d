@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -34,8 +34,10 @@
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
-      /* The ground button and the closed menu of the lines: the same size, one below the other. */
+      /* The ground button and the closed menu of the lines: the same size, one below the other.
+         The button to get off in the ground button's place. */
       #ground,
+      #off,
       #lines {
         position: absolute;
         right: 12px;
@@ -52,7 +54,8 @@
         -webkit-user-select: none; /* Safari */
         user-select: none;
       }
-      #ground {
+      #ground,
+      #off {
         top: 12px;
         cursor: pointer;
       }
@@ -121,7 +124,7 @@
       #lines[open] summary::after {
         transform: translateY(2px) rotate(-135deg);
       }
-      /* A box close to its text; "Alle" a little apart from "Trams". */
+      /* A box close to its text; "All" a little apart from "Trams". */
       #lines label,
       #lines .heading {
         display: flex;
@@ -153,24 +156,26 @@
       }
       body:not([data-mode="loading"]) #loading,
       body:not([data-mode="orbit"]) #ground,
-      body:not([data-mode="orbit"]) #lines {
+      body:not([data-mode="orbit"]) #lines,
+      body:not([data-mode="ride"]) #off {
         display: none;
       }
     </style>
   </head>
   <body data-mode="loading">
-    <div id="loading">Lade Basel <span id="progress">0 %</span></div>
+    <div id="loading">Loading Basel <span id="progress">0%</span></div>
     <button id="ground"></button>
+    <button id="off">Get off</button>
     <details id="lines">
-      <summary>Linien</summary>
+      <summary>Lines</summary>
       <div class="heading">
         Trams
-        <label><input type="checkbox" id="trams" /> Alle</label>
+        <label><input type="checkbox" id="trams" /> All</label>
       </div>
       <div id="tram-lines"></div>
-      <label><input type="checkbox" data-kind="train" /> Züge</label>
-      <label><input type="checkbox" data-kind="car" /> Autos</label>
-      <label><input type="checkbox" data-kind="ship" /> Schiffe</label>
+      <label><input type="checkbox" data-kind="train" /> Trains</label>
+      <label><input type="checkbox" data-kind="car" /> Cars</label>
+      <label><input type="checkbox" data-kind="ship" /> Ships</label>
     </details>
     <div id="credit">
       <span

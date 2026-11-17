@@ -1,116 +1,116 @@
 # basel3d
 
-Die ganze Stadt Basel in 3D im Browser, gebaut mit three.js. Gebäude, Gelände, Luftbild und Bäume stammen von swisstopo.
+The whole city of Basel in 3D in the browser, built with three.js. Buildings, terrain, aerial photo and trees come from swisstopo.
 
-## Starten
+## Running
 
-Eine statische Website ohne Build. three.js kommt per Import-Map von jsDelivr. GitHub Pages liefert das Repo direkt aus `main` aus. Lokal reicht ein beliebiger statischer Server im Repo-Ordner, etwa:
+A static website with no build step. three.js comes from jsDelivr via an import map. GitHub Pages serves the repo directly from `main`. Locally, any static server in the repo folder will do, for example:
 
 ```
 npx serve
 ```
 
-`npm install` braucht es nur für die Konverter und Prettier.
+`npm install` is only needed for the converters and Prettier.
 
-Formatieren mit Prettier, Zeilenbreite 100 laut `.prettierrc`:
+Format with Prettier, line width 100 as set in `.prettierrc`:
 
 ```
 npm run format
 ```
 
-## Struktur
+## Structure
 
 ```
 basel3d/
-├── index.html         Seite mit Import-Map für three.js
-├── src/main.js        Viewer (three.js)
-├── public/            fertige Modelldaten, die der Viewer lädt
-│   ├── basel.glb      Gebäude (auch für Unity/Blender)
-│   ├── bridges.glb    Brücken in 3D (Kanton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
-│   ├── terrain/       Gelände: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
-│   ├── ground/        Bodenbilder, je 64 Kacheln (KTX2, 1 km, Name Spalte_Zeile)
-│   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), lädt erst beim ersten Zeigen
-│   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), wird ohne gespeicherte Wahl beim Start gezeigt
-│   ├── trees.bin      Baumstandorte (x, z)
-│   ├── water.ktx2     Wassermaske des ganzen Gebiets für den Wasser-Shader (tools/map.mjs)
-│   ├── trams.json     Tramstrecken: Linie, Betreiber, Farbe (tools/paths.mjs)
-│   ├── trams.bin      Tramstrecken als Schlaufen, 3D-Punkte etwa alle 4 m (tools/paths.mjs)
-│   ├── trains.json    Bahnstrecken: Linie, Betreiber, Farbe (tools/paths.mjs)
-│   ├── trains.bin     Bahnstrecken als Schlaufen, 3D-Punkte etwa alle 4 m (tools/paths.mjs)
-│   ├── cars.json/.bin Rundkurse der Autos (tools/paths.mjs)
-│   ├── ships.bin      Rundkurs der Schiffe auf dem Rhein als 3D-Punkte (tools/ships.mjs)
-│   └── size.json      Grösse jeder Datei, für die Prozentanzeige beim Laden
-├── tools/             Konverter, die public/ erzeugen
-│   ├── area.mjs       gemeinsames Gebiet und Koordinaten
-│   ├── swisstopo.mjs  Download-Hilfen (STAC-Katalog, einzelne swissTLM3D-Ebenen)
+├── index.html         page with the import map for three.js
+├── src/main.js        viewer (three.js)
+├── public/            finished model data loaded by the viewer
+│   ├── basel.glb      buildings (also for Unity/Blender)
+│   ├── bridges.glb    bridges in 3D (canton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
+│   ├── terrain/       terrain: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
+│   ├── ground/        ground images, 64 tiles each (KTX2, 1 km, named column_row)
+│   │   ├── map/       map (OpenStreetMap, tools/map.mjs), loads only when first shown
+│   │   └── photo/     aerial photo (SWISSIMAGE, tools/terrain.mjs), shown at start unless the map was chosen
+│   ├── trees.bin      tree positions (x, z)
+│   ├── water.ktx2     water mask of the whole area for the water shader (tools/map.mjs)
+│   ├── trams.json     tram routes: line, operator, colour (tools/paths.mjs)
+│   ├── trams.bin      tram routes as loops, 3D points about every 4 m (tools/paths.mjs)
+│   ├── trains.json    rail routes: line, operator, colour (tools/paths.mjs)
+│   ├── trains.bin     rail routes as loops, 3D points about every 4 m (tools/paths.mjs)
+│   ├── cars.json/.bin circuits of the cars (tools/paths.mjs)
+│   ├── ships.bin      circuit of the ships on the Rhine as 3D points (tools/ships.mjs)
+│   └── size.json      size of each file, for the loading percentage
+├── tools/             converters that generate public/
+│   ├── area.mjs       shared area and coordinates
+│   ├── swisstopo.mjs  download helpers (STAC catalogue, single swissTLM3D layers)
 │   ├── buildings.mjs  swissBUILDINGS3D → basel.glb
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
-│   ├── osm.mjs        OpenStreetMap-Download, WGS84 → LV95, Strassenbreiten
+│   ├── osm.mjs        OpenStreetMap download, WGS84 → LV95, road widths
 │   ├── map.mjs        OpenStreetMap → ground/map/
-│   ├── bsbridges.mjs  Brückenmodelle von Basel-Stadt laden und umrechnen
-│   ├── bridges.mjs    Brücken von Basel-Stadt → bridges.glb
-│   ├── tiles.mjs      schneidet ein Bild des Gebiets in KTX2-Kacheln (für ground/)
-│   ├── trees.mjs      swissTLM3D Einzelbäume → trees.bin
-│   ├── paths.mjs      OSM-Linien und -Strassen + Gelände + Brücken → trams.*, trains.*, cars.*
-│   ├── ships.mjs      Rhein-Mittellinie + Brückenpfeiler → ships.bin
-│   ├── heights.mjs    Geländehöhe an einem Punkt, für die Konverter
-│   └── size.mjs       → size.json, läuft nach jedem Konverter
-└── data/              Rohdaten von swisstopo und OSM (nicht im Repo, ~5 GB, wird automatisch geladen)
+│   ├── bsbridges.mjs  loads and converts the bridge models of Basel-Stadt
+│   ├── bridges.mjs    bridges of Basel-Stadt → bridges.glb
+│   ├── tiles.mjs      cuts an image of the area into KTX2 tiles (for ground/)
+│   ├── trees.mjs      swissTLM3D single trees → trees.bin
+│   ├── paths.mjs      OSM lines and roads + terrain + bridges → trams.*, trains.*, cars.*
+│   ├── ships.mjs      Rhine centre line + bridge piers → ships.bin
+│   ├── heights.mjs    terrain height at a point, for the converters
+│   └── size.mjs       → size.json, runs after every converter
+└── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
 
-## Daten neu erzeugen
+## Regenerating the data
 
-`public/` ist fertig erzeugt. Neu bauen musst du die Daten nur, wenn du etwas am Gebiet oder an den Konvertern änderst. Jedes Skript lädt fehlende Rohdaten selbst nach `data/` herunter. Was schon da ist, wird nicht noch einmal geladen. `data/` kannst du jederzeit löschen.
+`public/` is already generated. You only need to rebuild the data if you change the area or the converters. Each script downloads missing raw data to `data/` by itself. Whatever is already there is not downloaded again. `data/` can be deleted at any time.
 
-1. **Gebäude:** `npm run buildings` nimmt swissBUILDINGS3D 3.0 als CityGML aus dem STAC-Katalog `data.geo.admin.ch`, die neueste Version pro Kartenblatt (etwa 480 MB). Das Skript:
-   - nimmt nur Dach- und Wandflächen,
-   - schneidet ein 8 × 8 km grosses Gebiet um die Stadt aus,
-   - verschiebt die Landeskoordinaten (LV95) auf einen Nullpunkt in der Stadt,
-   - teilt alles in 1-km-Kacheln auf,
-   - komprimiert mit Meshopt (etwa 11 MB, 2,4 Mio. Dreiecke).
-2. **Gelände und Luftbild:** `npm run terrain` lädt die Daten selbst nach `data/` herunter:
-   - swissALTI3D aus dem STAC-Katalog, als Raster mit 10 m Abstand (Int16 in cm),
-   - SWISSIMAGE aus dem WMTS-Dienst `wmts.geo.admin.ch` mit 1 m pro Pixel, zugeschnitten auf 1-km-Kacheln und als GPU-komprimierte KTX2-Texturen (ETC1S, 1024 px) gespeichert. Das dauert etwa 6 Minuten.
-3. **Karte:** `npm run map` holt Strassen, Bahn, Gewässer und Grünflächen aus OpenStreetMap (Overpass-API, etwa 30 MB) und zeichnet daraus eine Karte ohne Text, Häuser und Bäume, in den gleichen Kacheln wie das Luftbild. Farben und Strassenbreiten stehen oben in `tools/map.mjs`. Dazu schreibt es `water.ktx2` (2048 px, etwa 4 m pro Pixel): eine Maske aller sichtbaren Gewässer und die Fliessrichtung aus den OSM-Flusslinien. Dort zeichnet der Boden-Shader im Viewer Wasser, dessen Muster mit hellen Lichtflecken flussabwärts treibt, auf Karte und Luftbild. Tunnels fehlen. Brücken, die in 3D gebaut werden (siehe unten), fehlen in der Karte, alle anderen sind flach eingezeichnet. Das dauert etwa 2 Minuten.
-4. **Brücken:** `npm run bridges` nimmt die modellierten Brücken des Kantons Basel-Stadt (Amtliche Vermessung, Dienst 3D-Tiles BS, `https://3d.geo.bs.ch/cesium/tiles/av-bruecken/tileset.json`, etwa 10 MB in `data/bs-bruecken/`), mit Pfeilern, Bögen und Geländern. Das Skript rechnet sie aus Erdkoordinaten (ECEF) in die Szene um. Aufbauten wie das Käppelijoch auf der Mittleren Brücke kommen aus den swisstopo-Gebäuden und stehen genau auf der Fahrbahn.
-   - Überquerungen von Rhein und Birs, die der Kanton nur teilweise (an der Kantonsgrenze) oder gar nicht modelliert hat, baut das Skript ganz aus swissTLM3D: eine einfache Fahrbahn mit Seitenwänden auf der gemessenen Linie, statt des Kantonsmodells. Das betrifft das Kraftwerk Birsfelden, die Dreiländerbrücke und die Birs-Brücken an der Grenze und in Baselland. Die swissTLM3D-Ebenen `TLM_STRASSE` und `TLM_EISENBAHN` kommen wie die Bäume per HTTP-Range aus dem ZIP (etwa 530 MB Download, 3 GB in `data/`).
-   - Zusammen etwa 114'000 Dreiecke und 300 KB in `bridges.glb`. Alle gebauten Dreiecke landen auch in `data/bridges.bin`. Damit blendet `npm run map` die OSM-Brücken darunter aus, deshalb zuerst `npm run bridges` laufen lassen.
-5. **Bäume:** `npm run trees` holt aus dem Landschaftsmodell swissTLM3D nur die Ebene `TLM_EINZELBAUM`. Die ganze Datei wäre 3,6 GB gross, deshalb lädt das Skript per HTTP-Range-Requests nur die nötigen Teile des ZIP herunter. Im Gebiet liegen etwa 86'500 Bäume. Der Viewer zeichnet sie instanziert, mit einem Mesh pro 1-km-Kachel. Aus der Nähe haben die Bäume einen Stamm, aus der Ferne nur eine einfache Krone.
+1. **Buildings:** `npm run buildings` takes swissBUILDINGS3D 3.0 as CityGML from the STAC catalogue `data.geo.admin.ch`, the newest version per map sheet (about 480 MB). The script:
+   - takes only roof and wall surfaces,
+   - cuts out an 8 × 8 km area around the city,
+   - shifts the Swiss coordinates (LV95) to an origin in the city,
+   - splits everything into 1 km tiles,
+   - compresses with Meshopt (about 11 MB, 2.4 million triangles).
+2. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
+   - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (Int16 in cm),
+   - SWISSIMAGE from the WMTS service `wmts.geo.admin.ch` at 1 m per pixel, cut into 1 km tiles and stored as GPU-compressed KTX2 textures (ETC1S, 1024 px). This takes about 6 minutes.
+3. **Map:** `npm run map` fetches roads, rail, water and green areas from OpenStreetMap (Overpass API, about 30 MB) and draws a map from them without text, houses and trees, in the same tiles as the aerial photo. Colours and road widths are at the top of `tools/map.mjs`. It also writes `water.ktx2` (2048 px, about 4 m per pixel): a mask of all visible water and the flow direction from the OSM river lines. There the ground shader in the viewer draws water whose pattern drifts downstream with light patches, on both the map and the aerial photo. Tunnels are missing. Bridges built in 3D (see below) are missing from the map; all others are drawn flat. This takes about 4 minutes.
+4. **Bridges:** `npm run bridges` takes the modelled bridges of the canton Basel-Stadt (official cadastral survey, service 3D-Tiles BS, `https://3d.geo.bs.ch/cesium/tiles/av-bruecken/tileset.json`, about 10 MB in `data/bs-bruecken/`), with piers, arches and railings. The script converts them from Earth coordinates (ECEF) into the scene. Structures such as the Käppelijoch on the Mittlere Brücke come from the swisstopo buildings and stand exactly on the deck.
+   - Crossings of the Rhine and the Birs that the canton modelled only partly (at the canton border) or not at all are built entirely from swissTLM3D: a simple deck with side walls on the measured line, instead of the canton's model. This covers the Birsfelden power station, the Dreiländerbrücke and the Birs bridges at the border and in Baselland. The swissTLM3D layers `TLM_STRASSE` and `TLM_EISENBAHN` come from the ZIP via HTTP range requests, like the trees (about 530 MB download, 3 GB in `data/`).
+   - Together about 114,000 triangles and 300 KB in `bridges.glb`. All built triangles also end up in `data/bridges.bin`. `npm run map` uses it to hide the OSM bridges underneath, so run `npm run bridges` first.
+5. **Trees:** `npm run trees` takes only the layer `TLM_EINZELBAUM` from the landscape model swissTLM3D. The whole file would be 3.6 GB, so the script downloads only the needed parts of the ZIP via HTTP range requests. The area holds about 86,500 trees. The viewer draws them instanced, with one mesh per 1 km tile. Up close the trees have a trunk, from afar only a simple crown.
 
-## Was sich bewegt
+## What moves
 
-Alles Bewegte ist im Viewer ([src/main.js](src/main.js)) selbst gebaut, im Low-Poly-Stil und ohne Modelldateien. Bewegt wird es jedes Bild in `update`-Funktionen. Die Wege, die korrekt sein müssen, berechnen Konverter im Voraus.
+Everything that moves is built in the viewer itself ([src/main.js](src/main.js)), in a low-poly style and without model files. It is moved every frame in `update` functions. The paths that must be correct are computed in advance by converters.
 
-- **Trams, Züge und Autos** (`createMovers` mit den Werten pro Art in `KINDS`, Wege aus `tools/paths.mjs`: `npm run trams`, `trains`, `cars`):
-  - Jeder Weg ist eine geschlossene Schlaufe, auf der die Fahrzeuge endlos fahren. Sie folgen dem Netz der OSM-Wege (Einbahnwege und Kreisel nur in ihrer Richtung), wenden nie und biegen von einem Wegstück zum nächsten höchstens um 60° (Trams, flache Weichen), 45° (Züge) oder 120° (Autos) ab.
-  - Trams und Züge fahren ihre echten Linien aus OpenStreetMap (Rohdaten in `data/osm-trams.json`, `data/osm-trains.json`): pro Linie das längste Paar von Relationen hin und zurück, das sich schliessen lässt, in der Reihenfolge der Relation. Am Linienende und wo die Linie das Gebiet verlässt und wieder hereinkommt, geht es über das Netz weiter (Wendeschlaufe); wo OSM keine hat, gerade über eine Lücke bis 100 m (etwa an den Endstationen Dreirosenbrücke und Bruderholz). Zu den Gleisen gehören alle Wege der Relationen, auch Gleise im Bau. Alle 13 Tramlinien fahren; von den Zuglinien fallen 13 weg, die sich so nicht schliessen lassen, 19 fahren.
-  - Autos auf Rundkursen durch die Autobahnen bis Quartierverbindungsstrassen aus `data/osm.json`, 1,8 m rechts der Wegmitte. Jeder beginnt auf einer noch nicht befahrenen Strasse und fährt zufällig weiter, meist geradeaus und lieber auf noch nicht befahrene Strassen, bis er auf ein schon gefahrenes Stück zurückkommt; ab dort ist es eine Schlaufe (mindestens 1,5 km). So viele Rundkurse, bis 90 % der Strassen befahren sind (höchstens 3000 Versuche; heute etwa 70 %).
-  - Höhe: Gelände; auf Brücken die 3D-Brücken, wenn deren Fahrbahn höchstens 3 m von der bisherigen Höhe abweicht; über OSM-Brücken ohne passende 3D-Fahrbahn gerade von Ende zu Ende; in Tunneln ab 100 m 20 m unter dem Gelände (kürzere Unterführungen, die das 10-m-Gelände zuschüttet, und Gebäudedurchfahrten auf Strassenhöhe); geglättet. Brücke und Tunnel bestimmt jeder Weg mit seinen eigenen OSM-Merkmalen (so bleibt die Strasse auf der Dreirosenbrücke oben, die Autobahn im Kasten darunter). Nur bei Gleisen zählt auch ein Brückengleis bis 5 m daneben, weil OSM nicht jedes Gleis auf einer Brücke markiert.
-  - Fahrzeuge (Werte in `KINDS`): Trams 4 Wagen à 8 m, BVB grün, BLT gelb. Züge 5 Wagen, weiss mit rotem Band, ein Viertel Güterzüge. Autos in kräftigen Farben (gut sichtbar), 15 % Lastwagen. Gleichmässig verteilt, ein Tram pro 1,5 km Schlaufe, ein Zug pro 5 km, ein Auto pro 100 m: bei Rundkursen pro 100 m ihres Anteils an den Strassen (eine Strasse, die sich drei Rundkurse teilen, zählt für jeden zu einem Drittel), damit geteilte Strassen nicht voller sind. Jeder Wagen folgt einzeln dem Weg.
-  - Abstandsregel: Ein Fahrzeug hält, wenn auf dem eigenen Weg kurz voraus ein anderes steht, geprüft in kurzen Abständen bis 25 m (Tram), 60 m (Zug), 9 m (Auto) voraus, damit auch an Weichen und Kreuzungen nichts ineinanderfährt. Das Gegenüber auf der anderen Seite zählt nicht. Trams und Züge haben Vortritt: Sie warten nur auf Trams und Züge, Autos auf alle. Beim Start wird keines auf ein anderes gesetzt. Warten Fahrzeuge im Kreis aufeinander, fährt das erste los.
-  - Fahrzeuge weiter als 1,5 km von der Kamera prüfen den Abstand nur jedes dritte Bild, das spart Rechenzeit.
-  - Kein echter Fahrplan.
-- **Schiffe** (`createShips`, Daten aus `npm run ships`): ein Rundkurs auf dem Rhein, talwärts rechts und bergwärts links der Mitte, mit Wenden am Nordrand des Gebiets und etwa 220 m vor dem Kraftwerk Birsfelden. Wo eine Spur Brückenpfeiler (Teile der 3D-Brücken bis 4 m über dem Wasser) oder das Ungeheuer treffen würde, weicht sie zur nächsten freien Durchfahrt aus. Jeder Punkt hat mindestens 10 m Abstand, bei höchstens 11 m Schiffsbreite. 20 Schiffe (Tanker, Containerschiff, Passagierschiff, Schnellboot im Wechsel, jedes leicht anders eingefärbt) fahren gleich schnell und gleichmässig verteilt, können sich also nicht treffen. Alle sind höchstens 6 m hoch und passen unter den Brücken durch.
-- **Ungeheuer** (`createSerpent`): im Rhein vor den Roche-Türmen, Kopf auf Höhe von Bau 2. Schaut zu den Türmen, hebt und senkt sich, schnappt alle 10 s zu.
-- **Helikopter** (`createHelicopter`): kreist über Ungeheuer und Roche-Türmen, in 275–325 m Höhe, mit mindestens 40 m Abstand zum Ungeheuer und 50 m zu den Türmen (Rechnung im Code).
-- **Flugzeuge** (`createPlanes`): zwei Linienflugzeuge kreisen in einem Oval (5 × 3,6 km) über der Stadt, auf 700 und 950 m ü. M., in entgegengesetzter Richtung, damit sie immer im Bild sind. 1,5-mal so gross wie echt, ohne Airline.
-- **Vögel** (`createBirds`): 12 Schwärme à 50 Vögel kreisen über Brücken, Parks und Plätzen (Liste `FLOCKS`), 40–80 m über dem Boden, mit Flügelschlag. Ein Draw Call.
-- **Grösse aus der Ferne** (`boost`): Bewegte Dinge sind bis 600 m vor der Kamera echt gross und wachsen dahinter linear bis aufs Dreifache, damit man sie von oben sieht. Trams, Züge und Schiffe wachsen nur in Breite und Höhe, damit Längen und Abstände stimmen. Trams und Züge höchstens 1,4-mal in der Breite, damit sich Nachbargleise (3,5 m bzw. 4,5 m) nie überdecken.
-- **Wasser** (`addWater`): Muster, das flussabwärts treibt (siehe Karte).
+- **Trams, trains and cars** (`createMovers` with the values per kind in `KINDS`, paths from `tools/paths.mjs`: `npm run trams`, `trains`, `cars`):
+  - Each path is a closed loop on which the vehicles run endlessly. They follow the network of OSM ways (one-way roads and roundabouts only in their direction), never turn back, and turn from one way segment to the next by at most 60° (trams, shallow switches), 45° (trains) or 120° (cars).
+  - Trams and trains run their real lines from OpenStreetMap (raw data in `data/osm-trams.json`, `data/osm-trains.json`): per line the longest pair of relations there and back that can be closed, in the order of the relation. At the end of the line, and where the line leaves the area and comes back in, it continues over the network (turning loop); where OSM has none, straight across a gap of up to 100 m (for example at the terminals Dreirosenbrücke and Bruderholz). The tracks include all ways of the relations, also tracks under construction. All 13 tram lines run; of the train lines, 13 that cannot be closed this way are dropped, 19 run.
+  - Cars on circuits along motorways down to neighbourhood connector roads from `data/osm.json`, 1.8 m right of the way's centre. Each starts on a road not yet driven and continues at random, mostly straight ahead and preferably onto roads not yet driven, until it comes back to a stretch already driven; from there it is a loop (at least 1.5 km). As many circuits as needed until 90% of the roads are driven (at most 3000 attempts; today about 70%).
+  - Height: the terrain; on bridges the 3D bridges, if their deck differs from the previous height by at most 3 m; over OSM bridges without a matching 3D deck straight from end to end; in tunnels of 100 m or more 20 m below the terrain (shorter underpasses, which the 10 m terrain fills in, and passages through buildings at road level); smoothed. Each way decides bridge and tunnel by its own OSM tags (so the road on the Dreirosenbrücke stays on top and the motorway in the box below). Only for tracks does a bridge track up to 5 m beside also count, because OSM does not mark every track on a bridge.
+  - Vehicles (values in `KINDS`): trams 4 cars of 8 m each, BVB green, BLT yellow. Trains 5 cars, white with a red band, a quarter of them goods trains. Cars in strong colours (easy to see), 15% lorries. Evenly spread, one tram per 1.5 km of loop, one train per 5 km, one car per 100 m: on circuits per 100 m of their share of the roads (a road shared by three circuits counts one third for each), so shared roads are not more crowded. Each car of a vehicle follows the path on its own.
+  - Spacing rule: a vehicle stops if another one stands shortly ahead on its own path, checked in short steps up to 25 m (tram), 60 m (train), 9 m (car) ahead, so nothing runs into each other at switches and junctions either. Oncoming traffic on the other side does not count. Trams and trains have priority: they wait only for trams and trains, cars for all. At the start none is placed on another. If vehicles wait for each other in a ring, the first one moves on.
+  - Vehicles more than 1.5 km from the camera check the spacing only every third frame, which saves computing time.
+  - No real timetable.
+- **Ships** (`createShips`, data from `npm run ships`): a circuit on the Rhine, downstream right and upstream left of the centre, turning at the north edge of the area and about 220 m before the Birsfelden power station. Where a lane would hit bridge piers (parts of the 3D bridges up to 4 m above the water) or the monster, it moves over to the nearest free passage. Every point keeps at least 10 m clearance, with ships at most 11 m wide. 20 ships (tanker, container ship, passenger ship, speedboat in turn, each tinted slightly differently) run at the same speed and evenly spread, so they cannot meet. All are at most 6 m high and fit under the bridges.
+- **Monster** (`createSerpent`): in the Rhine in front of the Roche towers, head level with Building 2. Looks at the towers, rises and sinks, snaps every 10 s.
+- **Helicopter** (`createHelicopter`): circles over the monster and the Roche towers, at 275–325 m, keeping at least 40 m from the monster and 50 m from the towers (calculation in the code).
+- **Planes** (`createPlanes`): two airliners circle in an oval (5 × 3.6 km) over the city, at 700 and 950 m above sea level, in opposite directions so they are always in view. 1.5 times real size, without an airline.
+- **Birds** (`createBirds`): 12 flocks of 50 birds circle over bridges, parks and squares (list `FLOCKS`), 40–80 m above the ground, flapping their wings. One draw call.
+- **Size from afar** (`boost`): moving things are real size up to 600 m in front of the camera and grow linearly beyond that up to three times, so they can be seen from above. Trams, trains and ships grow only in width and height, so lengths and spacings stay right. Trams and trains at most 1.4 times in width, so neighbouring tracks (3.5 m and 4.5 m apart) never overlap.
+- **Water** (`addWater`): a pattern drifting downstream (see Map).
 
-## Steuerung
+## Controls
 
-- **Ansicht:**
-  - Ziehen verschiebt.
-  - Rechte Maustaste oder Alt/Cmd + Ziehen dreht.
-  - Das Mausrad zoomt.
-  - Der Knopf oben rechts wechselt zwischen Karte und Luftbild. Der Browser merkt sich die Wahl (`localStorage`, Schlüssel `basel3d.ground`, Wert `map` oder `photo`) und zeigt sie beim nächsten Start.
-  - Die URL hält die Ansicht fest, so zeigt Neuladen oder ein geteilter Link dieselbe. Format wie bei openstreetmap.org, mit Richtung und Neigung wie bei MapLibre: `#map=Zoom/Breite/Länge/Richtung/Neigung`, etwa `#map=15.20/47.556321/7.591912/34/48`. Breite und Länge (WGS84, 6 Stellen) des angeschauten Punkts; der Zoom einer Webkarte (256-px-Kacheln), die dort gleich viel Boden über die Fensterhöhe zeigt; die Blickrichtung in Grad (0 Norden, 90 Osten) und die Neigung in Grad (0 senkrecht von oben), beide freiwillig. Ein Link einer 2D-Karte wie `#map=13/47.545829/7.640734` zeigt so denselben Ort von oben.
-- **Mitfahren:** auf ein Tram, einen Zug oder ein Auto klicken (auf dem Handy doppelt tippen); unter der Maus wird es hervorgehoben. Die Kamera sitzt vorne im Führerstand. Esc (auf dem Handy ein Tipp) führt zurück zur Ansicht.
-- **Menü „Linien“** (oben rechts, unter dem Knopf Karte/Luftbild und zugeklappt gleich gross): zeigt die Schlaufen der Trams, Züge und Autos und den Kurs der Schiffe als kräftige magenta Linien (4 px, über allem), zum Prüfen; am Anfang keine. Unter „Trams“ hat jede Tramlinie ein eigenes Häkchen, und „Alle“ zeigt oder verbirgt alle auf einmal (angehakt, wenn alle gezeigt werden). Die Taste **L** zeigt alles, oder blendet alles aus, wenn alles gezeigt wird.
+- **View:**
+  - Dragging pans.
+  - Right mouse button or Alt/Cmd + drag rotates.
+  - The mouse wheel zooms.
+  - The button at the top right ("Map"/"Aerial") switches between map and aerial photo. The browser remembers the choice (`localStorage`, key `basel3d.ground`, value `map` or `photo`) and shows it on the next start.
+  - The URL keeps the view, so reloading or a shared link shows the same. Format as on openstreetmap.org, with bearing and pitch as in MapLibre: `#map=zoom/latitude/longitude/bearing/pitch`, for example `#map=15.20/47.556321/7.591912/34/48`. Latitude and longitude (WGS84, 6 decimals) of the point looked at; the zoom of a web map (256 px tiles) that shows as much ground across the window height there; the bearing in degrees (0 north, 90 east) and the pitch in degrees (0 straight down), both optional. A link from a 2D map such as `#map=13/47.545829/7.640734` thus shows the same place from above.
+- **Riding along:** click a tram, train or car (on a phone, double-tap); it is highlighted under the mouse. The camera sits at the front in the driver's cab. The "Get off" button at the top right, Esc or, on a phone, a tap goes back to the view.
+- **"Lines" menu** (top right, below the map/aerial button and the same size when closed): shows the loops of the trams, trains and cars and the course of the ships as strong magenta lines (4 px, over everything), for checking; none at first. Under "Trams" each tram line has its own checkbox, and "All" shows or hides all at once (ticked when all are shown). The **L** key shows everything, or hides everything if everything is shown.
 
-## Lizenz der Daten
+## Data licences
 
-- Gebäude, Gelände, Luftbild, Bäume: Quelle: Bundesamt für Landestopografie swisstopo. Open Government Data, frei nutzbar mit Quellenangabe.
-- Brücken: Quelle: Geodaten Kanton Basel-Stadt. Öffentliche Geodaten mit Download-Dienst, CC BY 4.0.
-- Karte und Gewässer: © OpenStreetMap-Mitwirkende, ODbL.
+- Buildings, terrain, aerial photo, trees: source: Federal Office of Topography swisstopo. Open government data, free to use with attribution.
+- Bridges: source: Geodaten Kanton Basel-Stadt. Public geodata with download service, CC BY 4.0.
+- Map and water: © OpenStreetMap contributors, ODbL.

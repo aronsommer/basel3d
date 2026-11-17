@@ -83,7 +83,7 @@ function load(paths, show) {
 
 // Ground textures in public/ground/<kind>/, one per 1 km tile named column_row: "map" from
 // OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs).
-const GROUND_LABELS = { map: "Karte", photo: "Luftbild" };
+const GROUND_LABELS = { map: "Map", photo: "Aerial" };
 const groundPaths = (kind) =>
   Object.keys(sizes).filter((path) => path.startsWith(`ground/${kind}/`));
 const ktx2 = new KTX2Loader()
@@ -132,7 +132,7 @@ const [
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
     ...groundPaths(groundKind),
   ],
-  (percent) => (progress.textContent = `${percent} %`),
+  (percent) => (progress.textContent = `${percent}%`),
 );
 const moverFiles = rest.slice(0, MOVER_KINDS.length * 2);
 const groundBuffers = rest.slice(MOVER_KINDS.length * 2);
@@ -196,7 +196,7 @@ groundButton.addEventListener("click", async () => {
   if (!ground[kind]) {
     groundButton.disabled = true;
     const paths = groundPaths(kind);
-    const buffers = await load(paths, (percent) => (groundButton.textContent = `${percent} %`));
+    const buffers = await load(paths, (percent) => (groundButton.textContent = `${percent}%`));
     ground[kind] = await groundTextures(paths, buffers);
     groundButton.disabled = false;
   }
@@ -223,7 +223,7 @@ scene.add(serpent.group);
 // above the monster's horns (221 m) and 50 m above the taller tower (213 m).
 const helicopter = createHelicopter(1728, -64, 150, 300, 6);
 scene.add(helicopter.group);
-// Lines to check the ways of what moves (the menu "Linien"): strong magenta, 4 px wide, drawn over
+// Lines to check the ways of what moves (the menu "Lines"): strong magenta, 4 px wide, drawn over
 // everything. vertices: flat x, y, z of each segment's two ends.
 function checkLines(vertices) {
   const lines = new LineSegments2(
@@ -423,13 +423,13 @@ function createBirds() {
   };
   return { mesh, update };
 }
-// The menu "Linien" shows the loops of the trams (each line on its own), trains and cars and the
-// course of the ships as lines above them, to check them; at first none. "Alle" shows or hides
+// The menu "Lines" shows the loops of the trams (each line on its own), trains and cars and the
+// course of the ships as lines above them, to check them; at first none. "All" shows or hides
 // all tram lines (ticked when all are shown); L shows everything, or hides everything if all is.
 const tramGroup = movers[MOVER_KINDS.indexOf("tram")].routes;
 tramGroup.visible = true;
 const tramLines = tramGroup.children.toSorted((a, b) =>
-  a.name.localeCompare(b.name, "de", { numeric: true }),
+  a.name.localeCompare(b.name, "en", { numeric: true }),
 );
 const tramBox = document.getElementById("trams");
 const kindLines = {
@@ -1270,8 +1270,9 @@ function heightAt(x, z) {
   );
 }
 
-// Back from riding to the overview, looking at where the camera was.
-function backToOverview() {
+// Gets off: back to the overview, looking at where the camera was.
+function getOff() {
+  riding = null;
   const forward = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
   orbit.target.copy(camera.position);
   camera.position.addScaledVector(forward, -150).setY(camera.position.y + 120);
@@ -1281,13 +1282,12 @@ function backToOverview() {
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: click (on touch screens double-tap) a tram, train or car to ride along, Esc (a tap)
-// to get off.
+// --- Riding: click (on touch screens double-tap) a tram, train or car to ride along; the button,
+// Esc or a tap to get off.
 let riding = null; // { mover, vehicle } the camera rides in
+document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
-  if (e.code !== "Escape" || !riding) return;
-  riding = null;
-  backToOverview();
+  if (e.code === "Escape" && riding) getOff();
 });
 
 const raycaster = new THREE.Raycaster();
@@ -1299,9 +1299,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   if (e.button !== 0) return;
   const mouse = e.pointerType === "mouse";
   if (riding) {
-    if (mouse) return;
-    riding = null; // a tap gets off; touch screens have no Esc
-    backToOverview();
+    if (!mouse) getOff(); // a tap gets off; touch screens have no Esc
     return;
   }
   if (mouse) {
