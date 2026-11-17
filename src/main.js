@@ -49,12 +49,16 @@ orbit.maxDistance = 9000;
 
 const pointers = new Set(); // pressed mouse buttons and fingers
 const fling = new THREE.Vector3(); // metres per second the view keeps gliding after a drag
+// Whether the last press stopped the view gliding visibly (2% of its distance per second).
+let stoppedGlide = false;
 renderer.domElement.addEventListener(
   "pointerdown",
   (e) => {
     // Alt + left drag rotates (MapControls already does this for Cmd, Ctrl and Shift).
     orbit.mouseButtons.LEFT = e.altKey ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
     pointers.add(e.pointerId);
+    stoppedGlide =
+      orbit.enabled && fling.length() > 0.02 * camera.position.distanceTo(orbit.target);
     fling.set(0, 0, 0);
   },
   { capture: true },
@@ -330,7 +334,7 @@ function createPlanes() {
     { height: 700 - 250, direction: 1 },
     { height: 950 - 250, direction: -1 },
   ].map((flight) => {
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material.clone()); // its own, tinted under the mouse
     mesh.rotation.order = "YXZ"; // heading, then bank in the plane's frame
     return { ...flight, mesh };
   });
@@ -351,7 +355,16 @@ function createPlanes() {
       mesh.scale.setScalar(boost(mesh.position));
     }
   };
-  return { meshes: flights.map((f) => f.mesh), update };
+  // Riding along: from behind and above.
+  const ride = riders(
+    flights.map(({ mesh }) => ({
+      object: mesh,
+      materials: [mesh.material],
+      eye: [0, 12, -70],
+      ahead: [0, 0, 60],
+    })),
+  );
+  return { meshes: flights.map((f) => f.mesh), update, ride };
 }
 
 // Flocks of birds circling above bridges, parks and squares all over the city (FLOCKS), flapping
@@ -603,21 +616,22 @@ function createShips(course) {
     box([2.6, 1.0, 2.0], WINDOWS, [0, 2.5, 0.5]), // windscreen and cockpit
   ];
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // eye: where one rides along, above the wheelhouse, the upper deck or the cockpit.
   const types = [
-    { geometry: mergeGeometries(tanker), length: 90 },
-    { geometry: mergeGeometries(container), length: 70 },
-    { geometry: mergeGeometries(passenger), length: 50 },
-    { geometry: mergeGeometries(speedboat), length: 11 },
+    { geometry: mergeGeometries(tanker), length: 90, eye: [0, 7, -35] },
+    { geometry: mergeGeometries(container), length: 70, eye: [0, 7, -26] },
+    { geometry: mergeGeometries(passenger), length: 50, eye: [0, 7, -4] },
+    { geometry: mergeGeometries(speedboat), length: 11, eye: [0, 3.5, -1.5] },
   ];
   // Each ship a little different: its colours tinted by one of these.
   const tints = [0xffffff, 0xcfe0ff, 0xffe2c4, 0xd6f5d0, 0xffd2d2, 0xe6d6ff, 0xfff3b0];
   const fleet = [...Array(SHIPS)].map((_, i) => {
-    const { geometry, length } = types[i % types.length];
+    const { geometry, length, eye } = types[i % types.length];
     const tinted = material.clone();
     tinted.color.set(tints[(i * 3) % tints.length]);
     const mesh = new THREE.Mesh(geometry, tinted);
     mesh.matrixAutoUpdate = false; // placed by update()
-    return { mesh, length, start: (total * i) / SHIPS }; // evenly spaced on the course
+    return { mesh, length, eye, start: (total * i) / SHIPS }; // evenly spaced on the course
   });
 
   const [front, back, forward, right, up] = [...Array(5)].map(() => new THREE.Vector3());
@@ -643,7 +657,41 @@ function createShips(course) {
       vertices.push(course[3 * j], course[3 * j + 1] + 3, course[3 * j + 2]);
   const route = checkLines(vertices);
   route.visible = false;
-  return { meshes: fleet.map((ship) => ship.mesh), route, update };
+  const ride = riders(
+    fleet.map(({ mesh, eye }) => ({
+      object: mesh,
+      materials: [mesh.material],
+      eye,
+      ahead: [0, 4, 200],
+    })),
+  );
+  return { meshes: fleet.map((ship) => ship.mesh), route, update, ride };
+}
+
+// Riding along on single objects (ships, planes, the helicopter, the sea monster), each { object,
+// materials, eye, ahead } (points in the object's own frame): the camera at eye, looking at ahead
+// with the horizon level; under the mouse the materials are tinted.
+function riders(list) {
+  const colors = list.map(({ materials }) => materials.map((m) => m.color.clone()));
+  const ahead = new THREE.Vector3();
+  let highlighted = -1;
+  return {
+    objects: list.map(({ object }) => object),
+    vehicleOf: (hit) => list.findIndex(({ object }) => object.getObjectById(hit.object.id)),
+    cab: (v, view) => {
+      const { object } = list[v];
+      object.updateWorldMatrix(true, false);
+      view.position.fromArray(list[v].eye).applyMatrix4(object.matrixWorld);
+      view.lookAt(ahead.fromArray(list[v].ahead).applyMatrix4(object.matrixWorld));
+    },
+    highlight: (v) => {
+      if (v === highlighted) return;
+      list.forEach(({ materials }, i) =>
+        materials.forEach((m, k) => m.color.copy(colors[i][k]).lerp(HIGHLIGHT, i === v ? 0.6 : 0)),
+      );
+      highlighted = v;
+    },
+  };
 }
 
 // What moves along paths (tools/paths.mjs): trams, trains and cars, all called vehicles below.
@@ -926,7 +974,7 @@ function createMovers({ routes }, points, kind, traffic) {
     out.y += 1.1 * height * boost(out);
     return line.parts.findLast((part) => part.from <= d);
   };
-  const vehicleOf = (instanceId) => Math.floor(instanceId / CARS);
+  const vehicleOf = (hit) => Math.floor(hit.instanceId / CARS);
   // Tints vehicle v (-1: none) towards HIGHLIGHT; the one tinted before gets its colour back.
   let highlighted = -1;
   const highlight = (v) => {
@@ -940,6 +988,7 @@ function createMovers({ routes }, points, kind, traffic) {
   };
   return {
     mesh,
+    objects: [mesh], // to click, as in riders
     routes: routeLines,
     count: vehicles.length,
     place,
@@ -1028,19 +1077,52 @@ function createHelicopter(cx, cz, radius, height, scale) {
   group.scale.setScalar(scale);
   group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
 
-  const update = (seconds) => {
-    const angle = seconds * 0.5; // about 13 s per round
-    const y = height + 25 * Math.sin(seconds * 0.35); // gently up and down, ±25 m
-    group.position.set(cx + radius * Math.cos(angle), y, cz + radius * Math.sin(angle));
-    group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle)); // along the circle
-    group.rotation.x = 0.12; // nose down, flying forward
-    group.rotation.z = 0.5; // banking towards the centre
+  // Steered while ridden (input { climb, turn }, each -1, 0 or 1, from steering()): always
+  // SPEED straight on, up to CLIMB up or down and TURN radians per second, both eased in, nose
+  // and side tilted along; at least LOW above the terrain, at most HIGH, over the terrain's area.
+  // Without input it is back on its circle.
+  const SPEED = 60; // metres per second
+  const CLIMB = 15; // metres per second
+  const TURN = 0.8;
+  const LOW = 40; // metres
+  const HIGH = 1000; // scene y
+  let flown = null; // { x, y, z, heading, climb, turn } while steered
+  let last = 0;
+  const update = (seconds, input) => {
+    const dt = seconds - last;
+    last = seconds;
+    if (input) {
+      flown ??= { ...group.position, heading: group.rotation.y, climb: 0, turn: 0 };
+      const ease = Math.min(1, dt * 2);
+      flown.climb += (input.climb - flown.climb) * ease;
+      flown.turn += (input.turn - flown.turn) * ease;
+      flown.heading += flown.turn * TURN * dt;
+      const { x0, z0, cell, nx, nz } = terrainInfo;
+      const { clamp } = THREE.MathUtils;
+      flown.x = clamp(flown.x + Math.sin(flown.heading) * SPEED * dt, x0, x0 + (nx - 1) * cell);
+      flown.z = clamp(flown.z + Math.cos(flown.heading) * SPEED * dt, z0, z0 + (nz - 1) * cell);
+      flown.y = clamp(flown.y + flown.climb * CLIMB * dt, heightAt(flown.x, flown.z) + LOW, HIGH);
+      group.position.set(flown.x, flown.y, flown.z);
+      group.rotation.set(0.12 - 0.15 * flown.climb, flown.heading, -0.3 * flown.turn);
+    } else {
+      flown = null;
+      const angle = seconds * 0.5; // about 13 s per round
+      const y = height + 25 * Math.sin(seconds * 0.35); // gently up and down, ±25 m
+      group.position.set(cx + radius * Math.cos(angle), y, cz + radius * Math.sin(angle));
+      group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle)); // along the circle
+      group.rotation.x = 0.12; // nose down, flying forward
+      group.rotation.z = 0.5; // banking towards the centre
+    }
     main.rotation.y = seconds * 25;
     tail.rotation.x = seconds * 40;
     beacon.visible = seconds % 1 < 0.15; // once a second
     strobe.visible = seconds % 1.5 < 0.06 || (seconds % 1.5 > 0.18 && seconds % 1.5 < 0.24); // double flash
   };
-  return { group, update };
+  // Riding along: from behind and above (before scaling).
+  const ride = riders([
+    { object: group, materials: [material], eye: [0, 3, -16], ahead: [0, 0, 12] },
+  ]);
+  return { group, update, ride };
 }
 
 // A creepy sea serpent looking at (lookX, lookZ): a pale, ringed neck with spines that sways, an
@@ -1147,9 +1229,18 @@ function createSerpent(x, z, scale, lookX, lookZ) {
   group.rotation.y = Math.atan2(lookX - x, lookZ - z); // the head points along +z
   const surface = group.position.y; // the water surface
 
+  // Riding along: on the head between the horns, looking ahead and a little down; both points
+  // follow the head's sway (as in sway, at its top).
+  const eye = [0, NECK + 2.6, 1.5];
+  const ahead = [0, NECK - 2, 20];
+  const ride = riders([{ object: group, materials: [skinMaterial], eye, ahead }]);
+
   const ease = THREE.MathUtils.smoothstep;
   const update = (seconds) => {
     time.value = seconds;
+    const swayX = Math.sin(seconds * 0.9 - 2.5) * 3;
+    const swayZ = Math.sin(seconds * 0.6 - 2.0 + 1.3) * 2;
+    [eye[0], eye[2], ahead[0], ahead[2]] = [swayX, 1.5 + swayZ, swayX, 20 + swayZ];
     // Rises and sinks slowly, down to a quarter of the neck under water.
     group.position.y = surface - NECK * scale * (0.125 - 0.125 * Math.sin(seconds * 0.2));
     // Every 10 s: lean back for 6 s, strike forward in 0.4 s, straighten up again.
@@ -1161,7 +1252,7 @@ function createSerpent(x, z, scale, lookX, lookZ) {
           ? -0.18 + 0.48 * ease(t, 6, 6.4)
           : 0.3 * (1 - ease(t, 6.4, 10));
   };
-  return { group, update };
+  return { group, update, ride };
 }
 
 // Trees as instanced low-poly models (1 unit tall) with varied size and colour, one mesh per
@@ -1333,86 +1424,119 @@ function heightAt(x, z) {
   );
 }
 
-// Gets off: back to the overview, looking at where the camera was.
+// Gets off: back to the view from before riding.
 function getOff() {
   riding = null;
-  const forward = camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
-  orbit.target.copy(camera.position);
-  camera.position.addScaledVector(forward, -150).setY(camera.position.y + 120);
+  steerBox.hidden = true;
+  camera.position.copy(before.position);
+  orbit.target.copy(before.target);
   camera.near = 1;
   camera.updateProjectionMatrix();
   orbit.enabled = true;
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: click (on touch screens double-tap) a tram, train or car to ride along; the button,
-// Esc or a tap to get off.
-let riding = null; // { mover, vehicle } the camera rides in
+// --- Riding: click or tap a tram, train, car, ship, plane, the helicopter
+// or the sea monster to ride along; while riding, a click or tap on another one changes to it.
+// A finger also finds one up to FINGER beside it. The button or Esc gets off.
+const FINGER = 25; // px
+// What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
+const rides = [...movers, ships.ride, planes.ride, helicopter.ride, serpent.ride];
+let riding = null; // { ride, vehicle } the camera rides in
+let before = null; // { position, target } of the camera before riding
 document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
 });
+// Steering the helicopter while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
+// at the bottom hold the arrow keys while pressed.
+const keys = new Set(); // codes of the keys held
+addEventListener("keydown", (e) => keys.add(e.code));
+addEventListener("keyup", (e) => keys.delete(e.code));
+addEventListener("blur", () => keys.clear()); // the keyups come to another window
+const steerBox = document.getElementById("steer");
+for (const button of steerBox.querySelectorAll("button")) {
+  button.addEventListener("pointerdown", () => keys.add(button.dataset.key));
+  for (const type of ["pointerup", "pointercancel", "pointerleave"])
+    button.addEventListener(type, () => keys.delete(button.dataset.key));
+  button.addEventListener("contextmenu", (e) => e.preventDefault()); // long press on phones
+}
+function steering() {
+  const held = (...codes) => (codes.some((code) => keys.has(code)) ? 1 : 0);
+  return {
+    climb: held("KeyW", "ArrowUp") - held("KeyS", "ArrowDown"),
+    turn: held("KeyA", "ArrowLeft") - held("KeyD", "ArrowRight"),
+  };
+}
 
 const raycaster = new THREE.Raycaster();
-// A click that did not drag the map, or a double-tap, as a single tap stops the gliding map.
+// A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
+// only stopped the gliding map.
 let down = { x: 0, y: 0 }; // where the last button or finger went down
 renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
-let lastTap = { time: 0, x: 0, y: 0 };
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || stoppedGlide) return;
   const mouse = e.pointerType === "mouse";
-  if (riding) {
-    if (!mouse) getOff(); // a tap gets off; touch screens have no Esc
-    return;
-  }
-  if (mouse) {
-    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) ride(e.clientX, e.clientY);
-    return;
-  }
-  const quick = e.timeStamp - lastTap.time < 350;
-  const close = Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
-  lastTap = { time: e.timeStamp, x: e.clientX, y: e.clientY };
-  if (quick && close) ride(e.clientX, e.clientY);
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < (mouse ? 5 : 10))
+    ride(e.clientX, e.clientY, mouse ? 0 : FINGER);
 });
-function ride(clientX, clientY) {
-  riding = vehicleAt(clientX, clientY);
-  if (!riding) return;
-  orbit.enabled = false;
-  camera.near = 0.3;
-  camera.updateProjectionMatrix();
-  document.body.dataset.mode = "ride";
-  hover = { x: clientX, y: clientY }; // clears the highlight, as riding
+// Rides the one at a screen point (or up to reach px beside it), if any.
+function ride(clientX, clientY, reach) {
+  const found = vehicleAt(clientX, clientY, reach);
+  if (!found) return;
+  if (!riding) {
+    before = { position: camera.position.clone(), target: orbit.target.clone() };
+    orbit.enabled = false;
+    camera.near = 0.3;
+    camera.updateProjectionMatrix();
+    document.body.dataset.mode = "ride";
+  }
+  riding = found;
+  steerBox.hidden = found.ride !== helicopter.ride;
+  hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
 }
-// The { mover, vehicle } at a screen point, if visible: not in a tunnel under the terrain or
+// The { ride, vehicle } at a screen point, else the first one found around it at reach / 2,
+// then at reach px (eight points each), if any.
+function vehicleAt(clientX, clientY, reach = 0) {
+  for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
+  for (const r of reach ? [0, reach / 2, reach] : [0])
+    for (let k = 0; k < (r ? 8 : 1); k++) {
+      const a = (k * Math.PI) / 4;
+      const found = vehicleOn(clientX + r * Math.cos(a), clientY + r * Math.sin(a));
+      if (found) return found;
+    }
+  return null;
+}
+// The { ride, vehicle } at a screen point, if visible: not in a tunnel under the terrain or
 // behind a building or bridge.
-function vehicleAt(clientX, clientY) {
+function vehicleOn(clientX, clientY) {
   const pointer = new THREE.Vector2(
     (clientX / innerWidth) * 2 - 1,
     -(clientY / innerHeight) * 2 + 1,
   );
   raycaster.setFromCamera(pointer, camera);
-  for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
-  const hit = raycaster.intersectObjects(movers.map((mover) => mover.mesh))[0];
+  const hit = raycaster.intersectObjects(rides.flatMap((r) => r.objects))[0];
   if (!hit) return null;
   raycaster.far = hit.distance;
   const hidden = raycaster.intersectObjects([terrain, buildings.scene, bridges.scene]).length > 0;
   raycaster.far = Infinity;
   if (hidden) return null;
-  const mover = movers.find((m) => m.mesh === hit.object);
-  return { mover, vehicle: mover.vehicleOf(hit.instanceId) };
+  const ride = rides.find((r) => r.objects.some((o) => o.getObjectById(hit.object.id)));
+  return { ride, vehicle: ride.vehicleOf(hit) };
 }
 
-// The vehicle under the mouse is tinted and gets the hand cursor; checked at most once per frame,
-// only after the mouse moved, and not while dragging or riding.
+// The vehicle under the mouse (but the one ridden) is tinted and gets the hand cursor; checked at
+// most once per frame, only after the mouse moved, and not while dragging.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
 });
 function updateHover() {
   if (!hover) return;
-  const found = riding || pointers.size ? null : vehicleAt(hover.x, hover.y);
+  let found = pointers.size ? null : vehicleAt(hover.x, hover.y);
+  if (found?.ride === riding?.ride && found?.vehicle === riding?.vehicle) found = null;
   hover = null;
-  for (const mover of movers) mover.highlight(found?.mover === mover ? found.vehicle : -1);
+  for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
   renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
@@ -1596,12 +1720,12 @@ renderer.setAnimationLoop((time) => {
   updateTrees();
   water.waterTime.value = time / 1000;
   serpent.update(time / 1000);
-  helicopter.update(time / 1000);
+  helicopter.update(time / 1000, riding?.ride === helicopter.ride ? steering() : null);
   drive(dt);
-  if (riding) riding.mover.cab(riding.vehicle, camera);
-  updateBadges();
   ships.update(time / 1000);
   planes.update(time / 1000);
   birds.update(time / 1000);
+  if (riding) riding.ride.cab(riding.vehicle, camera); // after all that moves
+  updateBadges();
   render();
 });

@@ -36,6 +36,7 @@
         transform: translate(-50%, -50%);
         padding: 10px 16px;
         font-size: 18px;
+        white-space: nowrap; /* one line, also on phones */
         background: rgba(255, 255, 255, 0.9);
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
@@ -189,6 +190,35 @@
         font-variant-numeric: tabular-nums;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
       }
+      /* The helicopter's steering buttons, at the bottom in the middle, while riding it. */
+      #steer {
+        position: absolute;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+      }
+      #steer[hidden] {
+        display: none;
+      }
+      #steer button {
+        width: 48px;
+        height: 48px;
+        padding: 0;
+        font: inherit;
+        font-size: 20px;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.9);
+        border: 0;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none; /* Safari */
+        user-select: none;
+      }
       body:not([data-mode="loading"]) #loading,
       body[data-mode="loading"] #ground,
       body[data-mode="loading"] #lines,
@@ -199,9 +229,15 @@
   </head>
   <body data-mode="loading">
     <div id="badges"></div>
-    <div id="loading">Loading Basel <span id="progress">0%</span></div>
+    <div id="loading">Loading <span id="progress">0%</span></div>
     <button id="ground"></button>
     <button id="off">Get off</button>
+    <div id="steer" hidden>
+      <button data-key="ArrowLeft" aria-label="Turn left">←</button>
+      <button data-key="ArrowUp" aria-label="Up">↑</button>
+      <button data-key="ArrowDown" aria-label="Down">↓</button>
+      <button data-key="ArrowRight" aria-label="Turn right">→</button>
+    </div>
     <details id="lines">
       <summary>Lines</summary>
       <div class="heading">
