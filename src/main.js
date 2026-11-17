@@ -7,6 +7,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
@@ -223,16 +224,19 @@ scene.add(serpent.group);
 // above the monster's horns (221 m) and 50 m above the taller tower (213 m).
 const helicopter = createHelicopter(1728, -64, 150, 300, 6);
 scene.add(helicopter.group);
-// Lines to check the ways of what moves (the menu "Lines"): strong magenta, 4 px wide, drawn over
-// everything. vertices: flat x, y, z of each segment's two ends.
-function checkLines(vertices) {
+// Lines to check the ways of what moves (the menu "Lines"): strong magenta unless given a colour,
+// shown exactly (no tone mapping, as the trams' badges), 4 px wide, drawn over everything.
+// vertices: flat x, y, z of each segment's two ends.
+function checkLines(vertices, color = 0xff00ff) {
   const lines = new LineSegments2(
     new LineSegmentsGeometry().setPositions(vertices),
-    new LineMaterial({ color: 0xff00ff, linewidth: 4, depthTest: false }),
+    new LineMaterial({ color, linewidth: 4, depthTest: false, toneMapped: false }),
   );
   lines.renderOrder = 1;
   return lines;
 }
+// The check lines, drawn over the scene in a pass of their own (render).
+const overlay = new THREE.Scene();
 
 const CELL = 20; // metres of the grids of the traffic's car points
 const cell = (x, z) => (Math.floor(x / CELL) + 1000) * 4096 + Math.floor(z / CELL) + 1000;
@@ -272,9 +276,13 @@ function drive(dt) {
   }
   for (const mover of movers) mover.move(dt);
 }
-for (const mover of movers) scene.add(mover.mesh, mover.routes);
+for (const mover of movers) {
+  scene.add(mover.mesh);
+  overlay.add(mover.routes);
+}
 const ships = createShips(new Float32Array(shipsBuffer));
-scene.add(...ships.meshes, ships.route);
+scene.add(...ships.meshes);
+overlay.add(ships.route);
 const planes = createPlanes();
 scene.add(...planes.meshes);
 const birds = createBirds();
@@ -426,7 +434,8 @@ function createBirds() {
 // The menu "Lines" shows the loops of the trams (each line on its own), trains and cars and the
 // course of the ships as lines above them, to check them; at first none. "All" shows or hides
 // all tram lines (ticked when all are shown); L shows everything, or hides everything if all is.
-const tramGroup = movers[MOVER_KINDS.indexOf("tram")].routes;
+const trams = movers[MOVER_KINDS.indexOf("tram")];
+const tramGroup = trams.routes;
 tramGroup.visible = true;
 const tramLines = tramGroup.children.toSorted((a, b) =>
   a.name.localeCompare(b.name, "en", { numeric: true }),
@@ -439,6 +448,7 @@ const kindLines = {
 const kindBoxes = [...document.querySelectorAll("#lines input[data-kind]")];
 const tramBoxes = tramLines.map((line) => {
   const box = Object.assign(document.createElement("input"), { type: "checkbox" });
+  box.style.accentColor = `#${line.material.color.getHexString()}`; // the line's colour
   box.addEventListener("change", () => showTram(line, box.checked));
   const label = document.createElement("label");
   label.append(box, line.name);
@@ -450,6 +460,7 @@ function showTram(line, on) {
   tramBoxes[tramLines.indexOf(line)].checked = on;
   tramBox.checked = tramLines.every((l) => l.visible);
 }
+const tramLinesShown = () => tramLines.some((line) => line.visible);
 for (const line of tramLines) showTram(line, false);
 tramBox.addEventListener("change", () => {
   const all = tramBox.checked; // showTram changes it on the way
@@ -466,6 +477,38 @@ addEventListener("keydown", (e) => {
   for (const line of tramLines) showTram(line, all);
   for (const box of kindBoxes) showKind(box, all);
 });
+// Over each tram whose line is shown, its number in a round badge of the line's colour, so one
+// sees where a tram changes its number (tools/paths.mjs).
+const badgeLayer = document.getElementById("badges");
+const badges = Array.from({ length: trams.count }, () =>
+  badgeLayer.appendChild(Object.assign(document.createElement("div"), { hidden: true })),
+);
+const badgeAt = new THREE.Vector3();
+const badgeColour = new THREE.Color();
+let badgesOn = false; // whether a tram line was shown at the last update
+function updateBadges() {
+  const on = tramLinesShown();
+  if (!on && !badgesOn) return; // all hidden already
+  badgesOn = on;
+  camera.updateMatrixWorld(); // this frame's view, not the last one rendered
+  badges.forEach((badge, v) => {
+    const part = trams.roof(v, badgeAt);
+    badgeAt.project(camera);
+    const shown = part.lines.visible && badgeAt.z < 1; // not behind the camera
+    if (badge.hidden === shown) badge.hidden = !shown;
+    if (!shown) return;
+    if (badge.textContent !== part.ref) {
+      badge.textContent = part.ref;
+      badge.style.background = part.colour;
+      // Black on light colours (the yellow 10, the light green 16), as on the TNW network map.
+      const { r, g, b } = badgeColour.set(part.colour); // linear
+      badge.style.color = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#000" : "#fff";
+    }
+    const x = ((badgeAt.x + 1) / 2) * innerWidth;
+    const y = ((1 - badgeAt.y) / 2) * innerHeight;
+    badge.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  });
+}
 
 // Ships on their round course on the Rhine (tools/ships.mjs), which keeps clear of the bridge
 // piers and the sea monster: SHIPS tankers, container ships, passenger ships and speedboats in
@@ -607,8 +650,8 @@ function createShips(course) {
 // A vehicle has CARS cars (one for road vehicles); each car follows the path on its
 // own, so long vehicles bend in curves. Its variant (say a goods train or a lorry) sets the length,
 // height and colour of its cars. All cars of a kind are instances of one box, in one draw call.
-// Also returns the paths as lines to check them (checkLines), one per line named by its ref, in a
-// group hidden at first.
+// Also returns the paths as lines to check them (checkLines), one per line named by its ref (a
+// loop of two lines has two), in a group hidden at first.
 // A vehicle waits while a car of another one is on its own path just ahead: within ALONG of any
 // point every ALONG up to LOOK ahead and at most SIDE beside it, so nothing that joins its path
 // (at a switch or crossing) is missed.
@@ -647,14 +690,10 @@ function createMovers({ routes }, points, kind, traffic) {
       SIDE: 2, // tracks of the other direction are about 4.5 m away
       EYE: 2.6,
       BAND: 0xc8102e, // red
-      // White passenger trains, a quarter goods trains in rust, grey, green or blue.
+      // White passenger trains, a quarter blue goods trains (green and yellow only for trams).
       variant: (_, r) =>
         r < 0.25
-          ? {
-              length: 20,
-              height: 3.6,
-              color: pick(r * 4, [0x8a4b2a, 0x6b6f75, 0x3f6b47, 0x2f4f7f]),
-            }
+          ? { length: 20, height: 3.6, color: 0x2f4f7f }
           : { length: 25, height: 4, color: 0xf2f2f0 },
     },
     car: {
@@ -707,14 +746,14 @@ function createMovers({ routes }, points, kind, traffic) {
   box.deleteAttribute("normal");
   box.deleteAttribute("uv");
 
-  const lines = routes.map(({ ref, start, count, length, share, operator }) => ({
-    ref,
+  const lines = routes.map(({ ref, start, count, length, share, operator, parts }) => ({
     start,
     count,
     operator,
     length,
     share: share ?? length,
     step: length / count, // metres between points
+    parts: parts ?? [{ ref, from: 0 }], // where each line runs (more than one: tools/paths.mjs)
   }));
   // The point d metres along a line, round and round its loop.
   function at(line, d, out) {
@@ -771,15 +810,21 @@ function createMovers({ routes }, points, kind, traffic) {
     for (let c = 0; c < CARS; c++) mesh.setColorAt(v * CARS + c, vehicle.color);
   });
 
-  // The loops 3 m above the ground, one line segment per pair of points.
+  // The loops 3 m above the ground, one line segment per pair of points, each part of a loop on
+  // its own (part.lines), for trams in the line's colour.
   const routeLines = new THREE.Group();
-  for (const line of lines) {
-    const vertices = [];
-    for (let k = 0; k < line.count; k++)
-      for (const j of [line.start + k, line.start + ((k + 1) % line.count)])
-        vertices.push(points[3 * j], points[3 * j + 1] + 3, points[3 * j + 2]);
-    routeLines.add(Object.assign(checkLines(vertices), { name: line.ref }));
-  }
+  for (const line of lines)
+    line.parts.forEach((part, p) => {
+      const next = line.parts[p + 1];
+      const end = next ? Math.ceil(next.from / line.step) : line.count;
+      const vertices = [];
+      for (let k = Math.ceil(part.from / line.step); k < end; k++)
+        for (const j of [line.start + k, line.start + ((k + 1) % line.count)])
+          vertices.push(points[3 * j], points[3 * j + 1] + 3, points[3 * j + 2]);
+      const color = kind === "tram" ? part.colour : undefined;
+      part.lines = Object.assign(checkLines(vertices, color), { name: part.ref });
+      routeLines.add(part.lines);
+    });
   routeLines.visible = false;
 
   const [front, back, forward, right, up, ahead, behind] = [...Array(7)].map(
@@ -874,6 +919,13 @@ function createMovers({ routes }, points, kind, traffic) {
     view.position.set(front.x, front.y + EYE, front.z);
     view.lookAt(ahead.x, ahead.y + EYE * 0.8, ahead.z);
   };
+  // The part of its loop vehicle v is on; in out the top of its first car's middle.
+  const roof = (v, out) => {
+    const { line, d, length, height } = vehicles[v];
+    at(line, d - length / 2, out);
+    out.y += 1.1 * height * boost(out);
+    return line.parts.findLast((part) => part.from <= d);
+  };
   const vehicleOf = (instanceId) => Math.floor(instanceId / CARS);
   // Tints vehicle v (-1: none) towards HIGHLIGHT; the one tinted before gets its colour back.
   let highlighted = -1;
@@ -886,7 +938,18 @@ function createMovers({ routes }, points, kind, traffic) {
     highlighted = v;
     mesh.instanceColor.needsUpdate = true;
   };
-  return { mesh, routes: routeLines, place, look, move, cab, vehicleOf, highlight };
+  return {
+    mesh,
+    routes: routeLines,
+    count: vehicles.length,
+    place,
+    look,
+    move,
+    cab,
+    roof,
+    vehicleOf,
+    highlight,
+  };
 }
 
 // A low-poly helicopter circling (cx, cz) at the given radius and height (scene metres), banking
@@ -1464,9 +1527,64 @@ if (!readView()) {
 }
 document.body.dataset.mode = "orbit";
 
+// While a tram line is shown, the scene but the trams is drawn in light grey under the check
+// lines, so the lines' colours stand out: into greyTarget first, then onto the screen by its
+// brightness. The trams mark their pixels there with alpha 0 (all else is opaque, alpha 1).
+const greyTarget = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
+trams.mesh.material.onBeforeCompile = (shader) => {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <dithering_fragment>",
+    "#include <dithering_fragment>\ngl_FragColor.a = 0.0;",
+  );
+};
+const greySize = new THREE.Vector2();
+const greyQuad = new FullScreenQuad(
+  new THREE.ShaderMaterial({
+    uniforms: { map: { value: greyTarget.texture } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      varying vec2 vUv;
+      void main() {
+        vec4 texel = texture2D(map, vUv);
+        float grey = dot(texel.rgb, vec3(0.2126, 0.7152, 0.0722));
+        gl_FragColor = vec4(mix(texel.rgb, vec3(grey), texel.a), 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.4 * texel.a); // lighter
+      }`,
+  }),
+);
+function render(grey = tramLinesShown()) {
+  if (grey) {
+    renderer.getDrawingBufferSize(greySize);
+    greyTarget.setSize(greySize.x, greySize.y); // only reallocates when resized
+    renderer.setRenderTarget(greyTarget);
+  }
+  renderer.render(scene, camera);
+  if (grey) {
+    renderer.setRenderTarget(null);
+    greyQuad.render(renderer);
+  }
+  renderer.autoClear = false; // over the scene
+  renderer.render(overlay, camera);
+  renderer.autoClear = true;
+}
+// Once before the first frame, so the first switch to grey does not stutter: allocates greyTarget
+// and compiles the shaders the scene in view needs to be drawn into it, and the grey one. Then
+// the normal view over it, so the grey one is never seen.
+render(true);
+render(false);
+
 let last = performance.now();
 renderer.setAnimationLoop((time) => {
-  const dt = Math.min((time - last) / 1000, 0.1);
+  // The first frame's time can be before last.
+  const dt = THREE.MathUtils.clamp((time - last) / 1000, 0, 0.1);
   last = time;
   if (!riding) updateOrbit(dt);
   writeView(time);
@@ -1477,8 +1595,9 @@ renderer.setAnimationLoop((time) => {
   helicopter.update(time / 1000);
   drive(dt);
   if (riding) riding.mover.cab(riding.vehicle, camera);
+  updateBadges();
   ships.update(time / 1000);
   planes.update(time / 1000);
   birds.update(time / 1000);
-  renderer.render(scene, camera);
+  render();
 });

@@ -1,7 +1,7 @@
 // Closed loops from OpenStreetMap for what moves in the viewer: `node tools/paths.mjs <kind>`
 // writes public/<kind>s.json, listing the loops (start, count of points, length, for round trips
-// their share of the roads), and public/<kind>s.bin, their points (Float32 x, y, z about STEP
-// metres apart), for these kinds:
+// their share of the roads, for lines where each line runs), and public/<kind>s.bin, their points
+// (Float32 x, y, z about STEP metres apart), for these kinds:
 // - tram, train: the lines of the route=tram (train) relations, downloaded once into
 //   data/osm-<kind>s.json, there and back;
 // - car: round trips through the roads of data/osm.json (tools/osm.mjs), on the right of the
@@ -22,9 +22,37 @@ const osm = await osmElements();
 const KIND = process.argv[2];
 // Per kind: which OSM ways (railway=… or highway=…), the lane offset to the right of the way's
 // middle, the distance between points, the sharpest turn from one segment to the next (radians;
-// flat for the switches of tracks) and how far a line may go to join its next stretch (metres).
+// flat for the switches of tracks), how far a line may go to join its next stretch (metres), the
+// pairs of lines whose vehicles run on as the other one at their shared end and the lines'
+// colours where OSM's are not used.
 const KINDS = {
-  tram: { railway: ["tram"], lane: 0, step: 4, turn: Math.PI / 3, reach: 1500 },
+  tram: {
+    railway: ["tram"],
+    lane: 0,
+    step: 4,
+    turn: Math.PI / 3,
+    reach: 1500,
+    through: [
+      ["1", "14"], // at Dreirosenbrücke
+      ["15", "16"], // at Bruderholz
+    ],
+    // From the TNW network map valid from 14.12.2025 (CMYK there, in RGB as macOS shows it).
+    colours: {
+      1: "#744C37",
+      2: "#997A50",
+      3: "#32468A",
+      6: "#0067A5",
+      8: "#E36C9F",
+      10: "#F9C623",
+      11: "#D8232A",
+      12: "#81689C",
+      14: "#E7792B",
+      15: "#00994A",
+      16: "#9EC83D",
+      17: "#00A3DA",
+      21: "#00A38F",
+    },
+  },
   train: {
     railway: ["rail", "light_rail", "narrow_gauge"],
     lane: 0,
@@ -189,10 +217,12 @@ function route(e, target, then) {
   return null;
 }
 // Trams and trains: per line the longest pair of OSM relations there and back (from and to
-// swapped) that closes a loop, each in the order of its track ways. Each stretch inside the area
-// joins the next one (at the end of the line, the way back, where it comes back into the area)
-// along the network, by a turning loop, or where OSM has none, straight across a gap of at most
-// TERMINUS. Lines without such a pair are left out.
+// swapped) that closes a loop, each in the order of its track ways; for a pair of lines in
+// config.through the longest such pairs of both in one loop, the number changing at their shared
+// end. Each stretch inside the area joins the next one (at the end of the line, the way back,
+// where it comes back into the area) along the network, by a turning loop, or where OSM has none,
+// straight across a gap of at most TERMINUS. Lines without such a pair are left out. Each loop
+// with its parts: from which node of the ring on each line runs.
 function lines() {
   const byId = new Map(ways.map((way) => [way.id, way]));
   // The stretches inside the area of a relation: runs of node ids.
@@ -216,10 +246,13 @@ function lines() {
       else if (runs.at(-1).length) runs.push([]);
     return runs.filter((run) => run.length > 1);
   };
-  // The node ids of the loop through the stretches in turn, or null if one does not join the next.
+  // The node ids of the loop through the stretches in turn and the index in it where each stretch
+  // starts, or null if one does not join the next.
   const close = (runs) => {
     const ring = [];
+    const starts = [];
     for (const [i, run] of runs.entries()) {
+      starts.push(ring.length);
       const next = runs[(i + 1) % runs.length];
       const [a, b] = run.slice(-2);
       ring.push(...run.slice(0, -1));
@@ -230,22 +263,62 @@ function lines() {
       if (way) ring.push(...way.slice(0, -1));
       else if (Math.hypot(p.x - q.x, p.z - q.z) > TERMINUS) return null;
     }
-    return ring;
+    return { ring, starts };
+  };
+  // Every chain of relations with these refs in turn, each ending where the next (after the last:
+  // the first) starts.
+  const chains = (refs, chain = []) =>
+    chain.length === refs.length
+      ? chain.at(-1).tags.to === chain[0].tags.from
+        ? [chain]
+        : []
+      : relations
+          .filter(
+            (r) =>
+              r.tags.ref === refs[chain.length] &&
+              r.tags.from &&
+              !chain.includes(r) &&
+              (!chain.length || r.tags.from === chain.at(-1).tags.to),
+          )
+          .flatMap((r) => chains(refs, [...chain, r]));
+  // The loop of the longest chain with these refs that closes, or null.
+  const loop = (refs) => {
+    const options = chains(refs)
+      .map((chain) => {
+        const runs = chain.map(stretches);
+        return { chain, runs, size: runs.flat(2).length };
+      })
+      .filter((o) => o.size)
+      .sort((p, q) => q.size - p.size);
+    for (const { chain, runs } of options) {
+      const closed = close(runs.flat());
+      if (!closed) continue;
+      const parts = [];
+      let k = 0; // index of the relation's first stretch
+      chain.forEach(({ tags }, i) => {
+        if (runs[i].length && tags.ref !== parts.at(-1)?.tags.ref)
+          parts.push({ tags, at: closed.starts[k] });
+        k += runs[i].length;
+      });
+      return { ring: closed.ring, parts };
+    }
+    return null;
   };
   const loops = [];
+  const done = new Set(); // refs in a loop of two lines
+  for (const pair of config.through ?? []) {
+    const found = loop(pair.flatMap((ref) => [ref, ref]));
+    if (!found) {
+      console.log(`lines ${pair.join(" and ")} run on their own: no chain of both closes a loop`);
+      continue;
+    }
+    loops.push(found);
+    for (const ref of pair) done.add(ref);
+  }
   for (const ref of new Set(relations.map((r) => r.tags.ref))) {
-    const pairs = [];
-    for (const there of relations)
-      for (const back of relations) {
-        const { from, to } = there.tags;
-        if (there.tags.ref !== ref || back.tags.ref !== ref || there === back) continue;
-        if (!from || from !== back.tags.to || to !== back.tags.from) continue;
-        const runs = [...stretches(there), ...stretches(back)];
-        if (runs.length) pairs.push({ tags: there.tags, runs, size: runs.flat().length });
-      }
-    pairs.sort((p, q) => q.size - p.size);
-    const loop = pairs.map(({ tags, runs }) => ({ tags, ring: close(runs) })).find((l) => l.ring);
-    if (loop) loops.push(loop);
+    if (done.has(ref)) continue;
+    const found = loop([ref, ref]);
+    if (found) loops.push(found);
     else console.log(`line ${ref} left out: no pair of relations there and back closes a loop`);
   }
   return loops;
@@ -381,10 +454,23 @@ function sample(ring) {
   return points;
 }
 
+// The share of the loop of node ids before its node i.
+function shareBefore(ring, i) {
+  let before = 0;
+  let total = 0;
+  ring.forEach((id, k) => {
+    const [p, q] = [nodes.get(id), nodes.get(ring[(k + 1) % ring.length])];
+    const d = Math.hypot(q.x - p.x, q.z - p.z);
+    total += d;
+    if (k < i) before += d;
+  });
+  return before / total;
+}
+
 // Each loop with evenly spaced points, about STEP apart.
 const out = [];
 const routesOut = [];
-for (const { tags, ring, share } of KIND === "car" ? trips() : lines()) {
+for (const { tags, ring, share, parts } of KIND === "car" ? trips() : lines()) {
   const points = sample(ring);
   if (!points) continue;
   const closed = [...points, points[0]];
@@ -403,16 +489,20 @@ for (const { tags, ring, share } of KIND === "car" ? trips() : lines()) {
     const [a, b] = [closed[i], closed[i + 1]];
     out.push(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
   }
-  const { ref, name, operator, colour } = tags;
+  const round = (metres) => Math.round(metres * 10) / 10;
   routesOut.push({
-    ref,
-    name,
-    operator,
-    colour,
+    ref: tags?.ref ?? parts.map((p) => p.tags.ref).join("/"),
+    operator: parts?.[0].tags.operator,
     start,
     count,
-    length: Math.round(length * 10) / 10,
+    length: round(length),
     share: share && Math.round(share), // metres of roads that are its own (round trips)
+    // Lines: each one's colour and from how many metres along the loop on it runs.
+    parts: parts?.map(({ tags, at }) => ({
+      ref: tags.ref,
+      colour: config.colours?.[tags.ref] ?? tags.colour,
+      from: round(length * shareBefore(ring, at)),
+    })),
   });
 }
 console.log(

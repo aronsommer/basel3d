@@ -152,6 +152,10 @@
         accent-color: #ff00ff;
         cursor: pointer;
       }
+      /* "All" neutral, as it stands for lines of all colours. */
+      #lines #trams {
+        accent-color: #1d242b;
+      }
       /* The tram lines one by one below the heading, five in a row, each pair of box and number
          well apart from the next. */
       #tram-lines {
@@ -160,6 +164,27 @@
         justify-content: start;
         column-gap: 16px;
         font-variant-numeric: tabular-nums;
+      }
+      /* The trams' line numbers (updateBadges in src/main.js), below the buttons and the menu. */
+      #badges {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      #badges div {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 22px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
       }
       body:not([data-mode="loading"]) #loading,
       body:not([data-mode="orbit"]) #ground,
@@ -170,6 +195,7 @@
     </style>
   </head>
   <body data-mode="loading">
+    <div id="badges"></div>
     <div id="loading">Loading Basel <span id="progress">0%</span></div>
     <button id="ground"></button>
     <button id="off">Get off</button>

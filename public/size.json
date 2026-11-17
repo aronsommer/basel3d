@@ -135,9 +135,9 @@
  "terrain/heights.bin": 1283202,
  "terrain/terrain.json": 64,
  "trains.bin": 567720,
- "trains.json": 2884,
- "trams.bin": 564300,
- "trams.json": 1834,
+ "trains.json": 2606,
+ "trams.bin": 563736,
+ "trams.json": 1469,
  "trees.bin": 692288,
  "water.ktx2": 227669
 }
