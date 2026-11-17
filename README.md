@@ -116,3 +116,11 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js))
 - Bridges: source: Geodaten Kanton Basel-Stadt. Public geodata with download service, CC BY 4.0.
 - Map and water: © OpenStreetMap contributors, ODbL.
 - Font: Inter by The Inter Project Authors, SIL Open Font License 1.1.
+
+---
+
+## License
+
+Copyright (C) 2026 Aron Sommer.
+
+This project is licensed under the GNU Affero General Public License v3.0 or later. See the [LICENSE](LICENSE) file for full details.
