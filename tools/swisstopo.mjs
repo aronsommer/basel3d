@@ -15,6 +15,16 @@ import { pipeline } from "node:stream/promises";
 import { createInflateRaw } from "node:zlib";
 import { BBOX_WGS84, DATA } from "./area.mjs";
 
+// SWISSIMAGE WMTS tiles in LV95 at zoom 25 (1 m per pixel, 256 px per tile), as tools/terrain.mjs
+// downloads them into PHOTO_DIR.
+export const WMTS =
+  "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/2056/25";
+export const WMTS_E = 2420000; // top-left corner of the WMTS tile matrix
+export const WMTS_N = 1350000;
+export const TILE = 256;
+export const PHOTO_DIR = join(DATA, "swissimage");
+export const photoFile = (col, row) => join(PHOTO_DIR, `25_${col}_${row}.jpeg`);
+
 // Newest asset per tile in the area: Map tile → { year, href }. Item ids end in _<year>_<tile>.
 export async function newestTiles(collection, assetSuffix) {
   const newest = new Map();

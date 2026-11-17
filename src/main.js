@@ -10,6 +10,7 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
+import { facadeShader } from "./facade.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 
@@ -174,12 +175,12 @@ const water = {
 // The GLBs have no normals; flat shading derives them per pixel.
 const materials = {
   roof: new THREE.MeshLambertMaterial({
-    color: 0xa0523f,
+    vertexColors: true, // each building's own (tools/buildings.mjs)
     flatShading: true,
     side: THREE.DoubleSide,
   }),
   wall: new THREE.MeshLambertMaterial({
-    color: 0xe8dcc4,
+    vertexColors: true,
     flatShading: true,
     side: THREE.DoubleSide,
   }),
@@ -199,6 +200,14 @@ for (const { scene: model } of [buildings, bridges]) {
 const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
 const structures = createBuildings(buildings.scene, bridges.scene, [terrain], renderer, camera);
+{
+  // Facades on the walls (src/facade.js), before the highlight createBuildings set.
+  const highlight = materials.wall.onBeforeCompile;
+  materials.wall.onBeforeCompile = (shader, renderer) => {
+    facadeShader(shader);
+    highlight(shader, renderer);
+  };
+}
 const explosions = createExplosions(scene, structures, heightAt, camera);
 // What is blown up stays so in this browser until Reset, as long as the models are the same (by
 // their sizes and totals), since the numbers belong to them. Reset forgets it and loads the page

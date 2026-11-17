@@ -172,7 +172,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       return best;
     },
     // The triangles of those with these numbers, but hidden ones, in scene coordinates: a Map from
-    // each number to [{ material, positions }] per mesh, nine numbers per triangle. Each mesh is
+    // each number to [{ color, positions }] per mesh, nine numbers per triangle. Each mesh is
     // gone through once, however many numbers it has.
     triangles(numbers) {
       const wanted = new Set(numbers);
@@ -180,23 +180,29 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       const vertex = new THREE.Vector3();
       for (const mesh of meshesWith(wanted)) {
         const { index, attributes } = mesh.geometry;
-        const { position, _building } = attributes;
+        const { position, _building, color } = attributes;
         const at = (i) => (index ? index.getX(i) : i);
         const lists = new Map(); // number → its positions in this mesh
         mesh.updateWorldMatrix(true, false);
         for (let t = 0; t < (index ?? position).count; t += 3) {
           const n = _building.getX(at(t));
           if (!wanted.has(n)) continue;
-          if (!lists.has(n)) lists.set(n, []);
-          const positions = lists.get(n);
+          if (!lists.has(n))
+            lists.set(n, {
+              color: color
+                ? new THREE.Color().fromBufferAttribute(color, at(t))
+                : mesh.material.color,
+              positions: [],
+            });
+          const { positions } = lists.get(n);
           for (let k = 0; k < 3; k++)
             positions.push(
               ...vertex.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
             );
         }
-        for (const [n, positions] of lists) {
+        for (const [n, part] of lists) {
           if (!found.has(n)) found.set(n, []);
-          found.get(n).push({ material: mesh.material, positions });
+          found.get(n).push(part);
         }
       }
       return found;

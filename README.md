@@ -27,6 +27,7 @@ basel3d/
 ├── src/main.js        viewer (three.js)
 ├── src/buildings.js   buildings and bridges as single objects: picking, hits, highlight, hide
 ├── src/explosions.js  blowing up a building or bridge: flying faces, fire, smoke, bang, scorched ground
+├── src/facade.js      windows, shopfronts and balconies drawn onto the walls by the shader
 ├── src/highlight.js   the cyan of what can be clicked, under the mouse
 ├── src/rockets.js     the helicopter's rockets: flight, whoosh, hitting buildings, bridges and ground
 ├── src/sound.js       sounds made with Web Audio, without sound files
@@ -49,8 +50,8 @@ basel3d/
 │   └── size.json      size of each file, for the loading percentage
 ├── tools/             converters that generate public/
 │   ├── area.mjs       shared area and coordinates
-│   ├── swisstopo.mjs  download helpers (STAC catalogue, single swissTLM3D layers)
-│   ├── buildings.mjs  swissBUILDINGS3D → basel.glb
+│   ├── swisstopo.mjs  download helpers (STAC catalogue, single swissTLM3D layers, SWISSIMAGE tiles)
+│   ├── buildings.mjs  swissBUILDINGS3D + SWISSIMAGE → basel.glb
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
 │   ├── osm.mjs        OpenStreetMap download, WGS84 → LV95, road widths
 │   ├── map.mjs        OpenStreetMap → ground/map/
@@ -75,7 +76,9 @@ basel3d/
    - cuts out an 8 × 8 km area around the city,
    - shifts the Swiss coordinates (LV95) to an origin in the city,
    - splits everything into 1 km tiles,
-   - compresses with Meshopt (about 11 MB, 2.4 million triangles).
+   - colours each roof like the aerial photo (median of the pixels on it; flat roofs greyed), so run `npm run terrain` first,
+   - gives each building a wall colour and a facade style (old town, modern, offices, glass, church, town hall, hall) from its size and roof shape, which `src/facade.js` draws as windows, shopfronts and balconies; buildings in the optional, not shared `data/reference/buildings.json` take its colours and names instead,
+   - compresses with Meshopt (about 19 MB, 2.4 million triangles).
 2. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
    - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (Int16 in cm),
    - SWISSIMAGE from the WMTS service `wmts.geo.admin.ch` at 1 m per pixel, cut into 1 km tiles and stored as GPU-compressed KTX2 textures (ETC1S, 1024 px). This takes about 6 minutes.

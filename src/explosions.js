@@ -94,7 +94,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
   function debris(parts, middle, scale) {
     const pieces = [];
     let vertices = 0;
-    for (const { material, positions } of parts)
+    for (const { color, positions } of parts)
       for (const face of faces(positions)) {
         const centre = new THREE.Vector3();
         for (const t of face)
@@ -108,7 +108,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
         pieces.push({
           positions,
           face,
-          color: material.color,
+          color,
           start: vertices,
           centre,
           velocity: out,

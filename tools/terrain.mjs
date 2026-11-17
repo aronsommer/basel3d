@@ -6,12 +6,21 @@ import { join } from "node:path";
 import { fromArrayBuffer } from "geotiff";
 import sharp from "sharp";
 import { E_MIN, E_MAX, N_MIN, N_MAX, Y0, CHUNK, DATA, PUBLIC, toX, toZ } from "./area.mjs";
-import { newestTiles, download, forEachParallel } from "./swisstopo.mjs";
+import {
+  newestTiles,
+  download,
+  forEachParallel,
+  WMTS,
+  WMTS_E,
+  WMTS_N,
+  TILE,
+  PHOTO_DIR,
+  photoFile,
+} from "./swisstopo.mjs";
 import { writeTiles } from "./tiles.mjs";
 
 const CELL = 10; // terrain grid spacing in metres (must divide CHUNK)
 const ALTI_DIR = join(DATA, "swissalti3d");
-const PHOTO_DIR = join(DATA, "swissimage");
 const OUT = join(PUBLIC, "terrain");
 
 // --- Terrain: newest swissALTI3D 2 m tile per square kilometre ("2612-1266") overlapping the area.
@@ -114,18 +123,14 @@ function fillGaps(grid, nx, nz) {
   }
 }
 
-// --- Aerial photo: SWISSIMAGE WMTS tiles in LV95 at zoom 25 (1 m per pixel, 256 px per tile).
-const WMTS = "https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/2056/25";
-const WMTS_E = 2420000; // top-left corner of the WMTS tile matrix
-const WMTS_N = 1350000;
-const TILE = 256;
+// --- Aerial photo: SWISSIMAGE (tools/swisstopo.mjs).
 
 async function buildPhotos() {
   mkdirSync(PHOTO_DIR, { recursive: true });
   const tiles = [];
   for (let row = Math.floor((WMTS_N - N_MAX) / TILE); row * TILE < WMTS_N - N_MIN; row++)
     for (let col = Math.floor((E_MIN - WMTS_E) / TILE); col * TILE < E_MAX - WMTS_E; col++)
-      tiles.push({ col, row, file: join(PHOTO_DIR, `25_${col}_${row}.jpeg`) });
+      tiles.push({ col, row, file: photoFile(col, row) });
   let missing = 0;
   await forEachParallel(tiles, 8, async (t) => {
     if (!(await download(`${WMTS}/${t.col}/${t.row}.jpeg`, t.file))) missing++;
