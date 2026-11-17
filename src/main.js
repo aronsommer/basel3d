@@ -217,6 +217,7 @@ const structures = createBuildings(buildings.scene, bridges.scene, [terrain], re
   extend(materials.wall, facadeShader, pavilionShader);
   extend(materials.roof, pavilionShader);
 }
+const deckMaps = createDecks(bridges.scene, materials.bridge);
 const explosions = createExplosions(scene, structures, heightAt, camera);
 // What is blown up stays so in this browser until Reset, as long as the models are the same (by
 // their sizes and totals), since the numbers belong to them. Reset forgets it and loads the page
@@ -334,6 +335,7 @@ groundButton.addEventListener("click", async () => {
   for (const texture of ground[groundKind].values()) texture.dispose();
   groundKind = kind;
   for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
+  for (const [name, map] of deckMaps) map.value = ground[kind].get(name);
   groundButton.textContent = GROUND_LABELS[otherGround()];
   try {
     localStorage.setItem(GROUND_KEY, kind);
@@ -1693,6 +1695,88 @@ function addWater(shader) {
 }
 
 // One mesh per chunk, named column_row like its ground texture.
+// The bridges' tops show the ground texture of their place, as if the map or photo ran across
+// them (deckShader): their triangles sorted by the ground tile under their middle, one copy of
+// base per tile. Returns the uniforms holding each tile's texture, by tile name.
+function createDecks(model, base) {
+  const { x0, z0, chunk } = terrainInfo;
+  const maps = new Map();
+  const deckEdge = { value: new THREE.Color(0xafaa9e) }; // SIDEWALK in tools/map.mjs
+  const vertex = new THREE.Vector3();
+  model.traverse((mesh) => {
+    if (!mesh.isMesh) return;
+    const { geometry } = mesh;
+    const { index, attributes } = geometry;
+    const at = (i) => (index ? index.getX(i) : i);
+    mesh.updateWorldMatrix(true, false);
+    const byTile = new Map(); // tile name → its triangles' first corners
+    for (let t = 0; t < (index ?? attributes.position).count; t += 3) {
+      let [x, z] = [0, 0];
+      for (let k = 0; k < 3; k++) {
+        vertex.fromBufferAttribute(attributes.position, at(t + k)).applyMatrix4(mesh.matrixWorld);
+        x += vertex.x / 3;
+        z += vertex.z / 3;
+      }
+      const name = `${Math.floor((x - x0) / chunk)}_${Math.floor((z - z0) / chunk)}`;
+      if (!byTile.has(name)) byTile.set(name, []);
+      byTile.get(name).push(t);
+    }
+    const order = [];
+    const materials = [];
+    for (const [name, triangles] of byTile) {
+      geometry.addGroup(order.length, triangles.length * 3, materials.length);
+      for (const t of triangles) order.push(at(t), at(t + 1), at(t + 2));
+      const texture = ground[groundKind].get(name);
+      if (!texture) {
+        materials.push(base); // outside the ground
+        continue;
+      }
+      const [ix, iz] = name.split("_").map(Number);
+      const map = { value: texture };
+      maps.set(name, map);
+      const tile = new THREE.Vector3(x0 + ix * chunk, z0 + iz * chunk, chunk);
+      const material = base.clone();
+      material.onBeforeCompile = (shader, renderer) => {
+        Object.assign(shader.uniforms, { deckMap: map, deckTile: { value: tile }, deckEdge });
+        deckShader(shader);
+        base.onBeforeCompile(shader, renderer);
+      };
+      material.customProgramCacheKey = () => "deck";
+      materials.push(material);
+    }
+    geometry.setIndex(order);
+    mesh.material = materials;
+  });
+  return maps;
+}
+
+// Where a face looks up, seen from above, its colour from deckMap, the ground tile at deckTile
+// (west x, north z, size); where that shows the map's water (a deck wider than its road), the
+// sidewalk colour deckEdge. Before the colours, so the highlight still wins.
+function deckShader(shader) {
+  shader.vertexShader = shader.vertexShader
+    .replace("void main() {", "varying vec3 vDeck;\nvoid main() {")
+    .replace(
+      "#include <project_vertex>",
+      "#include <project_vertex>\nvDeck = (modelMatrix * vec4(transformed, 1.0)).xyz;",
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      "void main() {",
+      "uniform sampler2D deckMap;\nuniform vec3 deckTile, deckEdge;\nvarying vec3 vDeck;\nvoid main() {",
+    )
+    .replace(
+      "#include <color_fragment>",
+      `vec3 deckNormal = normalize(cross(dFdx(vDeck), dFdy(vDeck))); // towards the camera
+      vec3 deckGround = texture2D(deckMap,
+        vec2(vDeck.x - deckTile.x, deckTile.y + deckTile.z - vDeck.z) / deckTile.z).rgb;
+      float deckWater = smoothstep(0.15, 0.3, deckGround.b - deckGround.r);
+      diffuseColor.rgb = mix(diffuseColor.rgb, mix(deckGround, deckEdge, deckWater),
+        smoothstep(0.75, 0.9, deckNormal.y));
+      #include <color_fragment>`,
+    );
+}
+
 function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   water.waterArea.value.set(x0, z0, (nx - 1) * cell, (nz - 1) * cell);
   const group = new THREE.Group();

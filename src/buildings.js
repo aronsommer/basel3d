@@ -191,7 +191,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
             lists.set(n, {
               color: color
                 ? new THREE.Color().fromBufferAttribute(color, at(t))
-                : mesh.material.color,
+                : [mesh.material].flat()[0].color, // the bridges have one per ground tile
               positions: [],
             });
           const { positions } = lists.get(n);

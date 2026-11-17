@@ -21,12 +21,13 @@ const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m pe
 const BACKGROUND = "#9a968c"; // built-up land
 const FOOTPRINT = "#6b675e"; // under the buildings, seen where one is destroyed
 const elements = await osmElements();
-// Bridges built in 3D (tools/bridges.mjs, run it first): hide the OSM bridges whose middle lies
-// under one of them.
+// Bridges built in 3D (tools/bridges.mjs, run it first): the OSM bridges whose middle lies under
+// one of them are drawn on the map, for their decks (src/main.js), but left out of the water
+// mask, so the water hides them on the river.
 const underBridge = underBridges(
   new Float32Array(new Uint8Array(readFileSync(BRIDGES_FILE)).buffer),
 );
-function hiddenBridge(way) {
+function coveredBridge(way) {
   if (!onBridge(way.tags ?? {})) return false;
   const points = way.geometry.filter(Boolean);
   const [a, b] = [points[(points.length - 1) >> 1], points[points.length >> 1]].map(toLV95);
@@ -133,21 +134,23 @@ for (const el of elements) {
       shapes.push({ ...style, d: rings(ways).map((r) => pathData(r, true)) });
     continue;
   }
-  if (!el.geometry || hiddenBridge(el)) continue;
+  if (!el.geometry) continue;
+  const deck = coveredBridge(el);
   const closed = el.nodes[0] === el.nodes.at(-1);
   const area = closed && areaStyle(tags);
   const line = lineStyle(tags);
-  if (area) shapes.push({ ...area, d: [pathData(el.geometry, true)] });
+  if (area) shapes.push({ ...area, deck, d: [pathData(el.geometry, true)] });
   else if (line)
-    for (const style of [line].flat()) shapes.push({ ...style, d: [pathData(el.geometry, false)] });
+    for (const style of [line].flat())
+      shapes.push({ ...style, deck, d: [pathData(el.geometry, false)] });
 }
 shapes.sort((a, b) => a.order - b.order);
 
 // --- Render the whole area at once and cut it into tiles.
-const svg = (size, background, paint) => `<svg xmlns="http://www.w3.org/2000/svg"
+const svg = (size, background, paint, list = shapes) => `<svg xmlns="http://www.w3.org/2000/svg"
   width="${size[0]}" height="${size[1]}" viewBox="0 0 ${E_MAX - E_MIN} ${N_MAX - N_MIN}">
   <rect width="100%" height="100%" fill="${background}"/>
-  ${shapes
+  ${list
     .map((s) =>
       s.fill
         ? `<path fill="${paint(s.fill)}" fill-rule="evenodd" d="${s.d.join("")}"/>`
@@ -240,8 +243,14 @@ for (let i = 0; i < width * height; i++) {
 }
 await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"));
 
-// Water white, everything else black, in the same order, so roads drawn over water stay dry.
-const mask = svg([MASK_SIZE, MASK_SIZE], "#000", (c) => (c === WATER ? "#fff" : "#000"));
+// Water white, everything else black, in the same order, so roads drawn over water stay dry; but
+// not the decks.
+const mask = svg(
+  [MASK_SIZE, MASK_SIZE],
+  "#000",
+  (c) => (c === WATER ? "#fff" : "#000"),
+  shapes.filter((s) => !s.deck),
+);
 const maskData = await render(mask).ensureAlpha().raw().toBuffer();
 
 // Flow: OSM rivers and streams point downstream. Each segment is drawn wide in a colour for its
