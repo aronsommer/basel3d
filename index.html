@@ -115,11 +115,12 @@
       #layers summary::-webkit-details-marker {
         display: none;
       }
+      /* As tall as the rows below, to be easy to tap. */
       #layers[open] summary {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 4px;
+        min-height: 28px;
       }
       /* A chevron: down when closed, up when open. */
       #layers summary::after {
@@ -135,7 +136,8 @@
       #layers[open] summary::after {
         transform: translateY(2px) rotate(-135deg);
       }
-      /* A box close to its text; "All" a little apart from "Trams". */
+      /* A box close to its text; "All" a little apart from "Trams". Each label only as wide as its
+         box and text, so a tap beside it does not tick it. */
       #layers label,
       #layers .heading {
         display: flex;
@@ -144,6 +146,7 @@
         min-height: 28px;
       }
       #layers label {
+        width: fit-content;
         cursor: pointer;
       }
       #layers .heading {
