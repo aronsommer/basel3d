@@ -4,10 +4,10 @@
 // writes public/names.json:
 // [{ name, kind ("place" or "landmark"), x, z }] in scene metres, a landmark at the centre of its
 // element.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BBOX_WGS84, DATA, PUBLIC, E_MIN, E_MAX, N_MIN, N_MAX, toX, toZ } from "./area.mjs";
-import { toLV95 } from "./osm.mjs";
+import { toLV95, overpass } from "./osm.mjs";
 
 // [OSM type, id, name shown]; the ids checked against their Wikidata items.
 const LANDMARKS = [
@@ -35,22 +35,14 @@ const LANDMARKS = [
   ["way", 413303455, "Schwarzwaldbrücke"], // Q2254477
 ];
 
-const FILE = join(DATA, "osm-names.json");
-if (!existsSync(FILE)) {
-  const [w, s, e, n] = BBOX_WGS84.split(",");
-  const query = `[out:json][timeout:120];(
+const [w, s, e, n] = BBOX_WGS84.split(",");
+const elements = await overpass(
+  `[out:json][timeout:120];(
     node[place~"^(suburb|town|village)$"](${s},${w},${n},${e});
     ${LANDMARKS.map(([type, id]) => `${type}(${id});`).join("")}
-  );out center tags;`;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "User-Agent": "basel3d-converter" },
-    body: new URLSearchParams({ data: query }),
-  });
-  if (!res.ok) throw new Error(`Overpass: ${res.status}`);
-  writeFileSync(FILE, Buffer.from(await res.arrayBuffer()));
-}
-const elements = JSON.parse(readFileSync(FILE, "utf8")).elements;
+  );out center tags;`,
+  join(DATA, "osm-names.json"),
+);
 
 // In scene metres, or null outside the area.
 function place(element) {

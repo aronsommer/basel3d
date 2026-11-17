@@ -10,7 +10,20 @@ import { EXTMeshoptCompression, KHRMeshQuantization } from "@gltf-transform/exte
 import { weld, meshopt } from "@gltf-transform/functions";
 import { MeshoptEncoder } from "meshoptimizer";
 import sharp from "sharp";
-import { E_MIN, E_MAX, N_MIN, N_MAX, Y0, CHUNK, DATA, PUBLIC, toX, toZ } from "./area.mjs";
+import {
+  E_MIN,
+  E_MAX,
+  N_MIN,
+  N_MAX,
+  Y0,
+  CHUNK,
+  DATA,
+  PUBLIC,
+  BBOX_WGS84,
+  toX,
+  toZ,
+} from "./area.mjs";
+import { overpass, toLV95 } from "./osm.mjs";
 import { newestTiles, download, WMTS_E, WMTS_N, TILE, photoFile } from "./swisstopo.mjs";
 
 const SRC = join(DATA, "swissbuildings3d");
@@ -165,8 +178,9 @@ async function readTile(file) {
 
 // Optional reference buildings, not in the repo:
 // [{ p: footprint [[e, n], …] in LV95, h: height, w, r: wall and roof colour (sRGB), f: flags
-// (1: hall; bits 2–3: roof kind, 0 clay), n: name }]. Ours whose middle lies in one of them take
-// its colours and facade style; the others get them from their own size and the aerial photo.
+// (1: hall; bits 2–3: roof kind, 0 clay), n: name }]. Ours take the colours and facade style of
+// the one holding most of their middle and roof spots (a middle may lie in a courtyard); the
+// others get them from their own size and the aerial photo.
 const REFERENCE = join(DATA, "reference", "buildings.json");
 
 // Facade styles (src/facade.js), in the alpha of a wall's COLOR_0 with the flags and 3 seed bits.
@@ -181,13 +195,28 @@ const WALLS = [
   0xe9d8b4, 0xdcb98a, 0xe4b9a0, 0xc9d3b8, 0xbfcdd6, 0xf1ece0, 0xd8a48f, 0xe7d18e, 0xcdbfae,
 ];
 const HIGH = [0xc9ced2, 0xb8c4cc, 0xd6d3cc];
+const CHURCH = [0xc4826b]; // red sandstone
 
-// A finder of the reference building around a point (e, n), or null without the file.
-function referenceFinder() {
-  if (!existsSync(REFERENCE)) return null;
+// Footprints of the OSM buildings tagged as churches, as { p: [[e, n], …] }, downloaded once.
+async function churches() {
+  const [w, s, e, n] = BBOX_WGS84.split(",");
+  const tag = '[building~"^(church|cathedral|chapel)$"]';
+  const elements = await overpass(
+    `[out:json][timeout:120][bbox:${s},${w},${n},${e}];(way${tag};relation${tag};);out geom;`,
+    join(DATA, "osm-churches.json"),
+  );
+  return elements.flatMap((el) =>
+    (el.type === "way" ? [el] : el.members.filter((m) => m.role === "outer" && m.geometry)).map(
+      (way) => ({ p: way.geometry.filter(Boolean).map(toLV95) }), // nodes outside the box are null
+    ),
+  );
+}
+
+// A finder of the item whose footprint p holds a point (e, n), or null.
+function footprintFinder(items) {
   const CELL = 100;
-  const cells = new Map(); // "i,j" -> buildings reaching into that cell
-  for (const b of JSON.parse(readFileSync(REFERENCE, "utf8"))) {
+  const cells = new Map(); // "i,j" -> items reaching into that cell
+  for (const b of items) {
     const es = b.p.map((q) => q[0]);
     const ns = b.p.map((q) => q[1]);
     for (let i = Math.floor(Math.min(...es) / CELL); i <= Math.floor(Math.max(...es) / CELL); i++)
@@ -209,6 +238,18 @@ function referenceFinder() {
     null;
 }
 
+// The item found most often at the points [e, n, …], or null if found less than least times.
+function majority(find, points, least = 1) {
+  const votes = new Map();
+  for (let i = 0; i < points.length; i += 2) {
+    const b = find(points[i], points[i + 1]);
+    if (b) votes.set(b, (votes.get(b) ?? 0) + 1);
+  }
+  let best = null;
+  for (const [b, count] of votes) if (!best || count > votes.get(best)) best = b;
+  return best && votes.get(best) >= least ? best : null;
+}
+
 // Area and narrowest width of a footprint [[e, n], …].
 function measure(p) {
   let area = 0;
@@ -224,10 +265,11 @@ function measure(p) {
   return { area: Math.abs(area) / 2, narrow };
 }
 
-// A building's facade style with flags, after its name, size and roof.
-function facadeStyle({ name, height, narrow, area, pitched, hall }, seed) {
+// A building's facade style with flags, after its name, size, roof and whether OSM has a church
+// there.
+function facadeStyle({ name, church, height, narrow, area, pitched, hall }, seed) {
   const [a, b, c] = [(seed % 7) / 7, (seed % 11) / 11, (seed % 13) / 13];
-  if (/kirche|Münster|Dom\b|Kapelle|Tor$/i.test(name)) return STYLE.church;
+  if (church || /kirche|Münster|Dom\b|Kapelle|Tor$/i.test(name)) return STYLE.church;
   if (name === "Rathaus") return STYLE.townHall | SHOP;
   if (/Roche|BIZ|Baloise|Universitätsspital/.test(name)) return STYLE.office;
   if (/Messeturm|Claraturm|Biozentrum/.test(name)) return STYLE.glass;
@@ -286,13 +328,18 @@ async function colours() {
     });
   };
 
-  const find = referenceFinder();
+  const find = existsSync(REFERENCE)
+    ? footprintFinder(JSON.parse(readFileSync(REFERENCE, "utf8")))
+    : null;
+  const findChurch = footprintFinder(await churches());
   let matched = 0;
   for (let number = 0; number < count; number++) {
     const { spots, flat, height, size, e, n } = info[number];
     const seed = Math.imul(number + 1, 2654435761) >>> 0;
     const pitched = flat < 0.5;
-    const match = find?.(e, n);
+    const points = [e, n, ...spots];
+    const match = find && majority(find, points);
+    const church = majority(findChurch, points, points.length / 4) !== null; // half the points
     let style;
     if (match) {
       matched++;
@@ -301,6 +348,7 @@ async function colours() {
       style = facadeStyle(
         {
           name: match.n,
+          church,
           height: match.h,
           narrow,
           area,
@@ -313,12 +361,20 @@ async function colours() {
       put(wall, number, rgb(match.w), style | ((seed >>> 29) << 5));
     } else {
       style = facadeStyle(
-        { name: "", height, narrow: Math.min(...size), area: size[0] * size[1], pitched, hall: 0 },
+        {
+          name: "",
+          church,
+          height,
+          narrow: Math.min(...size),
+          area: size[0] * size[1],
+          pitched,
+          hall: 0,
+        },
         seed,
       );
       const colour = await photo(spots);
       put(roof, number, pitched ? colour : grey(colour));
-      const palette = height > 42 ? HIGH : WALLS;
+      const palette = church ? CHURCH : height > 42 ? HIGH : WALLS;
       put(wall, number, rgb(palette[seed % palette.length]), style | ((seed >>> 29) << 5));
     }
   }

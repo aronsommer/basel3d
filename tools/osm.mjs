@@ -6,14 +6,9 @@ import { BBOX_WGS84, DATA, toX, toZ } from "./area.mjs";
 
 const OSM_FILE = join(DATA, "osm.json");
 
-// Ways and multipolygons with geometry; nodes outside the query box are null.
-export async function osmElements() {
-  if (!existsSync(OSM_FILE)) {
-    const [w, s, e, n] = BBOX_WGS84.split(",");
-    const keys = ["landuse", "natural", "leisure", "waterway", "amenity", "area:highway", "place"];
-    const query = `[out:json][timeout:300][bbox:${s},${w},${n},${e}];(
-      way[highway];way[railway];${keys.map((k) => `way["${k}"];`).join("")}
-      ${keys.map((k) => `relation[type=multipolygon]["${k}"];`).join("")});out geom;`;
+// The elements answering an Overpass query, downloaded once into file.
+export async function overpass(query, file) {
+  if (!existsSync(file)) {
     const res = await fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
       headers: { "User-Agent": "basel3d-converter" },
@@ -21,9 +16,19 @@ export async function osmElements() {
     });
     if (!res.ok) throw new Error(`Overpass: ${res.status}`);
     mkdirSync(DATA, { recursive: true });
-    writeFileSync(OSM_FILE, Buffer.from(await res.arrayBuffer()));
+    writeFileSync(file, Buffer.from(await res.arrayBuffer()));
   }
-  return JSON.parse(readFileSync(OSM_FILE, "utf8")).elements;
+  return JSON.parse(readFileSync(file, "utf8")).elements;
+}
+
+// Ways and multipolygons with geometry; nodes outside the query box are null.
+export function osmElements() {
+  const [w, s, e, n] = BBOX_WGS84.split(",");
+  const keys = ["landuse", "natural", "leisure", "waterway", "amenity", "area:highway", "place"];
+  const query = `[out:json][timeout:300][bbox:${s},${w},${n},${e}];(
+    way[highway];way[railway];${keys.map((k) => `way["${k}"];`).join("")}
+    ${keys.map((k) => `relation[type=multipolygon]["${k}"];`).join("")});out geom;`;
+  return overpass(query, OSM_FILE);
 }
 
 // WGS84 → LV95 [E, N] with swisstopo's approximate formulas (about 1 m).
