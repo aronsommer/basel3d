@@ -1,12 +1,15 @@
-// Paths from OpenStreetMap for what moves in the viewer: `node tools/paths.mjs <kind>` writes
-// public/<kind>s.json, listing the paths, and public/<kind>s.bin, their points (Float32 x, y, z
-// every STEP metres), for these kinds:
-// - tram, train: the route=tram (train) relations, downloaded once into data/osm-<kind>s.json;
-// - car: the roads of data/osm.json (tools/osm.mjs), joined into streets by name, in both
-//   directions unless one way, each on the right of the way's middle.
-// Heights come from the terrain, from the 3D bridges where a deck lies at the vehicle's height
-// (OSM does not mark every way on a bridge), run straight across OSM bridges that have no 3D
-// model and go underground in tunnels; then they are smoothed.
+// Closed loops from OpenStreetMap for what moves in the viewer: `node tools/paths.mjs <kind>`
+// writes public/<kind>s.json, listing the loops (start, count of points, length, for round trips
+// their share of the roads), and public/<kind>s.bin, their points (Float32 x, y, z about STEP
+// metres apart), for these kinds:
+// - tram, train: the lines of the route=tram (train) relations, downloaded once into
+//   data/osm-<kind>s.json, there and back;
+// - car: round trips through the roads of data/osm.json (tools/osm.mjs), on the right of the
+//   way's middle.
+// Vehicles follow the network of the OSM ways and never turn back on it. Heights come from the terrain,
+// from the 3D bridges where a deck lies at the vehicle's height (OSM does not mark every way on a
+// bridge), run straight across OSM bridges that have no 3D model and go underground in tunnels of
+// at least SHORT_TUNNEL; then they are smoothed.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BBOX_WGS84, DATA, PUBLIC, E_MIN, E_MAX, N_MIN, N_MAX, toX, toZ } from "./area.mjs";
@@ -18,10 +21,17 @@ const osm = await osmElements();
 
 const KIND = process.argv[2];
 // Per kind: which OSM ways (railway=… or highway=…), the lane offset to the right of the way's
-// middle, the distance between points and the shortest path kept.
+// middle, the distance between points, the sharpest turn from one segment to the next (radians;
+// flat for the switches of tracks) and how far a line may go to join its next stretch (metres).
 const KINDS = {
-  tram: { railway: ["tram"], lane: 0, step: 4, shortest: 100 },
-  train: { railway: ["rail", "light_rail", "narrow_gauge"], lane: 0, step: 4, shortest: 100 },
+  tram: { railway: ["tram"], lane: 0, step: 4, turn: Math.PI / 3, reach: 1500 },
+  train: {
+    railway: ["rail", "light_rail", "narrow_gauge"],
+    lane: 0,
+    step: 4,
+    turn: Math.PI / 4,
+    reach: 3000,
+  },
   car: {
     highway: ["motorway", "trunk", "primary", "secondary", "tertiary"].flatMap((h) => [
       h,
@@ -29,7 +39,8 @@ const KINDS = {
     ]),
     lane: 1.8,
     step: 8,
-    shortest: 100,
+    turn: (2 * Math.PI) / 3,
+    reach: 0,
   },
 };
 const config = KINDS[KIND];
@@ -40,7 +51,12 @@ const STEP = config.step; // metres between points
 const ON_DECK = 3; // metres: a bridge deck this close to the vehicle's height carries it
 const NEAR_BRIDGE = 5; // metres: a track this close to an OSM bridge track is on it (twin tracks)
 const TUNNEL_DEPTH = 20; // metres below the terrain in tunnels, so the terrain hides the vehicles
+const SHORT_TUNNEL = 100; // metres: tunnels shorter than this stay on the terrain
 const SMOOTH = 3; // points averaged on each side, against jumps
+const TERMINUS = 100; // metres: the widest gap between stretches of a line joined straight across
+const SHORTEST_TRIP = 1500; // metres
+const COVER = 0.9; // share of the roads (by length) the round trips should drive
+const TRIES = 3000; // round trips tried at most
 const ROUTES_FILE = join(DATA, `osm-${KIND}s.json`);
 
 if (config.railway && !existsSync(ROUTES_FILE)) {
@@ -54,74 +70,6 @@ if (config.railway && !existsSync(ROUTES_FILE)) {
   if (!res.ok) throw new Error(`Overpass: ${res.status}`);
   writeFileSync(ROUTES_FILE, Buffer.from(await res.arrayBuffer()));
 }
-const routes = config.railway
-  ? JSON.parse(readFileSync(ROUTES_FILE, "utf8")).elements.filter(
-      (el) => el.type === "relation" && el.tags.ref,
-    )
-  : streets();
-
-// Roads and paths as routes like the OSM relations: ways of the same name joined where they share
-// an end node, oriented along the way of travel, one route per direction (one for one-way ways).
-function streets() {
-  const ways = osm
-    .filter((el) => el.type === "way" && isWay(el.tags) && el.tags.area !== "yes")
-    .map((way) => {
-      const backwards = way.tags.oneway === "-1";
-      return {
-        name: way.tags.name ?? way.tags.ref ?? `way ${way.id}`,
-        oneway: backwards || way.tags.oneway === "yes" || way.tags.junction === "roundabout",
-        nodes: backwards ? way.nodes.toReversed() : way.nodes,
-        geometry: backwards ? way.geometry.toReversed() : way.geometry,
-        tags: way.tags,
-      };
-    });
-  const byNode = new Map();
-  for (const way of ways)
-    for (const node of [way.nodes[0], way.nodes.at(-1)])
-      byNode.set(node, [...(byNode.get(node) ?? []), way]);
-  const used = new Set();
-  const out = [];
-  for (const first of ways) {
-    if (used.has(first)) continue;
-    used.add(first);
-    const piece = (way, forward) =>
-      forward
-        ? { geometry: way.geometry, tags: way.tags, start: way.nodes[0], end: way.nodes.at(-1) }
-        : {
-            geometry: way.geometry.toReversed(),
-            tags: way.tags,
-            start: way.nodes.at(-1),
-            end: way.nodes[0],
-          };
-    const chain = [piece(first, true)];
-    // Extend at the end, then at the start, with unused ways of the same name and one-wayness.
-    for (const atEnd of [true, false])
-      for (;;) {
-        const node = atEnd ? chain.at(-1).end : chain[0].start;
-        const next = byNode
-          .get(node)
-          .find((w) => !used.has(w) && w.name === first.name && w.oneway === first.oneway);
-        if (!next) break;
-        // Turn the next way to continue the chain; a one-way way only if it already does.
-        const forward = atEnd ? next.nodes[0] === node : next.nodes.at(-1) === node;
-        if (!forward && next.oneway) break;
-        used.add(next);
-        if (atEnd) chain.push(piece(next, forward));
-        else chain.unshift(piece(next, forward));
-      }
-    const members = chain.map(({ geometry, tags }) => ({ type: "way", geometry, tags }));
-    out.push({ tags: { ref: `${first.name} →`, name: first.name }, members });
-    if (!first.oneway)
-      out.push({
-        tags: { ref: `${first.name} ←`, name: first.name },
-        members: members
-          .toReversed()
-          .map((m) => ({ type: "way", geometry: m.geometry.toReversed(), tags: m.tags })),
-      });
-  }
-  return out;
-}
-
 // Each way decides by its own OSM tags whether it is on a bridge or in a tunnel; through a
 // building ("building_passage") it stays at street level. Route members come without tags.
 const tagsOf = new Map(osm.filter((el) => el.type === "way").map((el) => [el.id, el.tags ?? {}]));
@@ -159,76 +107,240 @@ const near = (cells, p) => {
 };
 const top = bridgeTop(new Float32Array(new Uint8Array(readFileSync(BRIDGES_FILE)).buffer));
 
-const meta = [];
-const points = [];
-for (const route of routes) {
-  // The track ways in order, each turned to continue where the previous one ends.
-  const ways = route.members.filter(
-    (m) => m.type === "way" && !m.role && m.geometry?.some(Boolean),
-  );
-  const same = (a, b) => a.lat === b.lat && a.lon === b.lon;
-  // { x, z, ll: the OSM point, gap: not joined to the point before, bridge, tunnel: of its way }
-  const track = [];
-  ways.forEach((way, i) => {
-    let g = way.geometry.filter(Boolean); // nodes outside the query box are null
-    const next = ways[i + 1]?.geometry.filter(Boolean);
-    const joinsNext = (end) => next && (same(end, next[0]) || same(end, next.at(-1)));
-    const prev = track.at(-1)?.ll;
-    if (prev ? !same(prev, g[0]) && same(prev, g.at(-1)) : !joinsNext(g.at(-1)) && joinsNext(g[0]))
-      g = g.toReversed();
-    const joined = prev && same(prev, g[0]);
-    const tags = way.tags ?? tagsOf.get(way.ref) ?? {};
-    const [bridge, tunnel] = [onBridge(tags), inTunnel(tags)];
-    for (const [k, p] of (joined ? g.slice(1) : g).entries()) {
-      const [e, n] = toLV95(p);
-      track.push({ x: toX(e), z: toZ(n), ll: p, gap: k === 0 && prev && !joined, bridge, tunnel });
-    }
+// The network: the OSM nodes inside the area and the directed edges between them along the ways,
+// one-way ways (and roundabouts) only forwards.
+const inside = (p) =>
+  p.x >= toX(E_MIN) && p.x <= toX(E_MAX) && p.z >= toZ(N_MAX) && p.z <= toZ(N_MIN);
+const nodes = new Map(); // id -> { x, z }
+const edges = new Map(); // id -> [{ from, to, tags, length }] leaving it
+// For trams and trains also every way of their relations, whatever its tags (a track under
+// construction, one of another kind of railway).
+const relations = config.railway
+  ? JSON.parse(readFileSync(ROUTES_FILE, "utf8")).elements.filter(
+      (el) => el.type === "relation" && el.tags.ref,
+    )
+  : [];
+const members = new Set(relations.flatMap((r) => r.members.map((m) => m.type === "way" && m.ref)));
+const ways = osm.filter(
+  (el) => el.type === "way" && ((isWay(el.tags) && el.tags.area !== "yes") || members.has(el.id)),
+);
+for (const way of ways) {
+  way.nodes.forEach((id, i) => {
+    if (!way.geometry[i]) return; // outside the query box
+    const [e, n] = toLV95(way.geometry[i]);
+    const p = { x: toX(e), z: toZ(n) };
+    if (inside(p)) nodes.set(id, p);
   });
-  // Separate paths inside the area, split where the track leaves it or two ways do not join.
-  const inside = (p) =>
-    p.x >= toX(E_MIN) && p.x <= toX(E_MAX) && p.z >= toZ(N_MAX) && p.z <= toZ(N_MIN);
-  let piece = [];
-  for (const p of track) {
-    if (p.gap || !inside(p)) {
-      addPath(piece, route.tags);
-      piece = [];
-    }
-    if (inside(p)) piece.push(p);
+  const { oneway, junction } = way.tags;
+  const ahead = oneway !== "-1";
+  const back = !["yes", "1", "true", "-1"].includes(oneway) && junction !== "roundabout";
+  const add = (from, to) => {
+    const length = Math.hypot(
+      nodes.get(to).x - nodes.get(from).x,
+      nodes.get(to).z - nodes.get(from).z,
+    );
+    if (!edges.has(from)) edges.set(from, []);
+    edges.get(from).push({ from, to, tags: way.tags, length });
+  };
+  for (let i = 1; i < way.nodes.length; i++) {
+    const [a, b] = [way.nodes[i - 1], way.nodes[i]];
+    if (a === b || !nodes.has(a) || !nodes.has(b)) continue;
+    if (ahead) add(a, b);
+    if (back) add(b, a);
   }
-  addPath(piece, route.tags);
+}
+// The angle (radians) a vehicle turns going on from edge e to edge f.
+function turn(e, f) {
+  const [a, b, c] = [nodes.get(e.from), nodes.get(e.to), nodes.get(f.to)];
+  const [ux, uz, vx, vz] = [b.x - a.x, b.z - a.z, c.x - b.x, c.z - b.z];
+  const cos = (ux * vx + uz * vz) / (Math.hypot(ux, uz) * Math.hypot(vx, vz) || 1);
+  return Math.acos(Math.min(Math.max(cos, -1), 1));
+}
+// Where a vehicle may go on from edge e: never back, and turning by at most config.turn.
+const onwards = (e) =>
+  (edges.get(e.to) ?? []).filter((f) => f.to !== e.from && turn(e, f) <= config.turn);
+const edge = (from, to) => edges.get(from)?.find((e) => e.to === to);
+// The shortest way (node ids after e.to) from edge e to node target, arriving so that it may go
+// on to node then; null if there is none within config.reach metres.
+function route(e, target, then) {
+  const best = new Map([[e, 0]]);
+  const before = new Map();
+  const queue = [[0, e]];
+  while (queue.length) {
+    queue.sort((p, q) => q[0] - p[0]);
+    const [length, f] = queue.pop();
+    if (length > best.get(f)) continue;
+    if (f !== e && f.to === target) {
+      const next = edge(target, then);
+      if (!next || (next.to !== f.from && turn(f, next) <= config.turn)) {
+        const way = [];
+        for (let g = f; g !== e; g = before.get(g)) way.unshift(g.to);
+        return way;
+      }
+    }
+    for (const g of onwards(f)) {
+      const total = length + g.length;
+      if (total > config.reach || total >= (best.get(g) ?? Infinity)) continue;
+      best.set(g, total);
+      before.set(g, f);
+      queue.push([total, g]);
+    }
+  }
+  return null;
+}
+// Trams and trains: per line the longest pair of OSM relations there and back (from and to
+// swapped) that closes a loop, each in the order of its track ways. Each stretch inside the area
+// joins the next one (at the end of the line, the way back, where it comes back into the area)
+// along the network, by a turning loop, or where OSM has none, straight across a gap of at most
+// TERMINUS. Lines without such a pair are left out.
+function lines() {
+  const byId = new Map(ways.map((way) => [way.id, way]));
+  // The stretches inside the area of a relation: runs of node ids.
+  const stretches = (relation) => {
+    const members = relation.members
+      .filter((m) => m.type === "way" && !m.role && byId.has(m.ref))
+      .map((m) => byId.get(m.ref).nodes);
+    const ids = [];
+    members.forEach((way, i) => {
+      const last = ids.at(-1);
+      const next = members[i + 1] ?? [];
+      const joinsNext = (id) => id === next[0] || id === next.at(-1);
+      const turned =
+        last === way.at(-1) || (last !== way[0] && !joinsNext(way.at(-1)) && joinsNext(way[0]));
+      const ordered = turned ? way.toReversed() : way;
+      ids.push(...(ordered[0] === last ? ordered.slice(1) : ordered));
+    });
+    const runs = [[]];
+    for (const id of ids)
+      if (nodes.has(id)) runs.at(-1).push(id);
+      else if (runs.at(-1).length) runs.push([]);
+    return runs.filter((run) => run.length > 1);
+  };
+  // The node ids of the loop through the stretches in turn, or null if one does not join the next.
+  const close = (runs) => {
+    const ring = [];
+    for (const [i, run] of runs.entries()) {
+      const next = runs[(i + 1) % runs.length];
+      const [a, b] = run.slice(-2);
+      ring.push(...run.slice(0, -1));
+      if (b === next[0]) continue;
+      ring.push(b);
+      const way = route(edge(a, b) ?? { from: a, to: b }, next[0], next[1]);
+      const [p, q] = [nodes.get(b), nodes.get(next[0])];
+      if (way) ring.push(...way.slice(0, -1));
+      else if (Math.hypot(p.x - q.x, p.z - q.z) > TERMINUS) return null;
+    }
+    return ring;
+  };
+  const loops = [];
+  for (const ref of new Set(relations.map((r) => r.tags.ref))) {
+    const pairs = [];
+    for (const there of relations)
+      for (const back of relations) {
+        const { from, to } = there.tags;
+        if (there.tags.ref !== ref || back.tags.ref !== ref || there === back) continue;
+        if (!from || from !== back.tags.to || to !== back.tags.from) continue;
+        const runs = [...stretches(there), ...stretches(back)];
+        if (runs.length) pairs.push({ tags: there.tags, runs, size: runs.flat().length });
+      }
+    pairs.sort((p, q) => q.size - p.size);
+    const loop = pairs.map(({ tags, runs }) => ({ tags, ring: close(runs) })).find((l) => l.ring);
+    if (loop) loops.push(loop);
+    else console.log(`line ${ref} left out: no pair of relations there and back closes a loop`);
+  }
+  return loops;
 }
 
-function addPath(way, tags) {
-  // Each direction on the right of the way's middle (the right of (fx, fz) is (-fz, fx)).
-  const track = way.map((p, i) => {
-    const [a, b] = [way[Math.max(i - 1, 0)], way[Math.min(i + 1, way.length - 1)]];
+// Cars: round trips through the road network, as many as cover most of it. Each starts on a road
+// not driven yet and goes on at random, mostly straight on and preferring roads not driven yet,
+// until it comes back onto a road it took before: the loop is the trip from there. Loops shorter
+// than SHORTEST_TRIP are not taken.
+function trips() {
+  let seed = 1;
+  const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const all = [...edges.values()].flat();
+  const total = all.reduce((sum, e) => sum + e.length, 0);
+  const driven = new Set();
+  let covered = 0;
+  const loops = [];
+  for (let attempt = 0; attempt < TRIES && covered < COVER * total; attempt++) {
+    const open = all.filter((e) => !driven.has(e));
+    const trip = [open[Math.floor(random() * open.length)]];
+    const at = new Map([[trip[0], 0]]); // edge -> its index in the trip
+    const along = [0]; // metres before each edge of the trip
+    for (let step = 0; step < 5000; step++) {
+      const e = trip.at(-1);
+      const length = along.at(-1) + e.length;
+      // Going on to an edge taken before closes the loop from there; only if it is long enough.
+      const options = onwards(e).filter(
+        (f) => !at.has(f) || length - along[at.get(f)] >= SHORTEST_TRIP,
+      );
+      if (!options.length) break;
+      const weights = options.map(
+        (f) => (driven.has(f) ? 1 : 5) * ((1 + Math.cos(turn(e, f))) ** 2 + 0.05),
+      );
+      let r = random() * weights.reduce((sum, w) => sum + w, 0);
+      const f = options.find((_, i) => (r -= weights[i]) < 0) ?? options.at(-1);
+      if (at.has(f)) {
+        const loop = trip.slice(at.get(f));
+        for (const g of loop)
+          if (!driven.has(g)) {
+            driven.add(g);
+            covered += g.length;
+          }
+        loops.push({ tags: { ref: `Rundkurs ${loops.length + 1}` }, loop });
+        break;
+      }
+      at.set(f, trip.length);
+      trip.push(f);
+      along.push(length);
+    }
+  }
+  console.log(`${((100 * covered) / total).toFixed(0)} % of the roads driven`);
+  // Each loop's share of the roads: those it shares with others count by their part.
+  const times = new Map();
+  for (const { loop } of loops) for (const e of loop) times.set(e, (times.get(e) ?? 0) + 1);
+  return loops.map(({ tags, loop }) => ({
+    tags,
+    ring: loop.map((e) => e.from),
+    share: loop.reduce((sum, e) => sum + e.length / times.get(e), 0),
+  }));
+}
+
+// The points of a loop of node ids, about STEP apart: each direction on the right of the way's
+// middle, by the way of the segment (that of its end point) underground in a tunnel, on a bridge
+// deck at about the height so far (not one passed under), otherwise on the terrain, or left open
+// (NaN) on an OSM bridge without a deck, then run straight across; smoothed. Null if no height is
+// known anywhere (all on OSM bridges without a deck).
+function sample(ring) {
+  const track = [...ring, ring[0]].map((id, i, all) => {
+    const tags = (i && edge(all[i - 1], id)?.tags) || {};
+    return { ...nodes.get(id), bridge: onBridge(tags), tunnel: inTunnel(tags) };
+  });
+  // The right of (fx, fz) is (-fz, fx); the neighbours go round the loop.
+  const n = track.length - 1;
+  const shifted = track.map((p, i) => {
+    const [a, b] = [track[(i - 1 + n) % n], track[(i + 1) % n]];
     const length = Math.hypot(b.x - a.x, b.z - a.z) || 1;
     return {
+      ...p,
       x: p.x - ((b.z - a.z) / length) * config.lane,
       z: p.z + ((b.x - a.x) / length) * config.lane,
-      bridge: p.bridge,
-      tunnel: p.tunnel,
     };
   });
-  const length = track.reduce(
-    (sum, p, i) => sum + (i && Math.hypot(p.x - track[i - 1].x, p.z - track[i - 1].z)),
-    0,
-  );
-  if (length < config.shortest) return; // scraps at the edge of the area, short side ways
-  // Points every STEP metres, by the way of the segment (that of its end point): underground in
-  // a tunnel, on a bridge deck at about the height so far (not one passed under), otherwise on the
-  // terrain, or left open (NaN) on an OSM bridge without a deck.
-  const start = points.length / 3;
+  const points = [];
+  const tunnels = []; // indices of the points in tunnels, ascending
   let carry = 0; // distance into the current segment of the next point
-  for (let i = 1; i < track.length; i++) {
-    const [a, b] = [track[i - 1], track[i]];
+  for (let i = 1; i < shifted.length; i++) {
+    const [a, b] = [shifted[i - 1], shifted[i]];
     const length = Math.hypot(b.x - a.x, b.z - a.z);
-    for (; carry <= length; carry += STEP) {
+    for (; carry < length; carry += STEP) {
       const t = carry / length;
       const p = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
       const ground = heightAt(p.x, p.z);
       const deck = top(p);
-      const last = points.findLast((v, k) => k % 3 === 1 && k >= start * 3 && !Number.isNaN(v));
+      const last = points.findLast((q) => !Number.isNaN(q.y))?.y;
+      if (b.tunnel) tunnels.push(points.length);
       const y = b.tunnel
         ? ground - TUNNEL_DEPTH
         : Math.abs(deck - (last ?? ground)) < ON_DECK
@@ -236,83 +348,77 @@ function addPath(way, tags) {
           : b.bridge || near(bridgeCells, p)
             ? NaN
             : ground;
-      points.push(p.x, y, p.z);
+      points.push({ ...p, y });
     }
     carry -= length;
   }
-  // No height known anywhere (all on OSM bridges without a deck): left out.
-  if (points.findLastIndex((v, k) => k % 3 === 1 && k >= start * 3 && !Number.isNaN(v)) < 0) {
-    points.length = start * 3;
-    return;
+  // Short tunnels (underpasses, which the terrain grid fills) stay on the terrain, so nothing
+  // vanishes in them.
+  for (let k = 0; k < tunnels.length;) {
+    let j = k + 1;
+    while (j < tunnels.length && tunnels[j] === tunnels[j - 1] + 1) j++;
+    if ((j - k) * STEP < SHORT_TUNNEL)
+      for (const i of tunnels.slice(k, j)) points[i].y = heightAt(points[i].x, points[i].z);
+    k = j;
   }
-  // Open stretches run straight between the heights before and after them.
-  for (let i = start; i < points.length / 3; i++) {
-    if (!Number.isNaN(points[3 * i + 1])) continue;
+  if (points.every((p) => Number.isNaN(p.y))) return null;
+  for (let i = 0; i < points.length; i++) {
+    if (!Number.isNaN(points[i].y)) continue;
     let j = i;
-    while (j < points.length / 3 && Number.isNaN(points[3 * j + 1])) j++;
-    const before = i > start ? points[3 * (i - 1) + 1] : points[3 * j + 1];
-    const after = j < points.length / 3 ? points[3 * j + 1] : before;
+    while (j < points.length && Number.isNaN(points[j].y)) j++;
+    const before = i > 0 ? points[i - 1].y : points[j].y;
+    const after = j < points.length ? points[j].y : before;
     for (let k = i; k < j; k++)
-      points[3 * k + 1] = before + ((after - before) * (k - i + 1)) / (j - i + 1);
+      points[k].y = before + ((after - before) * (k - i + 1)) / (j - i + 1);
     i = j;
   }
-  const ys = [];
-  for (let i = start; i < points.length / 3; i++) ys.push(points[3 * i + 1]);
-  ys.forEach((_, i) => {
-    const window = ys.slice(Math.max(0, i - SMOOTH), i + SMOOTH + 1);
-    points[3 * (start + i) + 1] = window.reduce((sum, y) => sum + y, 0) / window.length;
+  const ys = points.map((p) => p.y);
+  points.forEach((p, i) => {
+    let sum = 0;
+    for (let k = -SMOOTH; k <= SMOOTH; k++) sum += ys[(i + k + ys.length) % ys.length];
+    p.y = sum / (2 * SMOOTH + 1);
   });
-  const count = points.length / 3 - start;
-  meta.push({
-    ref: tags.ref,
-    name: tags.name,
-    operator: tags.operator,
-    colour: tags.colour,
+  return points;
+}
+
+// Each loop with evenly spaced points, about STEP apart.
+const out = [];
+const routesOut = [];
+for (const { tags, ring, share } of KIND === "car" ? trips() : lines()) {
+  const points = sample(ring);
+  if (!points) continue;
+  const closed = [...points, points[0]];
+  const along = [0];
+  for (let i = 1; i < closed.length; i++)
+    along.push(
+      along[i - 1] + Math.hypot(closed[i].x - closed[i - 1].x, closed[i].z - closed[i - 1].z),
+    );
+  const length = along.at(-1);
+  const count = Math.max(3, Math.round(length / STEP));
+  const start = out.length / 3;
+  for (let k = 0, i = 0; k < count; k++) {
+    const s = (k * length) / count;
+    while (along[i + 1] < s) i++;
+    const t = (s - along[i]) / (along[i + 1] - along[i] || 1);
+    const [a, b] = [closed[i], closed[i + 1]];
+    out.push(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+  }
+  const { ref, name, operator, colour } = tags;
+  routesOut.push({
+    ref,
+    name,
+    operator,
+    colour,
     start,
     count,
+    length: Math.round(length * 10) / 10,
+    share: share && Math.round(share), // metres of roads that are its own (round trips)
   });
 }
-// Per line, drop variants whose track a longer variant in the same direction mostly covers
-// already, so vehicles do not run on top of each other.
-const NEAR = 6; // metres between points on the same track
-const COVERED = 0.7; // share of a variant's points that makes it a duplicate
-const sorted = meta.toSorted((a, b) => b.count - a.count);
-const kept = [];
-const cells = new Map(); // "ref cx cz" -> [x, z, dx, dz] of kept points
-const point = (i) => [points[3 * i], points[3 * i + 2]];
-for (const path of sorted) {
-  const own = [];
-  let covered = 0;
-  for (let i = path.start; i < path.start + path.count; i++) {
-    const [x, z] = point(i);
-    const [nx, nz] = point(Math.min(i + 1, path.start + path.count - 1));
-    const [px, pz] = point(Math.max(i - 1, path.start));
-    const [dx, dz] = [nx - px, nz - pz];
-    const [cx, cz] = [Math.floor(x / NEAR), Math.floor(z / NEAR)];
-    own.push([`${path.ref} ${cx} ${cz}`, [x, z, dx, dz]]);
-    const near = [-1, 0, 1].some((i) =>
-      [-1, 0, 1].some((j) =>
-        (cells.get(`${path.ref} ${cx + i} ${cz + j}`) ?? []).some(
-          ([qx, qz, qdx, qdz]) => Math.hypot(qx - x, qz - z) < NEAR && qdx * dx + qdz * dz > 0, // same direction
-        ),
-      ),
-    );
-    if (near) covered++;
-  }
-  if (covered / path.count >= COVERED) continue;
-  kept.push(path);
-  for (const [key, value] of own) cells.set(key, [...(cells.get(key) ?? []), value]);
-}
-const out = [];
-const routesOut = kept.map(({ start, count, ...path }) => {
-  const at = out.length / 3;
-  out.push(...points.slice(3 * start, 3 * (start + count)));
-  return { ...path, start: at, count };
-});
 console.log(
-  `${routes.length} routes, ${routesOut.length} paths kept, ${(((out.length / 3) * STEP) / 1000).toFixed(0)} km`,
+  `${routesOut.length} loops, ${(routesOut.reduce((sum, r) => sum + r.length, 0) / 1000).toFixed(0)} km`,
 );
-writeFileSync(join(PUBLIC, `${KIND}s.json`), JSON.stringify({ step: STEP, routes: routesOut }));
+writeFileSync(join(PUBLIC, `${KIND}s.json`), JSON.stringify({ routes: routesOut }));
 writeFileSync(
   join(PUBLIC, `${KIND}s.bin`),
   new Float32Array(out.map((v) => Math.round(v * 10) / 10)),

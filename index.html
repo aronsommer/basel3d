@@ -15,6 +15,7 @@
           13px/1.4 system-ui,
           sans-serif;
         color: #1d242b;
+        -webkit-tap-highlight-color: transparent; /* no blue flash on tap on mobile */
       }
       canvas {
         display: block;
@@ -33,27 +34,27 @@
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
-      #ground {
+      /* The ground button and the closed menu of the lines: the same size, one below the other. */
+      #ground,
+      #lines {
         position: absolute;
-        top: 12px;
         right: 12px;
+        box-sizing: border-box;
+        width: 96px;
         padding: 8px 14px;
         font: inherit;
         color: inherit;
+        text-align: center;
         background: rgba(255, 255, 255, 0.9);
         border: 0;
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+        -webkit-user-select: none; /* Safari */
+        user-select: none;
       }
-      /* Invisible longest label (main.js GROUND_LABELS), so the width never changes. */
-      #ground::after {
-        content: "Luftbild";
-        height: 0;
-        visibility: hidden;
+      #ground {
+        top: 12px;
+        cursor: pointer;
       }
       /* Tiny, in the corner, with a white halo. */
       #credit {
@@ -82,8 +83,77 @@
         color: inherit;
         text-decoration: none;
       }
+      /* The menu of the lines, below the ground button. */
+      #lines {
+        top: 58px;
+      }
+      /* Open: a panel of the lines as wide as they need, left-aligned, the chevron on the right of
+         the title. */
+      #lines[open] {
+        width: auto;
+        min-width: 96px;
+        text-align: left;
+      }
+      #lines summary {
+        list-style: none;
+        cursor: pointer;
+      }
+      #lines summary::-webkit-details-marker {
+        display: none;
+      }
+      #lines[open] summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      /* A chevron: down when closed, up when open. */
+      #lines summary::after {
+        content: "";
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        margin-left: 8px;
+        border-right: 2px solid;
+        border-bottom: 2px solid;
+        transform: translateY(-3px) rotate(45deg);
+      }
+      #lines[open] summary::after {
+        transform: translateY(2px) rotate(-135deg);
+      }
+      /* A box close to its text; "Alle" a little apart from "Trams". */
+      #lines label,
+      #lines .heading {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+      }
+      #lines label {
+        cursor: pointer;
+      }
+      #lines .heading {
+        gap: 16px;
+      }
+      #lines input {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        accent-color: #ff00ff;
+        cursor: pointer;
+      }
+      /* The tram lines one by one below the heading, five in a row, each pair of box and number
+         well apart from the next. */
+      #tram-lines {
+        display: grid;
+        grid-template-columns: repeat(5, auto);
+        justify-content: start;
+        column-gap: 16px;
+        font-variant-numeric: tabular-nums;
+      }
       body:not([data-mode="loading"]) #loading,
-      body:not([data-mode="orbit"]) #ground {
+      body:not([data-mode="orbit"]) #ground,
+      body:not([data-mode="orbit"]) #lines {
         display: none;
       }
     </style>
@@ -91,6 +161,17 @@
   <body data-mode="loading">
     <div id="loading">Lade Basel <span id="progress">0 %</span></div>
     <button id="ground"></button>
+    <details id="lines">
+      <summary>Linien</summary>
+      <div class="heading">
+        Trams
+        <label><input type="checkbox" id="trams" /> Alle</label>
+      </div>
+      <div id="tram-lines"></div>
+      <label><input type="checkbox" data-kind="train" /> Züge</label>
+      <label><input type="checkbox" data-kind="car" /> Autos</label>
+      <label><input type="checkbox" data-kind="ship" /> Schiffe</label>
+    </details>
     <div id="credit">
       <span
         >©

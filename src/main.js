@@ -4,6 +4,9 @@ import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
@@ -213,17 +216,58 @@ scene.add(serpent.group);
 // above the monster's horns (221 m) and 50 m above the taller tower (213 m).
 const helicopter = createHelicopter(1728, -64, 150, 300, 6);
 scene.add(helicopter.group);
-// Trams, trains and cars on their paths (tools/paths.mjs, createMovers).
+// Lines to check the ways of what moves (the menu "Linien"): strong magenta, 4 px wide, drawn over
+// everything. vertices: flat x, y, z of each segment's two ends.
+function checkLines(vertices) {
+  const lines = new LineSegments2(
+    new LineSegmentsGeometry().setPositions(vertices),
+    new LineMaterial({ color: 0xff00ff, linewidth: 4, depthTest: false }),
+  );
+  lines.renderOrder = 1;
+  return lines;
+}
+
+const CELL = 20; // metres of the grids of the traffic's car points
+const cell = (x, z) => (Math.floor(x / CELL) + 1000) * 4096 + Math.floor(z / CELL) + 1000;
+
+// Trams, trains and cars on their loops (tools/paths.mjs, createMovers), sharing the traffic.
+const traffic = {
+  cars: new Map(), // cell -> flat [x, z, vehicle, rail, …] of each car's front, centre and back
+  taken: new Map(), // cell -> flat [x, z, …] of the starting vehicles and the space ahead
+  blockers: [], // per vehicle (of all kinds): the vehicle it waits for, or -1
+};
 const movers = MOVER_KINDS.map((kind, i) =>
   createMovers(
     JSON.parse(new TextDecoder().decode(moverFiles[2 * i])),
     new Float32Array(moverFiles[2 * i + 1]),
     kind,
+    traffic,
   ),
 );
+// Moves all vehicles dt seconds on: each notes its cars, looks ahead, then goes if its way is
+// clear. In a ring of vehicles waiting for each other, the first one goes.
+function drive(dt) {
+  for (const list of traffic.cars.values()) list.length = 0;
+  for (const mover of movers) mover.place();
+  for (const mover of movers) mover.look();
+  const { blockers } = traffic;
+  const walks = new Int32Array(blockers.length); // per vehicle: 1 + the vehicle whose walk reached it
+  for (let v = 0; v < blockers.length; v++) {
+    let u = v;
+    while (u >= 0 && !walks[u]) {
+      walks[u] = v + 1;
+      u = blockers[u];
+    }
+    if (u < 0 || walks[u] !== v + 1) continue; // no new ring
+    let first = u;
+    for (let w = blockers[u]; w !== u; w = blockers[w]) first = Math.min(first, w);
+    blockers[first] = -1;
+  }
+  for (const mover of movers) mover.move(dt);
+}
 for (const mover of movers) scene.add(mover.mesh, mover.routes);
 const ships = createShips(new Float32Array(shipsBuffer));
-scene.add(...ships.meshes);
+scene.add(...ships.meshes, ships.route);
 const planes = createPlanes();
 scene.add(...planes.meshes);
 const birds = createBirds();
@@ -372,9 +416,48 @@ function createBirds() {
   };
   return { mesh, update };
 }
-// L shows the tram and train routes as coloured lines above the tracks, to check them.
+// The menu "Linien" shows the loops of the trams (each line on its own), trains and cars and the
+// course of the ships as lines above them, to check them; at first none. "Alle" shows or hides
+// all tram lines (ticked when all are shown); L shows everything, or hides everything if all is.
+const tramGroup = movers[MOVER_KINDS.indexOf("tram")].routes;
+tramGroup.visible = true;
+const tramLines = tramGroup.children.toSorted((a, b) =>
+  a.name.localeCompare(b.name, "de", { numeric: true }),
+);
+const tramBox = document.getElementById("trams");
+const kindLines = {
+  ...Object.fromEntries(MOVER_KINDS.map((kind, i) => [kind, movers[i].routes])),
+  ship: ships.route,
+};
+const kindBoxes = [...document.querySelectorAll("#lines input[data-kind]")];
+const tramBoxes = tramLines.map((line) => {
+  const box = Object.assign(document.createElement("input"), { type: "checkbox" });
+  box.addEventListener("change", () => showTram(line, box.checked));
+  const label = document.createElement("label");
+  label.append(box, line.name);
+  document.getElementById("tram-lines").append(label);
+  return box;
+});
+function showTram(line, on) {
+  line.visible = on;
+  tramBoxes[tramLines.indexOf(line)].checked = on;
+  tramBox.checked = tramLines.every((l) => l.visible);
+}
+for (const line of tramLines) showTram(line, false);
+tramBox.addEventListener("change", () => {
+  const all = tramBox.checked; // showTram changes it on the way
+  for (const line of tramLines) showTram(line, all);
+});
+const showKind = (box, on) => {
+  box.checked = on;
+  kindLines[box.dataset.kind].visible = on;
+};
+for (const box of kindBoxes) box.addEventListener("change", () => showKind(box, box.checked));
 addEventListener("keydown", (e) => {
-  if (e.code === "KeyL") for (const mover of movers) mover.routes.visible = !mover.routes.visible;
+  if (e.code !== "KeyL") return;
+  const all = !(tramBox.checked && kindBoxes.every((box) => box.checked));
+  for (const line of tramLines) showTram(line, all);
+  for (const box of kindBoxes) showKind(box, all);
 });
 
 // Ships on their round course on the Rhine (tools/ships.mjs), which keeps clear of the bridge
@@ -503,27 +586,37 @@ function createShips(course) {
         .setPosition(front);
     }
   };
-  return { meshes: fleet.map((ship) => ship.mesh), update };
+  // The course 3 m above the water, one line segment per pair of points.
+  const vertices = [];
+  for (let i = 1; i < n; i++)
+    for (const j of [i - 1, i])
+      vertices.push(course[3 * j], course[3 * j + 1] + 3, course[3 * j + 2]);
+  const route = checkLines(vertices);
+  route.visible = false;
+  return { meshes: fleet.map((ship) => ship.mesh), route, update };
 }
 
 // What moves along paths (tools/paths.mjs): trams, trains and cars, all called vehicles below.
 // A vehicle has CARS cars (one for road vehicles); each car follows the path on its
 // own, so long vehicles bend in curves. Its variant (say a goods train or a lorry) sets the length,
 // height and colour of its cars. All cars of a kind are instances of one box, in one draw call.
-// Also returns the paths as lines in their line's colour (white for roads), hidden at first.
+// Also returns the paths as lines to check them (checkLines), one per line named by its ref, in a
+// group hidden at first.
 // A vehicle waits while a car of another one is on its own path just ahead: within ALONG of any
 // point every ALONG up to LOOK ahead and at most SIDE beside it, so nothing that joins its path
 // (at a switch or crossing) is missed.
-// Those on the parallel way of the other direction pass; those ahead, at crossings and at the
-// start of the path block. Vehicles start SPACING apart on a path.
-function createMovers({ step, routes }, points, kind) {
+// Those on the parallel way of the other direction pass; those ahead and at crossings block.
+// Trams and trains go first: they wait only for each other, cars for all. Every path is a closed
+// loop that its vehicles run round forever, about SPACING apart (round trips of cars by their
+// share of the roads, so shared roads are not more crowded).
+function createMovers({ routes }, points, kind, traffic) {
   const pick = (r, list) => list[Math.floor(r * list.length) % list.length];
   const KINDS = {
     tram: {
       CARS: 4,
       GAP: 0.6, // metres between cars
       WIDTH: 2.3, // metres
-      SPACING: 500, // metres
+      SPACING: 1500, // metres
       SPEED: 10, // metres per second
       LOOK: 25, // metres
       ALONG: 8, // metres; at least half the distance between a car's front, centre and back
@@ -590,8 +683,6 @@ function createMovers({ step, routes }, points, kind) {
   // Far away the cars grow higher, but at most this much wider, so that cars on neighbouring tracks
   // and lanes never overlap.
   const MAX_WIDER = 1.4;
-  const CELL = 20; // metres of the grids of car points
-  const cell = (x, z) => (Math.floor(x / CELL) + 1000) * 4096 + Math.floor(z / CELL) + 1000;
 
   // A car of length and height 1 along +z, from 0.1 to 1.1 above the path (scaled per car):
   // white (tinted per vehicle), a window band in the third of four rows, a light roof.
@@ -609,38 +700,43 @@ function createMovers({ step, routes }, points, kind) {
   box.deleteAttribute("normal");
   box.deleteAttribute("uv");
 
-  const lines = routes.map(({ start, count, colour, operator }) => ({
+  const lines = routes.map(({ ref, start, count, length, share, operator }) => ({
+    ref,
     start,
     count,
     operator,
-    length: (count - 1) * step,
-    color: new THREE.Color(colour ?? 0xffffff), // of the line, for the path lines
+    length,
+    share: share ?? length,
+    step: length / count, // metres between points
   }));
+  // The point d metres along a line, round and round its loop.
   function at(line, d, out) {
-    const f = Math.min(d / step, line.count - 1.001);
-    const i = line.start + Math.floor(f);
-    const t = f - Math.floor(f);
+    const f = (((d % line.length) + line.length) % line.length) / line.step;
+    const k = Math.min(Math.floor(f), line.count - 1);
+    const t = f - k;
+    const [i, j] = [line.start + k, line.start + ((k + 1) % line.count)];
     return out.set(
-      points[3 * i] + (points[3 * i + 3] - points[3 * i]) * t,
-      points[3 * i + 1] + (points[3 * i + 4] - points[3 * i + 1]) * t,
-      points[3 * i + 2] + (points[3 * i + 5] - points[3 * i + 2]) * t,
+      points[3 * i] + (points[3 * j] - points[3 * i]) * t,
+      points[3 * i + 1] + (points[3 * j + 1] - points[3 * i + 1]) * t,
+      points[3 * i + 2] + (points[3 * j + 2] - points[3 * i + 2]) * t,
     );
   }
 
-  // Vehicles start SPACING apart on each path, fully on it; d is how far each one's front is along
-  // it. Where paths share a way, one that would start on or right behind another is left out.
+  // Vehicles start evenly about SPACING apart on each loop; d is how far each one's front is along
+  // it. Where loops share a way, one that would start on or right behind another (of any kind) is
+  // left out.
   const random = (i) => (Math.abs(Math.sin(i * 12.9898 + 78.233)) * 43758.5453) % 1;
-  const taken = new Map(); // cell -> flat [x, z, …] of the starting vehicles and the space ahead
+  const { taken, cars, blockers } = traffic;
   const spot = new THREE.Vector3();
   const vehicles = [];
-  for (const line of lines)
-    for (let k = 0; ; k++) {
+  for (const line of lines) {
+    const n = Math.max(1, Math.round(line.share / SPACING));
+    for (let k = 0; k < n; k++) {
       const { length, height, color } = variant(line, random(vehicles.length + k * 7919));
       const total = CARS * (length + GAP);
-      const d = total + k * SPACING;
-      if (d > line.length) break;
+      const d = (k * line.length) / n;
       const body = [];
-      for (let s = d - total; s <= Math.min(d + LOOK, line.length); s += Math.min(2, length)) {
+      for (let s = d - total; s <= d + LOOK; s += Math.min(2, length)) {
         at(line, s, spot);
         body.push(spot.x, spot.z);
       }
@@ -660,6 +756,7 @@ function createMovers({ step, routes }, points, kind) {
         taken.get(key).push(body[b], body[b + 1]);
       }
     }
+  }
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const mesh = new THREE.InstancedMesh(box, material, vehicles.length * CARS);
   mesh.frustumCulled = false; // the vehicles move all over the city
@@ -667,22 +764,15 @@ function createMovers({ step, routes }, points, kind) {
     for (let c = 0; c < CARS; c++) mesh.setColorAt(v * CARS + c, vehicle.color);
   });
 
-  // The paths 3 m above the ground, one line segment per pair of points.
-  const vertices = [];
-  const vertexColors = [];
-  for (const line of lines)
-    for (let i = line.start; i < line.start + line.count - 1; i++)
-      for (const j of [i, i + 1]) {
+  // The loops 3 m above the ground, one line segment per pair of points.
+  const routeLines = new THREE.Group();
+  for (const line of lines) {
+    const vertices = [];
+    for (let k = 0; k < line.count; k++)
+      for (const j of [line.start + k, line.start + ((k + 1) % line.count)])
         vertices.push(points[3 * j], points[3 * j + 1] + 3, points[3 * j + 2]);
-        vertexColors.push(line.color.r, line.color.g, line.color.b);
-      }
-  const routeGeometry = new THREE.BufferGeometry();
-  routeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  routeGeometry.setAttribute("color", new THREE.Float32BufferAttribute(vertexColors, 3));
-  const routeLines = new THREE.LineSegments(
-    routeGeometry,
-    new THREE.LineBasicMaterial({ vertexColors: true }),
-  );
+    routeLines.add(Object.assign(checkLines(vertices), { name: line.ref }));
+  }
   routeLines.visible = false;
 
   const [front, back, forward, right, up, ahead, behind] = [...Array(7)].map(
@@ -690,26 +780,31 @@ function createMovers({ step, routes }, points, kind) {
   );
   const yAxis = new THREE.Vector3(0, 1, 0);
   const matrix = new THREE.Matrix4();
-  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  const cars = new Map(); // cell -> flat [x, z, vehicle, …] of each car's front, centre and back
+  // Vehicles by their index in traffic.blockers.
+  const first = blockers.length;
+  blockers.push(...vehicles.map(() => -1));
+  const rail = kind === "car" ? 0 : 1;
   const note = (p, v) => {
     const key = cell(p.x, p.z);
     if (!cars.has(key)) cars.set(key, []);
-    cars.get(key).push(p.x, p.z, v);
+    cars.get(key).push(p.x, p.z, first + v, rail);
   };
+  // The vehicle other than self with a car at the point d metres along line that this kind waits
+  // for, or -1.
   const occupied = (line, d, self) => {
-    at(line, Math.min(d, line.length), ahead);
-    at(line, Math.max(Math.min(d, line.length) - 1, 0), behind);
+    at(line, d, ahead);
+    at(line, d - 1, behind);
     const length = Math.hypot(ahead.x - behind.x, ahead.z - behind.z) || 1;
     const [fx, fz] = [(ahead.x - behind.x) / length, (ahead.z - behind.z) / length];
     for (let i = -1; i <= 1; i++)
       for (let j = -1; j <= 1; j++) {
         const list = cars.get(cell(ahead.x + i * CELL, ahead.z + j * CELL)) ?? [];
-        for (let q = 0; q < list.length; q += 3) {
+        for (let q = 0; q < list.length; q += 4) {
           const [dx, dz] = [list[q] - ahead.x, list[q + 1] - ahead.z];
           if (
             list[q + 2] !== self &&
+            list[q + 3] >= rail &&
             Math.abs(dx * fx + dz * fz) < ALONG &&
             Math.abs(dx * fz - dz * fx) < SIDE
           )
@@ -723,19 +818,11 @@ function createMovers({ step, routes }, points, kind) {
   const FAR = 1500; // metres
   const SLOW = 3;
   let frame = 0;
-  const blockers = new Int32Array(vehicles.length).fill(-1);
-  const walks = new Int32Array(vehicles.length); // per vehicle: 1 + the vehicle whose walk reached it
-  const update = (dt) => {
-    frame++;
-    // Place the cars and note their points.
-    for (const list of cars.values()) list.length = 0;
+  // Places the cars and notes their points.
+  const place = () => {
     vehicles.forEach(({ line, d, length, height }, v) => {
       for (let c = 0; c < CARS; c++) {
         const end = d - c * (length + GAP);
-        if (end - length < 0) {
-          mesh.setMatrixAt(v * CARS + c, hidden); // not yet on the path at its start
-          continue;
-        }
         at(line, end, front);
         at(line, end - length, back);
         forward.subVectors(front, back).normalize();
@@ -755,33 +842,21 @@ function createMovers({ step, routes }, points, kind) {
       }
     });
     mesh.instanceMatrix.needsUpdate = true;
-
-    // Move every vehicle whose way is clear; one at the end of its path goes back to the start
-    // once that is clear. In a ring of vehicles waiting for each other, the first one goes.
+  };
+  // Notes for each vehicle what it waits for.
+  const look = () => {
+    frame++;
     vehicles.forEach(({ line, d, far }, v) => {
       if (far && (v + frame) % SLOW) return;
-      blockers[v] = -1;
-      if (d >= line.length) blockers[v] = occupied(line, LOOK, v);
-      else
-        for (let s = ALONG; s <= LOOK && blockers[v] < 0; s += ALONG)
-          blockers[v] = occupied(line, d + s, v);
+      blockers[first + v] = -1;
+      for (let s = ALONG; s <= LOOK && blockers[first + v] < 0; s += ALONG)
+        blockers[first + v] = occupied(line, d + s, first + v);
     });
-    walks.fill(0);
-    for (let v = 0; v < vehicles.length; v++) {
-      let u = v;
-      while (u >= 0 && !walks[u]) {
-        walks[u] = v + 1;
-        u = blockers[u];
-      }
-      if (u < 0 || walks[u] !== v + 1) continue; // no new ring
-      let first = u;
-      for (let w = blockers[u]; w !== u; w = blockers[w]) first = Math.min(first, w);
-      blockers[first] = -1;
-    }
+  };
+  // Moves each vehicle that waits for none.
+  const move = (dt) => {
     vehicles.forEach((vehicle, v) => {
-      if (blockers[v] >= 0) return;
-      vehicle.d =
-        vehicle.d < vehicle.line.length ? Math.min(vehicle.d + SPEED * dt, vehicle.line.length) : 0; // back to the start
+      if (blockers[first + v] < 0) vehicle.d = (vehicle.d + SPEED * dt) % vehicle.line.length;
     });
   };
   // The front of vehicle v: the camera just ahead of it at eye height, looking 40 m ahead.
@@ -804,7 +879,7 @@ function createMovers({ step, routes }, points, kind) {
     highlighted = v;
     mesh.instanceColor.needsUpdate = true;
   };
-  return { mesh, routes: routeLines, update, cab, vehicleOf, highlight };
+  return { mesh, routes: routeLines, place, look, move, cab, vehicleOf, highlight };
 }
 
 // A low-poly helicopter circling (cx, cz) at the given radius and height (scene metres), banking
@@ -1298,9 +1373,90 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// Start above the city, looking at the Münster.
-orbit.target.set(537, heightAt(537, 99) + 30, 99);
-camera.position.copy(orbit.target).add(new THREE.Vector3(-1500, 1400, 2200));
+// --- The view in the URL like on openstreetmap.org, with bearing and pitch as in MapLibre:
+// #map=zoom/latitude/longitude/bearing/pitch. The point looked at (WGS84); the zoom of a web map
+// (256 px tiles) showing as much ground across the screen's height there; the direction looked in
+// (degrees, 0 north, 90 east) and the tilt (degrees, 0 straight down), both optional (0). Kept up
+// to date while the view changes (at most every VIEW_DELAY ms; not when it did not move, so it
+// does not creep by rounding), read at the start and when the URL changes.
+const VIEW_DELAY = 300;
+// WGS84 <-> scene x, z with swisstopo's approximate formulas for LV95 (about 1 m).
+function fromWGS84(lat, lon) {
+  const p = (lat * 3600 - 169028.66) / 10000;
+  const l = (lon * 3600 - 26782.5) / 10000;
+  const e = 2600072.37 + 211455.93 * l - 10938.51 * l * p - 0.36 * l * p * p - 44.54 * l ** 3;
+  const n =
+    1200147.07 +
+    308807.95 * p +
+    3745.25 * l * l +
+    76.63 * p * p -
+    194.56 * l * l * p +
+    119.79 * p ** 3;
+  return [e - 2611000, 1267400 - n];
+}
+function toWGS84(x, z) {
+  const y = (x + 2611000 - 2600000) / 1e6;
+  const v = (1267400 - z - 1200000) / 1e6;
+  const lon = 2.6779094 + 4.728982 * y + 0.791484 * y * v + 0.1306 * y * v * v - 0.0436 * y ** 3;
+  const lat =
+    16.9023892 +
+    3.238272 * v -
+    0.270978 * y * y -
+    0.002528 * v * v -
+    0.0447 * y * y * v -
+    0.014 * v ** 3;
+  return [(lat * 100) / 36, (lon * 100) / 36];
+}
+// Camera distance (metres) <-> web map zoom at a latitude, for the window's height.
+const EARTH = 40075016.686; // metres around the equator
+const perZoom = (lat) =>
+  (EARTH * Math.cos(THREE.MathUtils.degToRad(lat)) * innerHeight) /
+  (256 * 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+// Sets the view from the URL; false if it holds none.
+function readView() {
+  const values = /^#map=([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?$/.exec(location.hash);
+  const [zoom, lat, lon, bearing, pitch] = values?.slice(1).map((v) => Number(v ?? 0)) ?? [];
+  if (!values || [zoom, lat, lon, bearing, pitch].some((n) => !Number.isFinite(n))) return false;
+  const [x, z] = fromWGS84(lat, lon);
+  const r = THREE.MathUtils.clamp(perZoom(lat) / 2 ** zoom, orbit.minDistance, orbit.maxDistance);
+  const [h, t] = [bearing, THREE.MathUtils.clamp(pitch, 0, 83)].map(THREE.MathUtils.degToRad);
+  orbit.target.set(x, heightAt(x, z) + 30, z);
+  camera.position
+    .copy(orbit.target)
+    .add(
+      new THREE.Vector3(
+        -Math.sin(t) * Math.sin(h),
+        Math.cos(t),
+        Math.sin(t) * Math.cos(h),
+      ).multiplyScalar(r),
+    );
+  fling.set(0, 0, 0);
+  viewShown = [...camera.position.toArray(), ...orbit.target.toArray()].join();
+  return true;
+}
+let viewShown = ""; // camera position and target as last read or written
+let viewWritten = 0; // when the URL was last updated (ms)
+function writeView(time) {
+  if (riding || time - viewWritten < VIEW_DELAY) return;
+  const shown = [...camera.position.toArray(), ...orbit.target.toArray()].join();
+  if (shown === viewShown) return;
+  [viewShown, viewWritten] = [shown, time];
+  const offset = camera.position.clone().sub(orbit.target);
+  const r = offset.length();
+  const [lat, lon] = toWGS84(orbit.target.x, orbit.target.z);
+  const zoom = Math.log2(perZoom(lat) / r);
+  const bearing = Math.round(THREE.MathUtils.radToDeg(Math.atan2(-offset.x, offset.z)) + 360) % 360;
+  const pitch = Math.round(THREE.MathUtils.radToDeg(Math.acos(offset.y / r)));
+  const hash = `#map=${zoom.toFixed(2)}/${lat.toFixed(6)}/${lon.toFixed(6)}/${bearing}/${pitch}`;
+  if (hash !== location.hash) history.replaceState(null, "", hash);
+}
+addEventListener("hashchange", readView);
+
+// Start where the URL says, else above the city, looking at the Münster.
+if (!readView()) {
+  orbit.target.set(537, heightAt(537, 99) + 30, 99);
+  camera.position.copy(orbit.target).add(new THREE.Vector3(-1500, 1400, 2200));
+}
 document.body.dataset.mode = "orbit";
 
 let last = performance.now();
@@ -1308,12 +1464,13 @@ renderer.setAnimationLoop((time) => {
   const dt = Math.min((time - last) / 1000, 0.1);
   last = time;
   if (!riding) updateOrbit(dt);
+  writeView(time);
   updateHover();
   updateTrees();
   water.waterTime.value = time / 1000;
   serpent.update(time / 1000);
   helicopter.update(time / 1000);
-  for (const mover of movers) mover.update(dt);
+  drive(dt);
   if (riding) riding.mover.cab(riding.vehicle, camera);
   ships.update(time / 1000);
   planes.update(time / 1000);
