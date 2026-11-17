@@ -29,13 +29,16 @@ const STRUCTURES = new Set([
 // Road widths in metres per swissTLM3D OBJEKTART that does not start with its width ("6m Strasse").
 const TLM_ROAD_WIDTH = { Autobahn: 12, Autostrasse: 10, Ausfahrt: 6, Einfahrt: 6, Verbindung: 6 };
 
-const all = await bridgeTriangles();
+const { triangles: all, bridges: allBridges, count } = await bridgeTriangles();
 const inside = [];
+const insideBridges = []; // per triangle of inside, the number of its bridge
 for (let t = 0; t < all.length; t += 9) {
   const x = (all[t] + all[t + 3] + all[t + 6]) / 3;
   const z = (all[t + 2] + all[t + 5] + all[t + 8]) / 3;
-  if (x >= toX(E_MIN) && x < toX(E_MAX) && z >= toZ(N_MAX) && z < toZ(N_MIN))
+  if (x >= toX(E_MIN) && x < toX(E_MAX) && z >= toZ(N_MAX) && z < toZ(N_MIN)) {
     inside.push(...all.subarray(t, t + 9));
+    insideBridges.push(allBridges[t / 9]);
+  }
 }
 console.log(`${inside.length / 9} of ${all.length / 9} triangles from Basel-Stadt`);
 
@@ -132,15 +135,20 @@ const simple = crossings.filter(({ points }) =>
 const replaced = (x, z) =>
   simple.some(({ points, width }) => distanceToLine({ x, z }, points) < width / 2 + MODEL_MARGIN);
 const triangles = [];
+const bridges = []; // per triangle, the number of its bridge
 for (let t = 0; t < inside.length; t += 9) {
   const x = (inside[t] + inside[t + 3] + inside[t + 6]) / 3;
   const z = (inside[t + 2] + inside[t + 5] + inside[t + 8]) / 3;
-  if (!replaced(x, z)) triangles.push(...inside.slice(t, t + 9));
+  if (replaced(x, z)) continue;
+  triangles.push(...inside.slice(t, t + 9));
+  bridges.push(insideBridges[t / 9]);
 }
 console.log(`${(inside.length - triangles.length) / 9} of them replaced`);
 
+// Each crossing from swissTLM3D is one bridge, numbered after the canton's.
 const quad = (a, b, c, d) => triangles.push(...a, ...b, ...c, ...a, ...c, ...d);
-for (const { points, width } of simple)
+for (const [n, { points, width }] of simple.entries()) {
+  const start = triangles.length;
   for (let i = 1; i < points.length; i++) {
     const [p, q] = [points[i - 1], points[i]];
     const scale = width / 2 / Math.hypot(q.x - p.x, q.z - p.z);
@@ -151,19 +159,28 @@ for (const { points, width } of simple)
     for (const side of [1, -1])
       quad(at(p, side, -THICKNESS), at(q, side, -THICKNESS), at(q, side, WALL), at(p, side, WALL));
   }
+  for (let t = start; t < triangles.length; t += 9) bridges.push(count + n);
+}
 console.log(`${simple.length} crossings from swissTLM3D, ${triangles.length / 9} triangles in all`);
 // All triangles for tools/map.mjs, which leaves out the OSM bridges below them.
 writeFileSync(BRIDGES_FILE, new Float32Array(triangles));
 
+// Each vertex's bridge number as _BUILDING, as in public/basel.glb, so the viewer treats both
+// alike.
 const doc = new Document();
-const position = doc
-  .createAccessor()
-  .setType("VEC3")
-  .setArray(new Float32Array(triangles))
-  .setBuffer(doc.createBuffer());
+const buffer = doc.createBuffer();
+const accessor = (type, array) =>
+  doc.createAccessor().setType(type).setArray(array).setBuffer(buffer);
 const primitive = doc
   .createPrimitive()
-  .setAttribute("POSITION", position)
+  .setAttribute("POSITION", accessor("VEC3", new Float32Array(triangles)))
+  .setAttribute(
+    "_BUILDING",
+    accessor(
+      "SCALAR",
+      Uint16Array.from({ length: bridges.length * 3 }, (_, v) => bridges[Math.floor(v / 3)]),
+    ),
+  )
   .setMaterial(doc.createMaterial("bridge"));
 const mesh = doc.createMesh("bridges").addPrimitive(primitive);
 doc.createScene("Bridges").addChild(doc.createNode("bridges").setMesh(mesh));

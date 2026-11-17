@@ -14,7 +14,7 @@ const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
-const HIGHLIGHT = new THREE.Color(0x4fc3ff); // tint of the vehicle under the mouse
+const HIGHLIGHT = new THREE.Color(0x00ffff); // colour of what can be clicked, under the mouse
 // Far from the camera, moving things grow so they can be seen from above: from BOOST_FROM metres
 // on, linearly up to BOOST_MAX times. Up close they have their real size. Vehicles on tracks and
 // ships grow only in width and height, so their lengths and distances stay right; vehicles on
@@ -192,6 +192,51 @@ for (const { scene: model } of [buildings, bridges]) {
   });
   scene.add(model);
 }
+// Buildings and bridges have a number per vertex (_building, tools/buildings.mjs and bridges.mjs);
+// the bridges' are moved after the buildings', so each number is one building or bridge.
+let buildingCount = 0;
+buildings.scene.traverse((o) => {
+  if (!o.isMesh) return;
+  const number = o.geometry.attributes._building;
+  for (let i = 0; i < number.count; i++)
+    buildingCount = Math.max(buildingCount, number.getX(i) + 1);
+});
+bridges.scene.traverse((o) => {
+  if (!o.isMesh) return;
+  const number = o.geometry.attributes._building;
+  for (let i = 0; i < number.count; i++) number.setX(i, number.getX(i) + buildingCount);
+});
+// The building or bridge under the mouse (its number; -1 for none) shows HIGHLIGHT.
+const hoveredBuilding = { value: -1 };
+const highlightBuildings = (shader) => {
+  shader.uniforms.hoveredBuilding = hoveredBuilding;
+  highlightShader(
+    shader,
+    "_building == hoveredBuilding",
+    "attribute float _building;\nuniform float hoveredBuilding;",
+  );
+};
+for (const material of Object.values(materials)) material.onBeforeCompile = highlightBuildings;
+// Makes a Lambert shader show HIGHLIGHT instead of all colours (vertex and instance ones too),
+// still shaded, where the vertex shader condition `when` holds; `declare` declares what it uses.
+function highlightShader(shader, when, declare) {
+  shader.uniforms.highlightColor = { value: HIGHLIGHT };
+  shader.vertexShader = shader.vertexShader
+    .replace("#include <common>", `#include <common>\n${declare}\nvarying float vHighlight;`)
+    .replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>\nvHighlight = ${when} ? 1.0 : 0.0;`,
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      "#include <common>",
+      "#include <common>\nuniform vec3 highlightColor;\nvarying float vHighlight;",
+    )
+    .replace(
+      "#include <color_fragment>",
+      "#include <color_fragment>\nif (vHighlight > 0.5) diffuseColor.rgb = highlightColor;",
+    );
+}
 
 const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
@@ -337,7 +382,7 @@ function createPlanes() {
     { height: 700 - 250, direction: 1 },
     { height: 950 - 250, direction: -1 },
   ].map((flight) => {
-    const mesh = new THREE.Mesh(geometry, material.clone()); // its own, tinted under the mouse
+    const mesh = new THREE.Mesh(geometry, material.clone()); // its own, highlighted under the mouse
     mesh.rotation.order = "YXZ"; // heading, then bank in the plane's frame
     return { ...flight, mesh };
   });
@@ -734,7 +779,7 @@ function createShips(course) {
 
 // Riding along on single objects (ships, planes, the helicopter, the sea monster), each { object,
 // materials, eye, ahead } (points in the object's own frame): the camera at eye, looking at ahead
-// with the horizon level; under the mouse the materials are tinted.
+// with the horizon level; under the mouse the materials show HIGHLIGHT.
 function riders(list) {
   const colors = list.map(({ materials }) => materials.map((m) => m.color.clone()));
   const ahead = new THREE.Vector3();
@@ -750,9 +795,12 @@ function riders(list) {
     },
     highlight: (v) => {
       if (v === highlighted) return;
-      list.forEach(({ materials }, i) =>
-        materials.forEach((m, k) => m.color.copy(colors[i][k]).lerp(HIGHLIGHT, i === v ? 0.6 : 0)),
-      );
+      for (const i of [highlighted, v])
+        list[i]?.materials.forEach((m, k) => {
+          m.color.copy(i === v ? HIGHLIGHT : colors[i][k]);
+          m.vertexColors = i !== v; // all have vertex colours
+          m.needsUpdate = true;
+        });
       highlighted = v;
     },
   };
@@ -916,6 +964,16 @@ function createMovers({ routes }, points, kind, traffic) {
     }
   }
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // The cars of the vehicle under the mouse, instances highlightFrom to highlightTo - 1.
+  const highlighted = { highlightFrom: { value: 0 }, highlightTo: { value: 0 } };
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, highlighted);
+    highlightShader(
+      shader,
+      "gl_InstanceID >= highlightFrom && gl_InstanceID < highlightTo",
+      "uniform int highlightFrom, highlightTo;",
+    );
+  };
   const mesh = new THREE.InstancedMesh(box, material, vehicles.length * CARS);
   mesh.frustumCulled = false; // the vehicles move all over the city
   vehicles.forEach((vehicle, v) => {
@@ -1039,16 +1097,10 @@ function createMovers({ routes }, points, kind, traffic) {
     return line.parts.findLast((part) => part.from <= d);
   };
   const vehicleOf = (hit) => Math.floor(hit.instanceId / CARS);
-  // Tints vehicle v (-1: none) towards HIGHLIGHT; the one tinted before gets its colour back.
-  let highlighted = -1;
+  // Shows vehicle v in HIGHLIGHT; -1: none (instances -CARS to -1 do not exist).
   const highlight = (v) => {
-    if (v === highlighted) return;
-    for (let c = 0; c < CARS; c++) {
-      if (highlighted >= 0) mesh.setColorAt(highlighted * CARS + c, vehicles[highlighted].color);
-      if (v >= 0) mesh.setColorAt(v * CARS + c, color.copy(vehicles[v].color).lerp(HIGHLIGHT, 0.6));
-    }
-    highlighted = v;
-    mesh.instanceColor.needsUpdate = true;
+    highlighted.highlightFrom.value = v * CARS;
+    highlighted.highlightTo.value = (v + 1) * CARS;
   };
   return {
     mesh,
@@ -1600,8 +1652,55 @@ function vehicleOn(clientX, clientY) {
   return { ride, vehicle: ride.vehicleOf(hit) };
 }
 
-// The vehicle under the mouse (but the one ridden) is tinted and gets the hand cursor; checked at
-// most once per frame, only after the mouse moved, and not while dragging.
+// The number of the building or bridge at a screen point, or -1. They are drawn into one pixel
+// with their number + 1 as colour (0: none); the terrain only hides what is behind it. Faster
+// than a raycast through millions of triangles, so it can follow the mouse.
+const pickScene = new THREE.Scene();
+const pickTarget = new THREE.WebGLRenderTarget(1, 1);
+const pickPixel = new Uint8Array(4);
+const numberMaterial = new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
+  vertexShader: /* glsl */ `
+    attribute float _building;
+    varying float vNumber;
+    void main() {
+      vNumber = _building + 1.0;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    varying float vNumber;
+    void main() {
+      float n = floor(vNumber + 0.5);
+      gl_FragColor = vec4(floor(n / 256.0), mod(n, 256.0), 0.0, 255.0) / 255.0;
+    }`,
+});
+const hideMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
+for (const [model, material] of [
+  [buildings.scene, numberMaterial],
+  [bridges.scene, numberMaterial],
+  [terrain, hideMaterial],
+])
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    const copy = new THREE.Mesh(o.geometry, material); // shares the geometry
+    o.updateWorldMatrix(true, false);
+    copy.matrixAutoUpdate = false;
+    copy.matrix.copy(o.matrixWorld);
+    pickScene.add(copy);
+  });
+function buildingAt(clientX, clientY) {
+  camera.setViewOffset(innerWidth, innerHeight, clientX, clientY, 1, 1);
+  renderer.setRenderTarget(pickTarget);
+  renderer.render(pickScene, camera);
+  renderer.setRenderTarget(null);
+  camera.clearViewOffset();
+  renderer.readRenderTargetPixels(pickTarget, 0, 0, 1, 1, pickPixel);
+  return pickPixel[0] * 256 + pickPixel[1] - 1;
+}
+
+// The vehicle under the mouse (but the one ridden), else the building or bridge, shows HIGHLIGHT
+// and gets the hand cursor; checked at most once per frame, only after the mouse moved, and not
+// while dragging.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
@@ -1610,9 +1709,11 @@ function updateHover() {
   if (!hover) return;
   let found = pointers.size ? null : vehicleAt(hover.x, hover.y);
   if (found?.ride === riding?.ride && found?.vehicle === riding?.vehicle) found = null;
+  const building = pointers.size || found ? -1 : buildingAt(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  renderer.domElement.style.cursor = found ? "pointer" : "";
+  hoveredBuilding.value = building;
+  renderer.domElement.style.cursor = found || building >= 0 ? "pointer" : "";
 }
 
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
@@ -1732,7 +1833,9 @@ document.body.dataset.mode = "orbit";
 // the screen they stay opaque, as the canvas has alpha.
 const greyTarget = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
 const tramAlpha = { value: 1 };
+const highlightTrams = trams.mesh.material.onBeforeCompile; // as all vehicles on tracks
 trams.mesh.material.onBeforeCompile = (shader) => {
+  highlightTrams(shader);
   shader.uniforms.tramAlpha = tramAlpha;
   shader.fragmentShader = `uniform float tramAlpha;\n${shader.fragmentShader.replace(
     "#include <dithering_fragment>",

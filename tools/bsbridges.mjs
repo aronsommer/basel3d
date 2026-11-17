@@ -57,24 +57,32 @@ function toScene(x, y, z) {
   return [toX(e), height - Y0, toZ(n)]; // the tiles store heights above sea level
 }
 
-// All bridge triangles as scene positions, three vertices (nine numbers) per triangle.
+// All bridge triangles as scene positions, three vertices (nine numbers) per triangle; per
+// triangle the number of its bridge (the tiles' objects, _BATCHID, numbered on across tiles);
+// and how many bridges there are.
 export async function bridgeTriangles() {
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
   const out = [];
+  const bridges = [];
+  let first = 0; // number of the tile's first bridge
   for (const file of await tiles()) {
     const b3dm = readFileSync(file);
     const glb = 28 + [12, 16, 20, 24].reduce((sum, o) => sum + b3dm.readUInt32LE(o), 0);
+    const features = JSON.parse(b3dm.toString("utf8", 28, 28 + b3dm.readUInt32LE(12)));
     const doc = await io.readBinary(new Uint8Array(b3dm.subarray(glb)));
     for (const node of doc.getRoot().listNodes()) {
       if (!node.getMesh()) continue;
       const m = node.getWorldMatrix();
       for (const primitive of node.getMesh().listPrimitives()) {
         const position = primitive.getAttribute("POSITION");
+        const batch = primitive.getAttribute("_BATCHID");
         const indices = primitive.getIndices();
         const count = indices ? indices.getCount() : position.getCount();
         const v = [0, 0, 0];
         for (let i = 0; i < count; i++) {
-          position.getElement(indices ? indices.getScalar(i) : i, v);
+          const k = indices ? indices.getScalar(i) : i;
+          position.getElement(k, v);
+          if (i % 3 === 0) bridges.push(first + batch.getScalar(k));
           out.push(
             ...toScene(
               m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12],
@@ -85,8 +93,9 @@ export async function bridgeTriangles() {
         }
       }
     }
+    first += features.BATCH_LENGTH;
   }
-  return new Float32Array(out);
+  return { triangles: new Float32Array(out), bridges: new Uint16Array(bridges), count: first };
 }
 
 // The height of the highest triangle above a scene point { x, z }, or -Infinity if none is.
