@@ -23,6 +23,11 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   buildings.traverse((o) => register(o, 0));
   const count = meshesOf.length; // of buildings
   bridges.traverse((o) => register(o, count));
+  // How many buildings and bridges there are: the numbers found in the models.
+  const total = {
+    buildings: meshesOf.slice(0, count).filter(Boolean).length,
+    bridges: meshesOf.slice(count).filter(Boolean).length,
+  };
   // The meshes with vertices of these numbers.
   const meshesWith = (numbers) => new Set([...numbers].flatMap((n) => meshesOf[n] ?? []));
 
@@ -148,6 +153,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     highlight(number) {
       highlighted.value = number;
     },
+    total,
     isBridge: (number) => number >= count,
     // The number of the building or bridge whose bounding box the segment from → to (scene points,
     // short against GRID) enters first, or -1; hidden ones are left out.

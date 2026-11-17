@@ -292,15 +292,17 @@ export function createExplosions(scene, structures, heightAt, camera) {
   }
 
   return {
-    // Blows up the building or bridge with this number, unless it is gone already (or -1).
+    // Blows up the building or bridge with this number, unless it is gone already (or -1);
+    // whether it did.
     explode(number) {
       const [gone] = remove([number]);
-      if (!gone) return;
+      if (!gone) return false;
       const { parts, box, middle, extent, scale } = gone;
       debris(parts, middle, scale);
       blast(box, scale, extent, THREE.MathUtils.clamp(Math.round(extent / 2), 12, 40));
       if (!structures.isBridge(number)) burn(parts, scale);
       bang(camera.position.distanceTo(middle), scale);
+      return true;
     },
     // A small blast at a scene point, where a rocket hits the ground.
     burst(point) {
@@ -308,10 +310,12 @@ export function createExplosions(scene, structures, heightAt, camera) {
       bang(camera.position.distanceTo(point), 0, 0.25);
     },
     // Leaves the ones with these numbers as explode does in the end, at once: gone, a building's
-    // ground burning.
+    // ground burning; returns the numbers of those it removed.
     ruin(numbers) {
-      for (const { number, parts, scale } of remove(numbers))
+      const gone = remove(numbers);
+      for (const { number, parts, scale } of gone)
         if (!structures.isBridge(number)) burn(parts, scale);
+      return gone.map(({ number }) => number);
     },
     update(dt) {
       for (const step of running) if (!step(dt)) running.delete(step);

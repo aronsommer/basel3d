@@ -201,29 +201,43 @@ scene.add(terrain);
 const structures = createBuildings(buildings.scene, bridges.scene, [terrain], renderer, camera);
 const explosions = createExplosions(scene, structures, heightAt, camera);
 // What is blown up stays so in this browser until Reset, as long as the models are the same (by
-// their sizes), since the numbers belong to them. Reset forgets it and loads the page again.
+// their sizes and totals), since the numbers belong to them. Reset forgets it and loads the page
+// again. destroyed holds only what was really removed, so the counter is exact.
 const DESTROYED_KEY = "basel3d.destroyed"; // { models, numbers }
-const MODELS = `${sizes["basel.glb"]} ${sizes["bridges.glb"]}`;
-const destroyed = new Set();
+const { total } = structures;
+const MODELS = [sizes["basel.glb"], sizes["bridges.glb"], total.buildings, total.bridges].join(" ");
+let saved = [];
 try {
-  const saved = JSON.parse(localStorage.getItem(DESTROYED_KEY));
-  if (saved?.models === MODELS) for (const number of saved.numbers) destroyed.add(number);
+  const stored = JSON.parse(localStorage.getItem(DESTROYED_KEY));
+  if (stored?.models === MODELS && Array.isArray(stored.numbers)) saved = stored.numbers;
 } catch {} // storage blocked or not JSON
-explosions.ruin(destroyed);
+const destroyed = new Set(explosions.ruin(saved.filter(Number.isInteger)));
 const resetButton = document.getElementById("reset");
-resetButton.hidden = !destroyed.size;
 resetButton.addEventListener("click", () => {
   try {
     localStorage.removeItem(DESTROYED_KEY);
   } catch {} // storage blocked
   location.reload();
 });
-// Blows up the building or bridge with this number (-1: none) and remembers it.
+// Top left, how many buildings and bridges are still standing, counting down as they are destroyed.
+// The reset button shows once something is destroyed.
+function showCount() {
+  let bridges = 0;
+  for (const number of destroyed) if (structures.isBridge(number)) bridges++;
+  const standing = {
+    Buildings: total.buildings - (destroyed.size - bridges),
+    Bridges: total.bridges - bridges,
+  };
+  for (const [kind, value] of Object.entries(standing))
+    document.getElementById(kind).textContent = value;
+  resetButton.hidden = !destroyed.size;
+}
+showCount();
+// Blows up the building or bridge with this number (-1: none) and remembers it, if it was there.
 function destroy(number) {
-  if (number < 0 || destroyed.has(number)) return;
-  explosions.explode(number);
+  if (!explosions.explode(number)) return;
   destroyed.add(number);
-  resetButton.hidden = false;
+  showCount();
   try {
     localStorage.setItem(
       DESTROYED_KEY,
@@ -1243,9 +1257,9 @@ function createHelicopter(cx, cz, radius, height, scale) {
   // Turning is eased in up to TURN radians per second and back out when let go. Nose and side tilt
   // along. Without input it is back on its circle.
   const SPEED = 60; // metres per second
-  const CLIMB = 15; // metres per second
-  const TRIM = 1; // climb rate per second
-  const TURN = 0.8;
+  const CLIMB = 25; // metres per second
+  const TRIM = 2.5; // climb rate per second
+  const TURN = 1.1;
   const LOW = 40; // metres
   const HIGH = 1000; // scene y
   // { x, y, z, heading, climb, pitch (the climb eased, for the nose), turn, levelled (the climb
@@ -1272,7 +1286,7 @@ function createHelicopter(cx, cz, radius, height, scale) {
           flown.levelled = input.climb;
         } else flown.climb = next;
       }
-      const ease = Math.min(1, dt * 2);
+      const ease = Math.min(1, dt * 4);
       flown.pitch += (flown.climb - flown.pitch) * ease;
       flown.turn += (input.turn - flown.turn) * ease;
       flown.heading += flown.turn * TURN * dt;
