@@ -41,7 +41,7 @@
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
       /* The ground button and the closed menu of the lines: the same size, one below the other.
-         The button to get off in the ground button's place. */
+         The button to get off the same size, to the left of the ground button. */
       #ground,
       #off,
       #lines {
@@ -64,6 +64,9 @@
       #off {
         top: 12px;
         cursor: pointer;
+      }
+      #off {
+        right: 116px; /* 12px + the ground button's 96px + 8px */
       }
       /* Tiny, in the corner, with a white halo. */
       #credit {
@@ -187,8 +190,8 @@
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
       }
       body:not([data-mode="loading"]) #loading,
-      body:not([data-mode="orbit"]) #ground,
-      body:not([data-mode="orbit"]) #lines,
+      body[data-mode="loading"] #ground,
+      body[data-mode="loading"] #lines,
       body:not([data-mode="ride"]) #off {
         display: none;
       }
