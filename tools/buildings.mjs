@@ -13,47 +13,71 @@ import { newestTiles, download } from "./swisstopo.mjs";
 
 const SRC = join(DATA, "swissbuildings3d");
 
-class FloatList {
-  data = new Float32Array(1 << 16);
-  length = 0;
-  push3(a, b, c) {
-    if (this.length + 3 > this.data.length) {
-      const next = new Float32Array(this.data.length * 2);
+// A growing typed array.
+class List {
+  constructor(Type) {
+    this.data = new Type(1 << 16);
+    this.length = 0;
+  }
+  push(value) {
+    if (this.length === this.data.length) {
+      const next = new this.data.constructor(this.length * 2);
       next.set(this.data);
       this.data = next;
     }
-    this.data[this.length++] = a;
-    this.data[this.length++] = b;
-    this.data[this.length++] = c;
+    this.data[this.length++] = value;
   }
 }
 
 // No normals: the viewer shades flat per pixel, so vertices can be shared across faces.
-const chunks = new Map(); // "cx,cz" -> { roof: FloatList, wall: FloatList }
+// _BUILDING is each vertex's building number (0, 1, …), to tell buildings apart.
+const chunks = new Map(); // "cx,cz" -> { roof, wall: { position: List, building: List } }
 const seen = new Set();
-const stats = { roof: 0, wall: 0, dupes: 0, other: {} };
+const stats = { buildings: 0, roof: 0, wall: 0, dupes: 0, other: {} };
+let building = null; // { roof, wall: [x, y, z, …] } of the building being read
 
 function addTriangle(kind, v) {
-  const x = toX(v[0]);
-  const z = toZ(v[1]);
-  const key = `${Math.floor(x / CHUNK)},${Math.floor(z / CHUNK)}`;
-  let c = chunks.get(key);
-  if (!c) chunks.set(key, (c = { roof: new FloatList(), wall: new FloatList() }));
-  for (let i = 0; i < 9; i += 3) c[kind].push3(toX(v[i]), v[i + 2] - Y0, toZ(v[i + 1]));
+  for (let i = 0; i < 9; i += 3) building[kind].push(toX(v[i]), v[i + 2] - Y0, toZ(v[i + 1]));
   stats[kind]++;
+}
+
+// Adds the building read into the chunk of its middle, so it stays in one mesh.
+function addBuilding() {
+  const b = building;
+  building = null;
+  if (!b || !(b.roof.length || b.wall.length)) return;
+  let [x0, z0, x1, z1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const list of [b.roof, b.wall])
+    for (let i = 0; i < list.length; i += 3) {
+      x0 = Math.min(x0, list[i]);
+      x1 = Math.max(x1, list[i]);
+      z0 = Math.min(z0, list[i + 2]);
+      z1 = Math.max(z1, list[i + 2]);
+    }
+  const key = `${Math.floor((x0 + x1) / 2 / CHUNK)},${Math.floor((z0 + z1) / 2 / CHUNK)}`;
+  let c = chunks.get(key);
+  if (!c) {
+    const lists = () => ({ position: new List(Float32Array), building: new List(Uint16Array) });
+    chunks.set(key, (c = { roof: lists(), wall: lists() }));
+  }
+  const number = stats.buildings++;
+  if (number > 0xffff) throw new Error("Too many buildings for 16-bit numbers");
+  for (const kind of ["roof", "wall"]) {
+    for (const value of b[kind]) c[kind].position.push(value);
+    for (let i = 0; i < b[kind].length; i += 3) c[kind].building.push(number);
+  }
 }
 
 async function readTile(file) {
   const unzip = spawn("unzip", ["-p", file]);
   let kind = null; // "roof" | "wall" | null (skip)
-  let skip = false; // building already read from another tile
   for await (const line of createInterface({
     input: unzip.stdout,
     crlfDelay: Infinity,
   })) {
     const t = line.trimStart();
     if (t.startsWith("<gml:posList")) {
-      if (!kind || skip) continue;
+      if (!kind || !building) continue;
       const v = t
         .slice(t.indexOf(">") + 1, t.lastIndexOf("<"))
         .split(" ")
@@ -61,9 +85,11 @@ async function readTile(file) {
       if (v[0] < E_MIN || v[0] >= E_MAX || v[1] < N_MIN || v[1] >= N_MAX) continue;
       addTriangle(kind, v);
     } else if (t.startsWith("<bldg:Building ")) {
+      addBuilding();
       const id = t.match(/gml:id="([^"]+)"/)[1];
-      skip = seen.has(id);
-      if (skip) stats.dupes++;
+      if (seen.has(id))
+        stats.dupes++; // already read from another tile
+      else building = { roof: [], wall: [] };
       seen.add(id);
     } else if (t.startsWith("<bldg:RoofSurface")) kind = "roof";
     else if (t.startsWith("<bldg:WallSurface")) kind = "wall";
@@ -73,6 +99,7 @@ async function readTile(file) {
       stats.other[tag] = (stats.other[tag] ?? 0) + 1;
     } else if (/^<\/bldg:\w+Surface>/.test(t)) kind = null;
   }
+  addBuilding();
 }
 
 async function writeGlb() {
@@ -86,15 +113,20 @@ async function writeGlb() {
   for (const [key, c] of chunks) {
     const mesh = doc.createMesh(`chunk ${key}`);
     for (const kind of ["roof", "wall"]) {
-      const list = c[kind];
-      if (!list.length) continue;
-      const position = doc
-        .createAccessor()
-        .setType("VEC3")
-        .setArray(list.data.slice(0, list.length))
-        .setBuffer(buffer);
+      const { position, building } = c[kind];
+      if (!position.length) continue;
+      const accessor = (type, list) =>
+        doc
+          .createAccessor()
+          .setType(type)
+          .setArray(list.data.slice(0, list.length))
+          .setBuffer(buffer);
       mesh.addPrimitive(
-        doc.createPrimitive().setAttribute("POSITION", position).setMaterial(materials[kind]),
+        doc
+          .createPrimitive()
+          .setAttribute("POSITION", accessor("VEC3", position))
+          .setAttribute("_BUILDING", accessor("SCALAR", building))
+          .setMaterial(materials[kind]),
       );
     }
     scene.addChild(doc.createNode(`chunk ${key}`).setMesh(mesh));
