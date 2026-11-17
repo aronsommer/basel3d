@@ -11,6 +11,7 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
 import { facadeShader } from "./facade.js";
+import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 
@@ -201,12 +202,19 @@ const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
 const structures = createBuildings(buildings.scene, bridges.scene, [terrain], renderer, camera);
 {
-  // Facades on the walls (src/facade.js), before the highlight createBuildings set.
-  const highlight = materials.wall.onBeforeCompile;
-  materials.wall.onBeforeCompile = (shader, renderer) => {
-    facadeShader(shader);
-    highlight(shader, renderer);
+  // Facades on the walls (src/facade.js), the Novartis Pavillon's lights on walls and roofs
+  // (src/pavilion.js), before the highlight createBuildings set. Their own cache keys, as the
+  // functions read the same.
+  const extend = (material, ...shaders) => {
+    const highlight = material.onBeforeCompile;
+    material.onBeforeCompile = (shader, renderer) => {
+      for (const add of shaders) add(shader);
+      highlight(shader, renderer);
+    };
+    material.customProgramCacheKey = () => shaders.map((add) => add.name).join();
   };
+  extend(materials.wall, facadeShader, pavilionShader);
+  extend(materials.roof, pavilionShader);
 }
 const explosions = createExplosions(scene, structures, heightAt, camera);
 // What is blown up stays so in this browser until Reset, as long as the models are the same (by
@@ -2081,6 +2089,7 @@ renderer.setAnimationLoop((time) => {
   updateHover();
   updateTrees();
   water.waterTime.value = time / 1000;
+  pavilionTime.value = time / 1000;
   serpent.update(time / 1000);
   helicopter.update(time / 1000, flying() ? steering() : null);
   drive(dt);
