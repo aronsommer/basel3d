@@ -33,14 +33,15 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping; // keeps the aerial photo's colours
+renderer.toneMappingExposure = 1.15; // a bright, friendly day
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 3000, 9000);
-// Strong sky light keeps the sides facing away from the sun bright.
+// Strong sky light keeps the sides facing away from the sun bright; the sun is warm.
 scene.add(new THREE.HemisphereLight(0xdfeaf5, 0xb5ab95, 2));
-const sun = new THREE.DirectionalLight(0xfff4e0, 2.2);
+const sun = new THREE.DirectionalLight(0xffe9c8, 2.6);
 sun.position.set(-1, 1, 1); // from the south-west
 scene.add(sun);
 
@@ -115,11 +116,11 @@ async function groundTextures(paths, buffers) {
 // Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
 // (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs), the names
 // (tools/names.mjs) and the ground shown first: the one last chosen in this browser, else the
-// aerial photo.
+// map.
 const GROUND_KEY = "basel3d.ground";
-let groundKind = "photo";
+let groundKind = "map";
 try {
-  if (localStorage.getItem(GROUND_KEY) === "map") groundKind = "map";
+  if (localStorage.getItem(GROUND_KEY) === "photo") groundKind = "photo";
 } catch {} // storage blocked
 const progress = document.getElementById("progress");
 const [

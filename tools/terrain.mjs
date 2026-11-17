@@ -1,21 +1,18 @@
 // Downloads swissALTI3D (terrain, 2 m) and SWISSIMAGE (aerial photo, 1 m) for the area into data/
 // and writes public/terrain/ (terrain.json, heights.bin as Int16 in cm) and public/ground/photo/
 // (one aerial-photo KTX2 per 1 km tile).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fromArrayBuffer } from "geotiff";
-import sharp from "sharp";
 import { E_MIN, E_MAX, N_MIN, N_MAX, Y0, CHUNK, DATA, PUBLIC, toX, toZ } from "./area.mjs";
 import {
   newestTiles,
   download,
   forEachParallel,
   WMTS,
-  WMTS_E,
-  WMTS_N,
-  TILE,
   PHOTO_DIR,
-  photoFile,
+  photoTiles,
+  photoMosaic,
 } from "./swisstopo.mjs";
 import { writeTiles } from "./tiles.mjs";
 
@@ -127,34 +124,18 @@ function fillGaps(grid, nx, nz) {
 
 async function buildPhotos() {
   mkdirSync(PHOTO_DIR, { recursive: true });
-  const tiles = [];
-  for (let row = Math.floor((WMTS_N - N_MAX) / TILE); row * TILE < WMTS_N - N_MIN; row++)
-    for (let col = Math.floor((E_MIN - WMTS_E) / TILE); col * TILE < E_MAX - WMTS_E; col++)
-      tiles.push({ col, row, file: photoFile(col, row) });
   let missing = 0;
-  await forEachParallel(tiles, 8, async (t) => {
+  await forEachParallel(photoTiles(), 8, async (t) => {
     if (!(await download(`${WMTS}/${t.col}/${t.row}.jpeg`, t.file))) missing++;
   });
   if (missing) console.log(`${missing} aerial tiles not available`);
-
-  // 1 m mosaic of the whole area; grey-green where there is no photo.
-  const w = E_MAX - E_MIN;
-  const h = N_MAX - N_MIN;
-  const mosaic = Buffer.alloc(w * h * 3, Buffer.from([128, 132, 116]));
-  for (const t of tiles) {
-    if (!existsSync(t.file)) continue;
-    const { data } = await sharp(t.file).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-    const dx = WMTS_E + t.col * TILE - E_MIN;
-    const dy = N_MAX - (WMTS_N - t.row * TILE);
-    for (let y = Math.max(0, -dy); y < TILE && dy + y < h; y++) {
-      const x0 = Math.max(0, -dx);
-      const x1 = Math.min(TILE, w - dx);
-      if (x1 > x0)
-        data.copy(mosaic, ((dy + y) * w + dx + x0) * 3, (y * TILE + x0) * 3, (y * TILE + x1) * 3);
-    }
-  }
-
-  await writeTiles(mosaic, w, h, 3, join(PUBLIC, "ground", "photo"));
+  await writeTiles(
+    await photoMosaic(),
+    E_MAX - E_MIN,
+    N_MAX - N_MIN,
+    3,
+    join(PUBLIC, "ground", "photo"),
+  );
 }
 
 mkdirSync(OUT, { recursive: true });

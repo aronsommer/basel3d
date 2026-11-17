@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createInflateRaw } from "node:zlib";
-import { BBOX_WGS84, DATA } from "./area.mjs";
+import sharp from "sharp";
+import { BBOX_WGS84, DATA, E_MIN, E_MAX, N_MIN, N_MAX } from "./area.mjs";
 
 // SWISSIMAGE WMTS tiles in LV95 at zoom 25 (1 m per pixel, 256 px per tile), as tools/terrain.mjs
 // downloads them into PHOTO_DIR.
@@ -24,6 +25,36 @@ export const WMTS_N = 1350000;
 export const TILE = 256;
 export const PHOTO_DIR = join(DATA, "swissimage");
 export const photoFile = (col, row) => join(PHOTO_DIR, `25_${col}_${row}.jpeg`);
+
+// The SWISSIMAGE tiles covering the area: [{ col, row, file }].
+export function photoTiles() {
+  const tiles = [];
+  for (let row = Math.floor((WMTS_N - N_MAX) / TILE); row * TILE < WMTS_N - N_MIN; row++)
+    for (let col = Math.floor((E_MIN - WMTS_E) / TILE); col * TILE < E_MAX - WMTS_E; col++)
+      tiles.push({ col, row, file: photoFile(col, row) });
+  return tiles;
+}
+
+// The downloaded tiles as one 1 m RGB mosaic of the area, north-west corner first; grey-green
+// where there is no photo.
+export async function photoMosaic() {
+  const w = E_MAX - E_MIN;
+  const h = N_MAX - N_MIN;
+  const mosaic = Buffer.alloc(w * h * 3, Buffer.from([128, 132, 116]));
+  for (const t of photoTiles()) {
+    if (!existsSync(t.file)) continue;
+    const data = await sharp(t.file).removeAlpha().raw().toBuffer();
+    const dx = WMTS_E + t.col * TILE - E_MIN;
+    const dy = N_MAX - (WMTS_N - t.row * TILE);
+    for (let y = Math.max(0, -dy); y < TILE && dy + y < h; y++) {
+      const x0 = Math.max(0, -dx);
+      const x1 = Math.min(TILE, w - dx);
+      if (x1 > x0)
+        data.copy(mosaic, ((dy + y) * w + dx + x0) * 3, (y * TILE + x0) * 3, (y * TILE + x1) * 3);
+    }
+  }
+  return mosaic;
+}
 
 // Newest asset per tile in the area: Map tile → { year, href }. Item ids end in _<year>_<tile>.
 export async function newestTiles(collection, assetSuffix) {
