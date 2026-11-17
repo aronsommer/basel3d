@@ -1133,8 +1133,8 @@ function createHelicopter(cx, cz, radius, height, scale) {
   cabin.scale(1.3, 1.2, 2.2);
   const windows = new THREE.IcosahedronGeometry(1, 1);
   windows.scale(1.05, 0.8, 1.2);
-  const boom = new THREE.CylinderGeometry(0.25, 0.45, 5, 6);
-  boom.rotateX(Math.PI / 2);
+  const boom = new THREE.CylinderGeometry(0.32, 0.14, 5, 6);
+  boom.rotateX(Math.PI / 2); // its top, the thicker end, towards the cabin
   const fin = new THREE.BoxGeometry(0.15, 1.6, 0.9);
   const skids = [-1, 1].map((side) => {
     const skid = new THREE.BoxGeometry(0.15, 0.15, 3.6);
@@ -1144,12 +1144,15 @@ function createHelicopter(cx, cz, radius, height, scale) {
     [-0.8, 1.0].map((z) => part(new THREE.BoxGeometry(0.1, 0.6, 0.1), DARK, [side * 1.0, -1.2, z])),
   );
   const mast = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 5);
+  // The tail rotor's axle, along x.
+  const axle = new THREE.CylinderGeometry(0.05, 0.05, 0.26, 6).rotateZ(Math.PI / 2);
   const body = mergeGeometries([
     part(cabin, (y) => (y < -0.7 ? DARK : YELLOW), [0, 0, 0]), // dark belly
     part(windows, DARK, [0, 0.25, 1.2]),
     part(boom, YELLOW, [0, 0.3, -3.6]),
     part(fin, DARK, [0, 0.9, -5.8]),
     part(mast, DARK, [0, 1.45, 0]),
+    part(axle, DARK, [0.19, 0.9, -5.8]), // from the fin to the tail rotor
     ...skids,
     ...struts,
   ]);
@@ -1160,14 +1163,19 @@ function createHelicopter(cx, cz, radius, height, scale) {
       return part(blade, DARK, [0, 0, 0]);
     }),
   );
-  const tailRotor = part(new THREE.BoxGeometry(0.06, 1.8, 0.2), DARK, [0, 0, 0]);
+  // Two blades crossed, as the main rotor.
+  const tailRotor = mergeGeometries(
+    [0, Math.PI / 2].map((angle) =>
+      part(new THREE.BoxGeometry(0.06, 1.2, 0.12).rotateX(angle), DARK, [0, 0, 0]),
+    ),
+  );
 
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const group = new THREE.Group();
   const main = new THREE.Mesh(rotor, material);
   main.position.set(0, 1.8, 0);
   const tail = new THREE.Mesh(tailRotor, material);
-  tail.position.set(0.25, 0.9, -5.8);
+  tail.position.set(0.3, 0.9, -5.8); // beside the boom and fin, clear of both
   // Blinking lights: a red beacon on top, a white strobe at the tail; unlit, so they glow.
   const light = (color, [x, y, z]) => {
     const mesh = new THREE.Mesh(
