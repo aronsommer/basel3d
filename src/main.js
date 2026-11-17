@@ -1109,9 +1109,11 @@ function createMovers({ routes }, points, kind, traffic) {
   };
 }
 
-// A low-poly helicopter circling (cx, cz) at the given radius and height (scene metres), banking
-// into the turn, with spinning rotors and blinking lights. Bright yellow, to stand out against the
-// sky as well as the red roofs. launchers: where its rockets leave, in its own frame.
+// A low-poly helicopter after the look of an attack helicopter: a narrow, pointed body, a ducted
+// tail rotor, stub wings with rocket pods. It circles (cx, cz) at the given radius and height
+// (scene metres), banking into the turn, with spinning rotors and blinking lights. Bright yellow
+// with a black window, legs and weapons, to stand out against the sky as well as the red roofs.
+// launchers: where its rockets leave, in its own frame.
 function createHelicopter(cx, cz, radius, height, scale) {
   // A part at [x, y, z], coloured by a colour or by a function of its own (untranslated) position.
   const part = (geometry, color, [x, y, z]) => {
@@ -1129,60 +1131,96 @@ function createHelicopter(cx, cz, radius, height, scale) {
     return g;
   };
   const YELLOW = 0xffd000;
-  const DARK = 0x2a3038;
-  // Fuselage, nose towards +z; sizes in metres before scaling.
-  const cabin = new THREE.IcosahedronGeometry(1, 1);
-  cabin.scale(1.3, 1.2, 2.2);
-  const windows = new THREE.IcosahedronGeometry(1, 1);
-  windows.scale(1.05, 0.8, 1.2);
-  const boom = new THREE.CylinderGeometry(0.32, 0.14, 5, 6);
-  boom.rotateX(Math.PI / 2); // its top, the thicker end, towards the cabin
-  const fin = new THREE.BoxGeometry(0.15, 1.6, 0.9);
-  const skids = [-1, 1].map((side) => {
-    const skid = new THREE.BoxGeometry(0.15, 0.15, 3.6);
-    return part(skid, DARK, [side * 1.1, -1.5, 0.2]);
-  });
-  const struts = [-1, 1].flatMap((side) =>
-    [-0.8, 1.0].map((z) => part(new THREE.BoxGeometry(0.1, 0.6, 0.1), DARK, [side * 1.0, -1.2, z])),
+  const DARK = 0x1c1f24; // legs, weapons, rotors
+  const GLASS = 0x141a22;
+  // Six-sided, along +z (the nose), narrower than high; sizes in metres before scaling.
+  const hull = (g) => g.rotateX(Math.PI / 2).scale(0.95, 1, 1);
+  // The windscreen, pointing forward: flat on the two upper faces of the nose (from its base at
+  // z 1.1 to its tip at 2.7) and of the body behind it, a little above them, and wound both ways,
+  // so it shows from outside. Its triangles on one side, as [x, y, z]:
+  const screen = [
+    [
+      [0, 0.3, 2.14],
+      [0, 0.82, 1.1],
+      [0.62, 0.443, 1.1],
+    ], // on the nose
+    [
+      [0, 0.82, 1.1],
+      [0, 0.835, 0.3],
+      [0.62, 0.459, 0.3],
+    ], // on the body
+    [
+      [0, 0.82, 1.1],
+      [0.62, 0.459, 0.3],
+      [0.62, 0.443, 1.1],
+    ],
+  ];
+  const both = [-1, 1].flatMap((side) =>
+    screen.map((triangle) => triangle.map(([x, y, z]) => [side * x, y, z])),
   );
-  const mast = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 5);
+  const windscreen = new THREE.BufferGeometry().setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      [...both, ...both.map((triangle) => triangle.toReversed())].flat(2),
+      3,
+    ),
+  );
+  const skids = [-1, 1].map((side) =>
+    part(new THREE.BoxGeometry(0.12, 0.12, 3.6), DARK, [side * 0.9, -1.5, 0.2]),
+  );
+  // Struts from the belly out and down to the skids.
+  const struts = [-1, 1].flatMap((side) =>
+    [-0.8, 1.0].map((z) => {
+      const strut = new THREE.BoxGeometry(0.1, 1, 0.1).rotateZ(side * 0.6);
+      return part(strut, DARK, [side * 0.6, -1.07, z]);
+    }),
+  );
   // Where the rockets leave the pods, one on each side.
   const launchers = [-1, 1].map((side) => new THREE.Vector3(side * 1.6, -0.75, 0.9));
   const pod = () => new THREE.CylinderGeometry(0.18, 0.18, 1.2, 8).rotateX(Math.PI / 2);
-  // The tail rotor's axle, along x.
-  const axle = new THREE.CylinderGeometry(0.05, 0.05, 0.26, 6).rotateZ(Math.PI / 2);
+  // The ring around the tail rotor, upright across the tail.
+  const duct = new THREE.TorusGeometry(0.6, 0.14, 6, 12).rotateY(Math.PI / 2);
   const body = mergeGeometries([
-    part(cabin, (y) => (y < -0.7 ? DARK : YELLOW), [0, 0, 0]), // dark belly
-    part(windows, DARK, [0, 0.25, 1.2]),
-    part(boom, YELLOW, [0, 0.3, -3.6]),
-    part(fin, DARK, [0, 0.9, -5.8]),
-    part(mast, DARK, [0, 1.45, 0]),
-    part(axle, DARK, [0.19, 0.9, -5.8]), // from the fin to the tail rotor
+    part(hull(new THREE.CylinderGeometry(0.8, 0.85, 2.6, 6)), YELLOW, [0, 0, -0.2]), // middle
+    part(hull(new THREE.ConeGeometry(0.8, 1.6, 6)), YELLOW, [0, 0, 1.9]), // pointed nose
+    part(windscreen, GLASS, [0, 0, 0]),
+    part(new THREE.BoxGeometry(0.85, 0.4, 1.3), YELLOW, [0, 0.88, -0.9]), // engines
+    part(hull(new THREE.CylinderGeometry(0.45, 0.2, 3.5, 6)), YELLOW, [0, 0.15, -3.25]), // boom
+    part(duct, YELLOW, [0, 0.35, -5.7]),
+    part(new THREE.BoxGeometry(0.1, 0.9, 0.6), YELLOW, [0, 1.25, -5.75]), // fin
+    part(new THREE.BoxGeometry(1.4, 0.06, 0.45), YELLOW, [0, 0.2, -4.6]), // stabiliser
+    part(new THREE.CylinderGeometry(0.12, 0.12, 0.72, 5), YELLOW, [0, 1.44, -0.4]), // mast
     part(new THREE.BoxGeometry(3.4, 0.08, 0.5), DARK, [0, -0.6, 0.2]), // stub wings
     ...launchers.map(({ x, y }) => part(pod(), DARK, [x, y, 0.3])), // rocket pods
     ...skids,
     ...struts,
   ]);
+  // Four blades with yellow tips.
   const rotor = mergeGeometries(
-    [0, Math.PI / 2].map((angle) => {
-      const blade = new THREE.BoxGeometry(9, 0.08, 0.35);
-      blade.rotateY(angle);
-      return part(blade, DARK, [0, 0, 0]);
-    }),
+    [0, Math.PI / 2].flatMap((angle) => [
+      part(new THREE.BoxGeometry(9, 0.08, 0.35).rotateY(angle), DARK, [0, 0, 0]),
+      ...[-1, 1].map((side) =>
+        part(new THREE.BoxGeometry(0.6, 0.09, 0.36).rotateY(angle), YELLOW, [
+          side * 4.2 * Math.cos(angle),
+          0,
+          -side * 4.2 * Math.sin(angle),
+        ]),
+      ),
+    ]),
   );
-  // Two blades crossed, as the main rotor.
+  // Two blades crossed, inside the duct.
   const tailRotor = mergeGeometries(
     [0, Math.PI / 2].map((angle) =>
-      part(new THREE.BoxGeometry(0.06, 1.2, 0.12).rotateX(angle), DARK, [0, 0, 0]),
+      part(new THREE.BoxGeometry(0.06, 0.8, 0.1).rotateX(angle), DARK, [0, 0, 0]),
     ),
   );
 
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const group = new THREE.Group();
   const main = new THREE.Mesh(rotor, material);
-  main.position.set(0, 1.8, 0);
+  main.position.set(0, 1.8, -0.4);
   const tail = new THREE.Mesh(tailRotor, material);
-  tail.position.set(0.3, 0.9, -5.8); // beside the boom and fin, clear of both
+  tail.position.set(0, 0.35, -5.7); // in the middle of the duct
   // Blinking lights: a red beacon on top, a white strobe at the tail; unlit, so they glow.
   const light = (color, [x, y, z]) => {
     const mesh = new THREE.Mesh(
@@ -1192,8 +1230,8 @@ function createHelicopter(cx, cz, radius, height, scale) {
     mesh.position.set(x, y, z);
     return mesh;
   };
-  const beacon = light(0xff2010, [0, 1.25, -1.2]);
-  const strobe = light(0xffffff, [0, 1.75, -6.1]);
+  const beacon = light(0xff2010, [0, 1.15, -1.4]);
+  const strobe = light(0xffffff, [0, 1.75, -5.75]);
   group.add(new THREE.Mesh(body, material), main, tail, beacon, strobe);
   group.scale.setScalar(scale);
   group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
