@@ -211,7 +211,9 @@ try {
   const stored = JSON.parse(localStorage.getItem(DESTROYED_KEY));
   if (stored?.models === MODELS && Array.isArray(stored.numbers)) saved = stored.numbers;
 } catch {} // storage blocked or not JSON
-const destroyed = new Set(explosions.ruin(saved.filter(Number.isInteger)));
+saved = saved.filter(Number.isInteger);
+const brokenDecks = decksOf(saved); // before they are hidden; cut into the ways once these exist
+const destroyed = new Set(explosions.ruin(saved));
 const resetButton = document.getElementById("reset");
 resetButton.addEventListener("click", () => {
   try {
@@ -233,9 +235,61 @@ function showCount() {
   resetButton.hidden = !destroyed.size;
 }
 showCount();
-// Blows up the building or bridge with this number (-1: none) and remembers it, if it was there.
+// The decks of the bridges among these numbers, but hidden ones (deckOf).
+function decksOf(numbers) {
+  const bridges = numbers.filter((number) => structures.isBridge(number));
+  return [...structures.triangles(bridges).values()].map((parts) =>
+    deckOf(parts.flatMap(({ positions }) => positions)),
+  );
+}
+// Where a bridge's triangles (nine numbers each) face up: whether a point lies within 1.5 m of
+// one, above or below it, as the ways on bridges do (tools/paths.mjs).
+function deckOf(triangles) {
+  const GRID = 10; // metres
+  const cells = new Map(); // "column,row" -> offsets of the triangles reaching into it
+  const [a, b, c, normal] = [...Array(4)].map(() => new THREE.Vector3());
+  for (let t = 0; t < triangles.length; t += 9) {
+    a.fromArray(triangles, t);
+    b.fromArray(triangles, t + 3);
+    c.fromArray(triangles, t + 6);
+    if (Math.abs(THREE.Triangle.getNormal(a, b, c, normal).y) < 0.3) continue; // a wall
+    for (
+      let x = Math.floor(Math.min(a.x, b.x, c.x) / GRID);
+      x * GRID <= Math.max(a.x, b.x, c.x);
+      x++
+    )
+      for (
+        let z = Math.floor(Math.min(a.z, b.z, c.z) / GRID);
+        z * GRID <= Math.max(a.z, b.z, c.z);
+        z++
+      ) {
+        const key = `${x},${z}`;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push(t);
+      }
+  }
+  const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+  return {
+    covers(x, y, z) {
+      for (const t of cells.get(`${Math.floor(x / GRID)},${Math.floor(z / GRID)}`) ?? []) {
+        const [ax, ay, az, bx, by, bz, cx, cy, cz] = triangles.slice(t, t + 9);
+        const d1 = side(ax, az, bx, bz, x, z);
+        const d2 = side(bx, bz, cx, cz, x, z);
+        const d3 = side(cx, cz, ax, az, x, z);
+        const sum = d1 + d2 + d3;
+        if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
+        if (Math.abs((ay * d2 + by * d3 + cy * d1) / sum - y) < 1.5) return true; // barycentric
+      }
+      return false;
+    },
+  };
+}
+// Blows up the building or bridge with this number (-1: none) and remembers it, if it was there;
+// vehicles vanish where a bridge was.
 function destroy(number) {
+  const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
+  if (deck) for (const mover of movers) mover.cut(deck);
   destroyed.add(number);
   showCount();
   try {
@@ -337,6 +391,7 @@ function drive(dt) {
 for (const mover of movers) {
   scene.add(mover.mesh);
   overlay.add(mover.routes);
+  for (const deck of brokenDecks) mover.cut(deck);
 }
 const ships = createShips(new Float32Array(shipsBuffer));
 scene.add(...ships.meshes);
@@ -961,7 +1016,7 @@ function createMovers({ routes }, points, kind, traffic) {
               free = Math.hypot(list[q] - body[b], list[q + 1] - body[b + 1]) > SIDE;
           }
       if (!free) continue;
-      vehicles.push({ line, d, length, height, color: new THREE.Color(color) });
+      vehicles.push({ line, d, start: d, length, height, color: new THREE.Color(color) });
       for (let b = 0; b < body.length; b += 2) {
         const key = cell(body[b], body[b + 1]);
         if (!taken.has(key)) taken.set(key, []);
@@ -1009,6 +1064,20 @@ function createMovers({ routes }, points, kind, traffic) {
   const yAxis = new THREE.Vector3(0, 1, 0);
   const matrix = new THREE.Matrix4();
 
+  // Gaps where a bridge was blown up (cut): per line, per point whether it lies on such a deck. A
+  // vehicle with a car over one vanishes (vehicle.away: seconds left) for BACK seconds, then is
+  // back at its start unless that is in a gap too. Meanwhile it is in nobody's way.
+  const BACK = 20; // seconds
+  const pointAt = (line, d) =>
+    Math.floor((((d % line.length) + line.length) % line.length) / line.step) % line.count;
+  const overGap = ({ line, length }, d) => {
+    if (!line.gone) return false;
+    for (let s = d - CARS * (length + GAP); s <= d; s += line.step)
+      if (line.gone[pointAt(line, s)]) return true;
+    return line.gone[pointAt(line, d)] === 1;
+  };
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+
   // Vehicles by their index in traffic.blockers.
   const first = blockers.length;
   blockers.push(...vehicles.map(() => -1));
@@ -1046,10 +1115,15 @@ function createMovers({ routes }, points, kind, traffic) {
   const FAR = 1500; // metres
   const SLOW = 3;
   let frame = 0;
-  // Places the cars and notes their points.
+  // Places the cars and notes their points; those of a vehicle away are hidden.
   const place = () => {
-    vehicles.forEach(({ line, d, length, height }, v) => {
+    vehicles.forEach((vehicle, v) => {
+      const { line, d, length, height, away } = vehicle;
       for (let c = 0; c < CARS; c++) {
+        if (away !== undefined) {
+          mesh.setMatrixAt(v * CARS + c, hidden);
+          continue;
+        }
         const end = d - c * (length + GAP);
         at(line, end, front);
         at(line, end - length, back);
@@ -1059,8 +1133,8 @@ function createMovers({ routes }, points, kind, traffic) {
         note(front, v);
         note(back, v);
         const centre = front.add(back).multiplyScalar(0.5);
-        if (c === 0) vehicles[v].far = camera.position.distanceTo(centre) > FAR;
         note(centre, v);
+        if (c === 0) vehicle.far = camera.position.distanceTo(centre) > FAR;
         const b = boost(centre);
         right.multiplyScalar(Math.min(b, MAX_WIDER));
         matrix
@@ -1074,18 +1148,36 @@ function createMovers({ routes }, points, kind, traffic) {
   // Notes for each vehicle what it waits for.
   const look = () => {
     frame++;
-    vehicles.forEach(({ line, d, far }, v) => {
+    vehicles.forEach(({ line, d, far, away }, v) => {
       if (far && (v + frame) % SLOW) return;
       blockers[first + v] = -1;
+      if (away !== undefined) return;
       for (let s = ALONG; s <= LOOK && blockers[first + v] < 0; s += ALONG)
         blockers[first + v] = occupied(line, d + s, first + v);
     });
   };
-  // Moves each vehicle that waits for none.
+  // Moves each vehicle that waits for none; one over a gap, even a waiting one, vanishes.
   const move = (dt) => {
     vehicles.forEach((vehicle, v) => {
-      if (blockers[first + v] < 0) vehicle.d = (vehicle.d + SPEED * dt) % vehicle.line.length;
+      if (vehicle.away !== undefined) {
+        vehicle.away -= dt;
+        if (vehicle.away > 0 || overGap(vehicle, vehicle.start)) return;
+        vehicle.away = undefined;
+        vehicle.d = vehicle.start;
+      } else if (overGap(vehicle, vehicle.d)) vehicle.away = BACK;
+      else if (blockers[first + v] < 0) vehicle.d = (vehicle.d + SPEED * dt) % vehicle.line.length;
     });
+  };
+  // Marks the points of the loops that lie on deck (from deckOf) as a gap, but only where they
+  // are at least ABOVE over the terrain, not where the bridge's ends lie on the ground.
+  const ABOVE = 2; // metres
+  const cut = (deck) => {
+    for (const line of lines)
+      for (let k = 0; k < line.count; k++) {
+        const [x, y, z] = points.subarray(3 * (line.start + k), 3 * (line.start + k) + 3);
+        if (y - heightAt(x, z) >= ABOVE && deck.covers(x, y, z))
+          (line.gone ??= new Uint8Array(line.count))[k] = 1;
+      }
   };
   // The front of vehicle v: the camera just ahead of it at eye height, looking 40 m ahead.
   const cab = (v, view) => {
@@ -1120,6 +1212,8 @@ function createMovers({ routes }, points, kind, traffic) {
     roof,
     vehicleOf,
     highlight,
+    cut,
+    away: (v) => vehicles[v].away !== undefined, // vanished at a gap, for a while
   };
 }
 
@@ -1981,6 +2075,7 @@ renderer.setAnimationLoop((time) => {
   serpent.update(time / 1000);
   helicopter.update(time / 1000, flying() ? steering() : null);
   drive(dt);
+  if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);

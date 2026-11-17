@@ -37,6 +37,10 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
       transparent: true,
       opacity: 0.35,
       depthWrite: false,
+      // It leaves the alpha as it is, which the grey view (render in src/main.js) reads.
+      blending: THREE.CustomBlending,
+      blendSrcAlpha: THREE.ZeroFactor,
+      blendDstAlpha: THREE.OneFactor,
     }),
     MAX,
   );

@@ -414,7 +414,13 @@ function createParticles(scene, camera, additive, capacity) {
     fog: true,
     transparent: true,
     depthWrite: false,
-    blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    // Fire adds its colour, smoke covers; both leave the alpha as it is, which the grey view
+    // (render in src/main.js) reads.
+    blending: THREE.CustomBlending,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: additive ? THREE.OneFactor : THREE.OneMinusSrcAlphaFactor,
+    blendSrcAlpha: THREE.ZeroFactor,
+    blendDstAlpha: THREE.OneFactor,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false; // they are all over the city

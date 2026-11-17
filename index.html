@@ -256,7 +256,7 @@
       /* The helicopter's steering buttons, at the bottom in the middle, while riding it, laid out
          like the arrow keys. The fire button is round, to their right but outside the grid, so
          they stay in the middle; with a mouse it is a space bar below them, and each button also
-         shows its key (W, A, S, D, Space). */
+         shows its key (W, A, S, D, Space / Mouse). */
       #steer {
         position: absolute;
         bottom: 24px;
@@ -334,7 +334,7 @@
           position: static;
           grid-area: Space;
           width: auto; /* as wide as the three above */
-          height: 28px;
+          height: 36px;
           padding: 0 12px;
           font-size: 14px;
           border-radius: 8px;
@@ -342,10 +342,6 @@
         #steer kbd {
           display: block;
           font-size: 12px;
-        }
-        #steer [data-key="Space"] kbd {
-          display: inline;
-          font-size: inherit;
         }
       }
       /* Top left, how many buildings and bridges are still standing (showCount in src/main.js):
@@ -397,7 +393,7 @@
       <button data-key="ArrowDown" aria-label="Down">↓<kbd>S</kbd></button>
       <button data-key="ArrowRight" aria-label="Turn right">→<kbd>D</kbd></button>
       <button data-key="Space" aria-label="Fire" title="Hold Space or the left mouse button">
-        Fire<kbd> (Space)</kbd>
+        Fire<kbd>Space / Mouse</kbd>
       </button>
     </div>
     <details id="layers">
