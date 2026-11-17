@@ -41,19 +41,17 @@
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
-      /* The ground button, the closed menu of the layers and the reset button: the same size, one
-         below the other; the open menu covers the reset button. The button to get off the same
-         size, to the left of the ground button. */
+      /* The buttons, the menu of the layers and the counter look alike: 36px tall (8px + 20px + 8px)
+         like the steering buttons on desktop. */
       #ground,
       #off,
       #reset,
-      #layers {
-        position: absolute;
-        right: 12px;
+      #layers,
+      #counter {
         box-sizing: border-box;
-        width: 96px;
         padding: 8px 14px;
         font: inherit;
+        line-height: 20px;
         color: inherit;
         text-align: center;
         background: rgba(255, 255, 255, 0.9);
@@ -63,20 +61,39 @@
         -webkit-user-select: none; /* Safari */
         user-select: none;
       }
+      /* Two columns as wide, 8px apart. Right: the ground button, the closed menu of the layers and
+         the button to get off, one below the other; the open menu covers the button to get off.
+         Left: the counter, as tall as the two above, and the reset button beside the one to get
+         off. */
       #ground,
-      #off {
+      #off,
+      #reset,
+      #layers,
+      #counter {
+        position: absolute;
+        width: 96px;
+      }
+      #ground,
+      #off,
+      #layers {
+        right: 12px;
+      }
+      #reset,
+      #counter {
+        left: 12px;
+      }
+      #ground,
+      #counter {
         top: 12px;
+      }
+      #off,
+      #reset {
+        top: 100px;
       }
       #ground,
       #off,
       #reset {
         cursor: pointer;
-      }
-      #off {
-        right: 116px; /* 12px + the ground button's 96px + 8px */
-      }
-      #reset {
-        top: 104px; /* as far below the menu (58px) as the menu is below the ground button */
       }
       /* Tiny, in the corner, with a white halo. */
       #credit {
@@ -108,7 +125,7 @@
       }
       /* The menu of the layers, below the ground button. */
       #layers {
-        top: 58px;
+        top: 56px;
       }
       /* Open: a panel of the layers as wide as they need, left-aligned, the chevron on the right of
          the title. */
@@ -321,7 +338,7 @@
             ". ArrowUp ."
             "ArrowLeft ArrowDown ArrowRight"
             "Space Space Space";
-          gap: 6px;
+          gap: 8px;
         }
         /* The arrows smaller, as they only show the keys. */
         #steer button {
@@ -344,27 +361,28 @@
           font-size: 12px;
         }
       }
-      /* Top left, how many buildings and bridges are still standing (showCount in src/main.js):
-         one box like the buttons, a line each, the numbers on the right with all digits equally
-         wide, so they stay in place. */
+      /* How many buildings and bridges are still standing (showCount in src/main.js), a line each:
+         an icon, then the number with all digits equally wide, so they stay in place. */
       #counter {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        display: grid;
-        grid-template-columns: auto auto;
-        column-gap: 16px;
-        padding: 8px 14px;
+        height: 80px; /* as tall as the two buttons on the right and the 8px between */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 8px;
         font-variant-numeric: tabular-nums;
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        pointer-events: none;
-        -webkit-user-select: none; /* Safari */
-        user-select: none;
       }
-      #counter span:nth-child(even) {
-        text-align: right;
+      #counter p {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      /* The house from Material Symbols (Apache License 2.0) and a bridge on its grid, cut to the
+         drawing (viewBox), so its bottom sits on the numbers' baseline. Lower than the line, so
+         the numbers stay where text would be. */
+      #counter svg {
+        width: 12px;
+        height: 13.5px;
+        fill: currentColor;
       }
       body:not([data-mode="loading"]) #loading,
       body[data-mode="loading"] #ground,
@@ -384,8 +402,22 @@
     <button id="off">Get off</button>
     <button id="reset" title="Rebuild all that was blown up" hidden>Reset</button>
     <div id="counter">
-      <span>Buildings</span><span id="Buildings"></span> <span>Bridges</span
-      ><span id="Bridges"></span>
+      <p title="Buildings">
+        <svg viewBox="4 3 16 18" aria-hidden="true">
+          <path d="M6 19h3v-6h6v6h3v-9l-6-4.5L6 10v9Zm-2 2V9l8-6 8 6v12h-7v-6h-2v6H4Z" /></svg
+        ><span id="Buildings"></span>
+      </p>
+      <p title="Bridges">
+        <svg viewBox="4 3 16 18" aria-hidden="true">
+          <path
+            d="M5 10v10h3v-2a4 4 0 0 1 8 0v2h3V10M4 10h16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          />
+        </svg>
+        <span id="Bridges"></span>
+      </p>
     </div>
     <div id="steer" hidden>
       <button data-key="ArrowLeft" aria-label="Turn left">←<kbd>A</kbd></button>
