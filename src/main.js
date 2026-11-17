@@ -108,8 +108,9 @@ async function groundTextures(paths, buffers) {
 }
 
 // Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
-// (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs) and the ground
-// shown first: the one last chosen in this browser, else the aerial photo.
+// (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs), the names
+// (tools/names.mjs) and the ground shown first: the one last chosen in this browser, else the
+// aerial photo.
 const GROUND_KEY = "basel3d.ground";
 let groundKind = "photo";
 try {
@@ -124,6 +125,7 @@ const [
   treesBuffer,
   waterBuffer,
   shipsBuffer,
+  namesJson,
   ...rest
 ] = await load(
   [
@@ -134,6 +136,7 @@ const [
     "trees.bin",
     "water.ktx2",
     "ships.bin",
+    "names.json",
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
     ...groundPaths(groundKind),
   ],
@@ -228,7 +231,7 @@ scene.add(serpent.group);
 // above the monster's horns (221 m) and 50 m above the taller tower (213 m).
 const helicopter = createHelicopter(1728, -64, 150, 300, 6);
 scene.add(helicopter.group);
-// Lines to check the ways of what moves (the menu "Lines"): strong magenta unless given a colour,
+// Lines to check the ways of what moves (the menu "Layers"): strong magenta unless given a colour,
 // shown exactly (no tone mapping, as the trams' badges), 4 px wide, drawn over everything.
 // vertices: flat x, y, z of each segment's two ends.
 function checkLines(vertices, color = 0xff00ff) {
@@ -444,9 +447,10 @@ function createBirds() {
   };
   return { mesh, update };
 }
-// The menu "Lines" shows the loops of the trams (each line on its own), trains and cars and the
-// course of the ships as lines above them, to check them; at first none. "All" shows or hides
-// all tram lines (ticked when all are shown); L shows everything, or hides everything if all is.
+// The menu "Layers" shows the names (see updateNames) and the loops of the trams (each line on its
+// own), trains and cars and the course of the ships as lines above them; at first none. "All"
+// shows or hides all tram lines (ticked when all are shown); L shows all lines, or hides all if
+// all are shown; N shows or hides the names.
 const trams = movers[MOVER_KINDS.indexOf("tram")];
 const tramGroup = trams.routes;
 tramGroup.visible = true;
@@ -458,7 +462,7 @@ const kindLines = {
   ...Object.fromEntries(MOVER_KINDS.map((kind, i) => [kind, movers[i].routes])),
   ship: ships.route,
 };
-const kindBoxes = [...document.querySelectorAll("#lines input[data-kind]")];
+const kindBoxes = [...document.querySelectorAll("#layers input[data-kind]")];
 const tramBoxes = tramLines.map((line) => {
   const box = Object.assign(document.createElement("input"), { type: "checkbox" });
   box.style.accentColor = `#${line.material.color.getHexString()}`; // the line's colour
@@ -490,6 +494,18 @@ addEventListener("keydown", (e) => {
   for (const line of tramLines) showTram(line, all);
   for (const box of kindBoxes) showKind(box, all);
 });
+// Where a scene point is on the screen (px) and whether it is in front of the camera, by the view
+// of the camera's last updateMatrixWorld.
+const projected = new THREE.Vector3();
+function onScreen(point) {
+  projected.copy(point).project(camera);
+  return {
+    x: ((projected.x + 1) / 2) * innerWidth,
+    y: ((1 - projected.y) / 2) * innerHeight,
+    front: projected.z < 1,
+  };
+}
+
 // Over each tram whose line is shown, its number in a round badge of the line's colour, so one
 // sees where a tram changes its number (tools/paths.mjs).
 const badgeLayer = document.getElementById("badges");
@@ -503,11 +519,10 @@ function updateBadges() {
   const on = tramLinesShown();
   if (!on && !badgesOn) return; // all hidden already
   badgesOn = on;
-  camera.updateMatrixWorld(); // this frame's view, not the last one rendered
   badges.forEach((badge, v) => {
     const part = trams.roof(v, badgeAt);
-    badgeAt.project(camera);
-    const shown = part.lines.visible && badgeAt.z < 1; // not behind the camera
+    const { x, y, front } = onScreen(badgeAt);
+    const shown = part.lines.visible && front;
     if (badge.hidden === shown) badge.hidden = !shown;
     if (!shown) return;
     if (badge.textContent !== part.ref) {
@@ -517,10 +532,59 @@ function updateBadges() {
       const { r, g, b } = badgeColour.set(part.colour); // linear
       badge.style.color = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#000" : "#fff";
     }
-    const x = ((badgeAt.x + 1) / 2) * innerWidth;
-    const y = ((1 - badgeAt.y) / 2) * innerHeight;
     badge.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
   });
+}
+
+// While "Names" is ticked: the quarters and towns on the ground and the landmarks just above their
+// top, the first roof, bridge deck or ground hit from above (tools/names.mjs). Landmarks further
+// than LANDMARK_RANGE from the camera are hidden, so the centre stays readable from afar.
+const LANDMARK_RANGE = 3000; // metres
+// Shown as last chosen in this browser, else not.
+const NAMES_KEY = "basel3d.names"; // "on" or "off"
+const namesBox = document.getElementById("names-box");
+try {
+  namesBox.checked = localStorage.getItem(NAMES_KEY) === "on";
+} catch {} // storage blocked
+function showNames(on) {
+  namesBox.checked = on;
+  try {
+    localStorage.setItem(NAMES_KEY, on ? "on" : "off");
+  } catch {} // storage blocked
+}
+namesBox.addEventListener("change", () => showNames(namesBox.checked));
+addEventListener("keydown", (e) => {
+  if (e.code === "KeyN") showNames(!namesBox.checked);
+});
+const nameLayer = document.getElementById("names");
+scene.updateMatrixWorld(); // for the rays from above
+const fromAbove = new THREE.Raycaster();
+const labels = JSON.parse(new TextDecoder().decode(namesJson)).map(({ name, kind, x, z }) => {
+  const at = new THREE.Vector3(x, heightAt(x, z), z);
+  if (kind === "landmark") {
+    fromAbove.set(new THREE.Vector3(x, 2000, z), new THREE.Vector3(0, -1, 0));
+    const hit = fromAbove.intersectObjects([buildings.scene, bridges.scene, terrain])[0];
+    if (hit) at.y = hit.point.y;
+  }
+  const element = Object.assign(document.createElement("div"), {
+    textContent: name,
+    className: kind,
+    hidden: true,
+  });
+  return { at, kind, element: nameLayer.appendChild(element) };
+});
+let namesOn = false; // whether they were shown at the last update
+function updateNames() {
+  const on = namesBox.checked;
+  if (!on && !namesOn) return; // all hidden already
+  namesOn = on;
+  for (const { at, kind, element } of labels) {
+    const { x, y, front } = onScreen(at);
+    const near = kind === "place" || camera.position.distanceTo(at) < LANDMARK_RANGE;
+    const shown = on && front && near;
+    if (element.hidden === shown) element.hidden = !shown;
+    if (shown) element.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  }
 }
 
 // Ships on their round course on the Rhine (tools/ships.mjs), which keeps clear of the bridge
@@ -1499,19 +1563,14 @@ function ride(clientX, clientY, reach) {
 // HELICOPTER_REACH on the screen (it does not grow far away, see boost) and not ridden; else the
 // first one found around the point at reach / 2, then at reach px (eight points each); if any.
 const HELICOPTER_REACH = 50; // px
-const helicopterAt = new THREE.Vector3();
 function vehicleAt(clientX, clientY, reach = 0) {
   for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
   const found = vehicleOn(clientX, clientY);
   if (found) return found;
-  helicopterAt.copy(helicopter.group.position).project(camera);
-  const [x, y] = [
-    ((helicopterAt.x + 1) / 2) * innerWidth,
-    ((1 - helicopterAt.y) / 2) * innerHeight,
-  ];
+  const { x, y, front } = onScreen(helicopter.group.position);
   if (
     riding?.ride !== helicopter.ride &&
-    helicopterAt.z < 1 && // not behind the camera
+    front &&
     Math.hypot(x - clientX, y - clientY) < HELICOPTER_REACH
   )
     return { ride: helicopter.ride, vehicle: 0 };
@@ -1742,6 +1801,8 @@ renderer.setAnimationLoop((time) => {
   planes.update(time / 1000);
   birds.update(time / 1000);
   if (riding) riding.ride.cab(riding.vehicle, camera); // after all that moves
+  camera.updateMatrixWorld(); // this frame's view for onScreen, not the last one rendered
   updateBadges();
+  updateNames();
   render();
 });

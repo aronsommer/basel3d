@@ -41,11 +41,11 @@
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
-      /* The ground button and the closed menu of the lines: the same size, one below the other.
+      /* The ground button and the closed menu of the layers: the same size, one below the other.
          The button to get off the same size, to the left of the ground button. */
       #ground,
       #off,
-      #lines {
+      #layers {
         position: absolute;
         right: 12px;
         box-sizing: border-box;
@@ -97,32 +97,32 @@
         color: inherit;
         text-decoration: none;
       }
-      /* The menu of the lines, below the ground button. */
-      #lines {
+      /* The menu of the layers, below the ground button. */
+      #layers {
         top: 58px;
       }
-      /* Open: a panel of the lines as wide as they need, left-aligned, the chevron on the right of
+      /* Open: a panel of the layers as wide as they need, left-aligned, the chevron on the right of
          the title. */
-      #lines[open] {
+      #layers[open] {
         width: auto;
         min-width: 96px;
         text-align: left;
       }
-      #lines summary {
+      #layers summary {
         list-style: none;
         cursor: pointer;
       }
-      #lines summary::-webkit-details-marker {
+      #layers summary::-webkit-details-marker {
         display: none;
       }
-      #lines[open] summary {
+      #layers[open] summary {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 4px;
       }
       /* A chevron: down when closed, up when open. */
-      #lines summary::after {
+      #layers summary::after {
         content: "";
         display: inline-block;
         width: 5px;
@@ -132,32 +132,39 @@
         border-bottom: 2px solid;
         transform: translateY(-3px) rotate(45deg);
       }
-      #lines[open] summary::after {
+      #layers[open] summary::after {
         transform: translateY(2px) rotate(-135deg);
       }
       /* A box close to its text; "All" a little apart from "Trams". */
-      #lines label,
-      #lines .heading {
+      #layers label,
+      #layers .heading {
         display: flex;
         align-items: center;
         gap: 6px;
         min-height: 28px;
       }
-      #lines label {
+      #layers label {
         cursor: pointer;
       }
-      #lines .heading {
+      #layers .heading {
         gap: 16px;
       }
-      #lines input {
+      #layers input {
         width: 16px;
         height: 16px;
         margin: 0;
         accent-color: #ff00ff;
         cursor: pointer;
       }
-      /* "All" neutral, as it stands for lines of all colours. */
-      #lines #trams {
+      /* The names apart from the lines below them. */
+      #layers hr {
+        margin: 4px 0;
+        border: 0;
+        border-top: 1px solid rgba(0, 0, 0, 0.12);
+      }
+      /* "All" neutral, as it stands for lines of all colours; "Names" neutral, as it shows none. */
+      #layers #trams,
+      #layers #names-box {
         accent-color: #1d242b;
       }
       /* The tram lines one by one below the heading, five in a row, each pair of box and number
@@ -168,6 +175,50 @@
         justify-content: start;
         column-gap: 16px;
         font-variant-numeric: tabular-nums;
+      }
+      /* The names (updateNames in src/main.js), below the badges, the buttons and the menu; each
+         with its bottom middle on its point, in a white halo: quarters and towns in spaced grey
+         capitals, landmarks dark above a dot. */
+      #names {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      #names div {
+        position: absolute;
+        top: 0;
+        left: 0;
+        white-space: nowrap;
+        font-weight: 600;
+        text-shadow:
+          -1px -1px 0 #fff,
+          1px -1px 0 #fff,
+          -1px 1px 0 #fff,
+          1px 1px 0 #fff;
+      }
+      #names .place {
+        font-size: 12px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #56616b;
+      }
+      #names .landmark {
+        padding-bottom: 9px;
+        font-size: 12px;
+        color: #1d242b;
+      }
+      #names .landmark::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 6px;
+        height: 6px;
+        margin-left: -3px;
+        border-radius: 50%;
+        background: #1d242b;
+        box-shadow: 0 0 0 2px #fff;
       }
       /* The trams' line numbers (updateBadges in src/main.js), below the buttons and the menu. */
       #badges {
@@ -221,13 +272,14 @@
       }
       body:not([data-mode="loading"]) #loading,
       body[data-mode="loading"] #ground,
-      body[data-mode="loading"] #lines,
+      body[data-mode="loading"] #layers,
       body:not([data-mode="ride"]) #off {
         display: none;
       }
     </style>
   </head>
   <body data-mode="loading">
+    <div id="names"></div>
     <div id="badges"></div>
     <div id="loading">Loading <span id="progress">0%</span></div>
     <button id="ground"></button>
@@ -238,8 +290,10 @@
       <button data-key="ArrowDown" aria-label="Down">↓</button>
       <button data-key="ArrowRight" aria-label="Turn right">→</button>
     </div>
-    <details id="lines">
-      <summary>Lines</summary>
+    <details id="layers">
+      <summary>Layers</summary>
+      <label><input type="checkbox" id="names-box" /> Names</label>
+      <hr />
       <div class="heading">
         Trams
         <label><input type="checkbox" id="trams" /> All</label>
