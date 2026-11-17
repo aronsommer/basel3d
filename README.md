@@ -25,7 +25,8 @@ basel3d/
 ├── index.html         page with the import map for three.js
 ├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
-├── src/buildings.js   buildings and bridges as single objects: which is under the mouse, highlight
+├── src/buildings.js   buildings and bridges as single objects: which is under the mouse, highlight, hide
+├── src/explosions.js  blowing up a building or bridge: flying faces, fire, smoke, bang, scorched ground
 ├── src/highlight.js   the cyan of what can be clicked, under the mouse
 ├── public/            finished model data loaded by the viewer
 │   ├── basel.glb      buildings (also for Unity/Blender)

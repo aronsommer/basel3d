@@ -1,5 +1,5 @@
-// Buildings and bridges as single objects, by number: which one is at a screen point, and showing
-// one in HIGHLIGHT. What is done with them is up to the caller.
+// Buildings and bridges as single objects, by number: which one is at a screen point, showing one
+// in HIGHLIGHT, its triangles, and hiding it. What is done with them is up to the caller.
 import * as THREE from "three";
 import { highlightShader } from "./highlight.js";
 
@@ -8,17 +8,20 @@ import { highlightShader } from "./highlight.js";
 export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   // Each vertex has its building's or bridge's number (_building, tools/buildings.mjs and
   // bridges.mjs); the bridges' are moved after the buildings', so each number is one of them.
-  let count = 0;
-  buildings.traverse((o) => {
+  const meshesOf = []; // per number, the meshes with its vertices
+  const register = (o, offset) => {
     if (!o.isMesh) return;
     const number = o.geometry.attributes._building;
-    for (let i = 0; i < number.count; i++) count = Math.max(count, number.getX(i) + 1);
-  });
-  bridges.traverse((o) => {
-    if (!o.isMesh) return;
-    const number = o.geometry.attributes._building;
-    for (let i = 0; i < number.count; i++) number.setX(i, number.getX(i) + count);
-  });
+    for (let i = 0; i < number.count; i++) {
+      const n = number.getX(i) + offset;
+      if (offset) number.setX(i, n);
+      const meshes = (meshesOf[n] ??= []);
+      if (meshes.at(-1) !== o) meshes.push(o);
+    }
+  };
+  buildings.traverse((o) => register(o, 0));
+  const count = meshesOf.length; // of buildings
+  bridges.traverse((o) => register(o, count));
 
   // The one shown in HIGHLIGHT (its number; -1 for none).
   const highlighted = { value: -1 };
@@ -86,6 +89,42 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     // Shows the one with this number in HIGHLIGHT; -1: none.
     highlight(number) {
       highlighted.value = number;
+    },
+    isBridge: (number) => number >= count,
+    // The triangles of the one with this number in scene coordinates, per mesh: [{ material,
+    // positions }], nine numbers per triangle. None once hidden.
+    triangles(number) {
+      const vertex = new THREE.Vector3();
+      return (meshesOf[number] ?? []).map((mesh) => {
+        const { index, attributes } = mesh.geometry;
+        const { position, _building } = attributes;
+        const at = (i) => (index ? index.getX(i) : i);
+        const positions = [];
+        mesh.updateWorldMatrix(true, false);
+        for (let t = 0; t < (index ?? position).count; t += 3) {
+          if (_building.getX(at(t)) !== number) continue;
+          for (let k = 0; k < 3; k++)
+            positions.push(
+              ...vertex.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
+            );
+        }
+        return { material: mesh.material, positions };
+      });
+    },
+    // Hides the one with this number for good, also from at() and raycasts: its vertices collapse
+    // into one point.
+    hide(number) {
+      for (const mesh of meshesOf[number] ?? []) {
+        const { position, _building } = mesh.geometry.attributes;
+        let first = -1;
+        for (let i = 0; i < position.count; i++) {
+          if (_building.getX(i) !== number) continue;
+          if (first < 0) first = i;
+          else position.setXYZ(i, position.getX(first), position.getY(first), position.getZ(first));
+        }
+        position.needsUpdate = true;
+      }
+      meshesOf[number] = [];
     },
   };
 }

@@ -10,6 +10,7 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
+import { createExplosions } from "./explosions.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
@@ -197,6 +198,38 @@ for (const { scene: model } of [buildings, bridges]) {
 const terrain = createTerrain(terrainInfo);
 scene.add(terrain);
 const structures = createBuildings(buildings.scene, bridges.scene, [terrain], renderer, camera);
+const explosions = createExplosions(scene, structures, heightAt, camera);
+// What is blown up stays so in this browser until Reset, as long as the models are the same (by
+// their sizes), since the numbers belong to them. Reset forgets it and loads the page again.
+const DESTROYED_KEY = "basel3d.destroyed"; // { models, numbers }
+const MODELS = `${sizes["basel.glb"]} ${sizes["bridges.glb"]}`;
+const destroyed = new Set();
+try {
+  const saved = JSON.parse(localStorage.getItem(DESTROYED_KEY));
+  if (saved?.models === MODELS) for (const number of saved.numbers) destroyed.add(number);
+} catch {} // storage blocked or not JSON
+for (const number of destroyed) explosions.ruin(number);
+const resetButton = document.getElementById("reset");
+resetButton.hidden = !destroyed.size;
+resetButton.addEventListener("click", () => {
+  try {
+    localStorage.removeItem(DESTROYED_KEY);
+  } catch {} // storage blocked
+  location.reload();
+});
+// Blows up the building or bridge with this number (-1: none) and remembers it.
+function destroy(number) {
+  if (number < 0 || destroyed.has(number)) return;
+  explosions.explode(number);
+  destroyed.add(number);
+  resetButton.hidden = false;
+  try {
+    localStorage.setItem(
+      DESTROYED_KEY,
+      JSON.stringify({ models: MODELS, numbers: [...destroyed] }),
+    );
+  } catch {} // storage blocked
+}
 
 // The button switches the ground between map and aerial photo, loading each on first use. Only
 // the shown textures stay in GPU memory; the others are re-uploaded when shown again.
@@ -1555,19 +1588,19 @@ function steering() {
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map.
+// only stopped the gliding map, rides what is there, else blows up the building or bridge there.
 let down = { x: 0, y: 0 }; // where the last button or finger went down
 renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (e.button !== 0 || stoppedGlide) return;
   const mouse = e.pointerType === "mouse";
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < (mouse ? 5 : 10))
-    ride(e.clientX, e.clientY, mouse ? 0 : FINGER);
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
+  const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
+  if (found) ride(found, e.clientX, e.clientY);
+  else destroy(structures.at(e.clientX, e.clientY));
 });
-// Rides the one at a screen point (or up to reach px beside it), if any.
-function ride(clientX, clientY, reach) {
-  const found = vehicleAt(clientX, clientY, reach);
-  if (!found) return;
+// Rides found ({ ride, vehicle }), clicked or tapped at a screen point.
+function ride(found, clientX, clientY) {
   if (!riding) {
     before = { position: camera.position.clone(), target: orbit.target.clone() };
     orbit.enabled = false;
@@ -1831,6 +1864,7 @@ renderer.setAnimationLoop((time) => {
   helicopter.update(time / 1000, riding?.ride === helicopter.ride ? steering() : null);
   drive(dt);
   ships.update(time / 1000);
+  explosions.update(dt);
   planes.update(time / 1000);
   birds.update(time / 1000);
   if (riding) riding.ride.cab(riding.vehicle, camera); // after all that moves
