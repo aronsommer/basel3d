@@ -1,6 +1,6 @@
 // Buildings and bridges as single objects, by number: which one is at a screen point or in the way
-// of a line, showing one in HIGHLIGHT, its triangles, and hiding it. What is done with them is up
-// to the caller.
+// of a line, showing one in HIGHLIGHT, their triangles, and hiding them. What is done with them is
+// up to the caller.
 import * as THREE from "three";
 import { highlightShader } from "./highlight.js";
 
@@ -10,43 +10,57 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   // Each vertex has its building's or bridge's number (_building, tools/buildings.mjs and
   // bridges.mjs); the bridges' are moved after the buildings', so each number is one of them.
   const meshesOf = []; // per number, the meshes with its vertices
-  // Per number its bounding box in scene coordinates: min x, y, z, max x, y, z.
-  const boxes = new Float32Array(0x10000 * 6);
-  for (let i = 0; i < boxes.length; i++) boxes[i] = i % 6 < 3 ? Infinity : -Infinity;
-  const vertex = new THREE.Vector3();
   const register = (o, offset) => {
     if (!o.isMesh) return;
-    const { position, _building: number } = o.geometry.attributes;
-    o.updateWorldMatrix(true, false);
+    const number = o.geometry.attributes._building;
     for (let i = 0; i < number.count; i++) {
       const n = number.getX(i) + offset;
       if (offset) number.setX(i, n);
       const meshes = (meshesOf[n] ??= []);
       if (meshes.at(-1) !== o) meshes.push(o);
-      vertex.fromBufferAttribute(position, i).applyMatrix4(o.matrixWorld);
-      for (let d = 0; d < 3; d++) {
-        boxes[6 * n + d] = Math.min(boxes[6 * n + d], vertex.getComponent(d));
-        boxes[6 * n + 3 + d] = Math.max(boxes[6 * n + 3 + d], vertex.getComponent(d));
-      }
     }
   };
   buildings.traverse((o) => register(o, 0));
   const count = meshesOf.length; // of buildings
   bridges.traverse((o) => register(o, count));
+  // The meshes with vertices of these numbers.
+  const meshesWith = (numbers) => new Set([...numbers].flatMap((n) => meshesOf[n] ?? []));
 
-  // Per GRID-metre square of the ground ("column,row"), the numbers whose boxes reach into it.
+  // Per number its bounding box in scene coordinates (min x, y, z, max x, y, z), and per
+  // GRID-metre square of the ground ("column,row") the numbers whose boxes reach into it; worked
+  // out on the first hit(), not while loading.
   const GRID = 100;
+  let boxes = null;
   const cells = new Map();
   const cellRange = (from, to) => [Math.floor(from / GRID), Math.floor(to / GRID)];
-  for (let n = 0; n < meshesOf.length; n++) {
-    const [x0, x1] = cellRange(boxes[6 * n], boxes[6 * n + 3]);
-    const [z0, z1] = cellRange(boxes[6 * n + 2], boxes[6 * n + 5]);
-    for (let x = x0; x <= x1; x++)
-      for (let z = z0; z <= z1; z++) {
-        const key = `${x},${z}`;
-        if (!cells.has(key)) cells.set(key, []);
-        cells.get(key).push(n);
-      }
+  function measure() {
+    boxes = new Float32Array(meshesOf.length * 6);
+    for (let i = 0; i < boxes.length; i++) boxes[i] = i % 6 < 3 ? Infinity : -Infinity;
+    const vertex = new THREE.Vector3();
+    for (const model of [buildings, bridges])
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const { position, _building: number } = o.geometry.attributes;
+        o.updateWorldMatrix(true, false);
+        for (let i = 0; i < number.count; i++) {
+          const n = number.getX(i);
+          vertex.fromBufferAttribute(position, i).applyMatrix4(o.matrixWorld);
+          for (let d = 0; d < 3; d++) {
+            boxes[6 * n + d] = Math.min(boxes[6 * n + d], vertex.getComponent(d));
+            boxes[6 * n + 3 + d] = Math.max(boxes[6 * n + 3 + d], vertex.getComponent(d));
+          }
+        }
+      });
+    for (let n = 0; n < meshesOf.length; n++) {
+      const [x0, x1] = cellRange(boxes[6 * n], boxes[6 * n + 3]);
+      const [z0, z1] = cellRange(boxes[6 * n + 2], boxes[6 * n + 5]);
+      for (let x = x0; x <= x1; x++)
+        for (let z = z0; z <= z1; z++) {
+          const key = `${x},${z}`;
+          if (!cells.has(key)) cells.set(key, []);
+          cells.get(key).push(n);
+        }
+    }
   }
   // Where (0 to 1) the segment from → to enters the box of number n; Infinity if it misses it.
   const enter = (from, to, n) => {
@@ -138,6 +152,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     // The number of the building or bridge whose bounding box the segment from → to (scene points,
     // short against GRID) enters first, or -1; hidden ones are left out.
     hit(from, to) {
+      if (!boxes) measure();
       let [best, first] = [-1, Infinity];
       const [x0, x1] = cellRange(Math.min(from.x, to.x), Math.max(from.x, to.x));
       const [z0, z1] = cellRange(Math.min(from.z, to.z), Math.max(from.z, to.z));
@@ -150,40 +165,53 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           }
       return best;
     },
-    // The triangles of the one with this number in scene coordinates, per mesh: [{ material,
-    // positions }], nine numbers per triangle. None once hidden.
-    triangles(number) {
+    // The triangles of those with these numbers, but hidden ones, in scene coordinates: a Map from
+    // each number to [{ material, positions }] per mesh, nine numbers per triangle. Each mesh is
+    // gone through once, however many numbers it has.
+    triangles(numbers) {
+      const wanted = new Set(numbers);
+      const found = new Map();
       const vertex = new THREE.Vector3();
-      return (meshesOf[number] ?? []).map((mesh) => {
+      for (const mesh of meshesWith(wanted)) {
         const { index, attributes } = mesh.geometry;
         const { position, _building } = attributes;
         const at = (i) => (index ? index.getX(i) : i);
-        const positions = [];
+        const lists = new Map(); // number → its positions in this mesh
         mesh.updateWorldMatrix(true, false);
         for (let t = 0; t < (index ?? position).count; t += 3) {
-          if (_building.getX(at(t)) !== number) continue;
+          const n = _building.getX(at(t));
+          if (!wanted.has(n)) continue;
+          if (!lists.has(n)) lists.set(n, []);
+          const positions = lists.get(n);
           for (let k = 0; k < 3; k++)
             positions.push(
               ...vertex.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
             );
         }
-        return { material: mesh.material, positions };
-      });
+        for (const [n, positions] of lists) {
+          if (!found.has(n)) found.set(n, []);
+          found.get(n).push({ material: mesh.material, positions });
+        }
+      }
+      return found;
     },
-    // Hides the one with this number for good, also from at() and raycasts: its vertices collapse
-    // into one point.
-    hide(number) {
-      for (const mesh of meshesOf[number] ?? []) {
+    // Hides those with these numbers for good, also from at(), hit() and raycasts: the vertices of
+    // each collapse into one point. Each mesh is gone through once.
+    hide(numbers) {
+      const wanted = new Set(numbers);
+      for (const mesh of meshesWith(wanted)) {
         const { position, _building } = mesh.geometry.attributes;
-        let first = -1;
+        const first = new Map(); // number → its first vertex in this mesh
         for (let i = 0; i < position.count; i++) {
-          if (_building.getX(i) !== number) continue;
-          if (first < 0) first = i;
-          else position.setXYZ(i, position.getX(first), position.getY(first), position.getZ(first));
+          const n = _building.getX(i);
+          if (!wanted.has(n)) continue;
+          const f = first.get(n);
+          if (f === undefined) first.set(n, i);
+          else position.setXYZ(i, position.getX(f), position.getY(f), position.getZ(f));
         }
         position.needsUpdate = true;
       }
-      meshesOf[number] = [];
+      for (const n of wanted) if (meshesOf[n]) meshesOf[n] = [];
     },
   };
 }

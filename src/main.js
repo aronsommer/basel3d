@@ -209,7 +209,7 @@ try {
   const saved = JSON.parse(localStorage.getItem(DESTROYED_KEY));
   if (saved?.models === MODELS) for (const number of saved.numbers) destroyed.add(number);
 } catch {} // storage blocked or not JSON
-for (const number of destroyed) explosions.ruin(number);
+explosions.ruin(destroyed);
 const resetButton = document.getElementById("reset");
 resetButton.hidden = !destroyed.size;
 resetButton.addEventListener("click", () => {
