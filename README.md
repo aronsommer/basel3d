@@ -23,6 +23,7 @@ npm run format
 ```
 basel3d/
 ├── index.html         page with the import map for three.js
+├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
 ├── public/            finished model data loaded by the viewer
 │   ├── basel.glb      buildings (also for Unity/Blender)
@@ -114,3 +115,4 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js))
 - Buildings, terrain, aerial photo, trees: source: Federal Office of Topography swisstopo. Open government data, free to use with attribution.
 - Bridges: source: Geodaten Kanton Basel-Stadt. Public geodata with download service, CC BY 4.0.
 - Map and water: © OpenStreetMap contributors, ODbL.
+- Font: Inter by The Inter Project Authors, SIL Open Font License 1.1.
