@@ -1529,13 +1529,16 @@ document.body.dataset.mode = "orbit";
 
 // While a tram line is shown, the scene but the trams is drawn in light grey under the check
 // lines, so the lines' colours stand out: into greyTarget first, then onto the screen by its
-// brightness. The trams mark their pixels there with alpha 0 (all else is opaque, alpha 1).
+// brightness. The trams mark their pixels there with alpha 0 (all else is opaque, alpha 1); on
+// the screen they stay opaque, as the canvas has alpha.
 const greyTarget = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
+const tramAlpha = { value: 1 };
 trams.mesh.material.onBeforeCompile = (shader) => {
-  shader.fragmentShader = shader.fragmentShader.replace(
+  shader.uniforms.tramAlpha = tramAlpha;
+  shader.fragmentShader = `uniform float tramAlpha;\n${shader.fragmentShader.replace(
     "#include <dithering_fragment>",
-    "#include <dithering_fragment>\ngl_FragColor.a = 0.0;",
-  );
+    "#include <dithering_fragment>\ngl_FragColor.a = tramAlpha;",
+  )}`;
 };
 const greySize = new THREE.Vector2();
 const greyQuad = new FullScreenQuad(
@@ -1566,6 +1569,7 @@ function render(grey = tramLinesShown()) {
     greyTarget.setSize(greySize.x, greySize.y); // only reallocates when resized
     renderer.setRenderTarget(greyTarget);
   }
+  tramAlpha.value = grey ? 0 : 1;
   renderer.render(scene, camera);
   if (grey) {
     renderer.setRenderTarget(null);
