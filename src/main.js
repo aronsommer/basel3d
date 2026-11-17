@@ -104,8 +104,12 @@ async function groundTextures(paths, buffers) {
 
 // Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
 // (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs) and the ground
-// shown first.
+// shown first: the one last chosen in this browser, else the aerial photo.
+const GROUND_KEY = "basel3d.ground";
 let groundKind = "photo";
+try {
+  if (localStorage.getItem(GROUND_KEY) === "map") groundKind = "map";
+} catch {} // storage blocked
 const progress = document.getElementById("progress");
 const [
   terrainJson,
@@ -200,6 +204,9 @@ groundButton.addEventListener("click", async () => {
   groundKind = kind;
   for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
   groundButton.textContent = GROUND_LABELS[otherGround()];
+  try {
+    localStorage.setItem(GROUND_KEY, kind);
+  } catch {} // storage blocked
 });
 groundButton.textContent = GROUND_LABELS[otherGround()];
 function otherGround() {

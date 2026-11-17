@@ -31,11 +31,9 @@ const GREEN = "#5f8f45"; // greens about as dark as in the aerial photo
 const WATER = "#4f8fc6";
 const PAVED = "#d2c8b6"; // squares and pedestrian areas
 const SIDEWALK = "#d6d0c4"; // drawn on both sides of every road, a little darker than it
-const MINOR_ROAD = "#eceae4";
-const MAJOR_ROAD = "#f5d77e";
+const ROAD = "#eceae4";
 const FOOTWAY = "#e2cfa6";
 const RAIL = "#5a524a";
-const MAJOR = new Set(["motorway", "trunk", "primary", "secondary"]);
 const has = (value, ...values) => values.includes(value);
 
 function areaStyle(t) {
@@ -75,11 +73,7 @@ function lineStyle(t) {
   // Sidewalks first under all roads, so junctions stay clean; wider roads on top.
   return [
     { order: 9, stroke: SIDEWALK, width: width + SIDEWALK_WIDTH },
-    {
-      order: 10 + width / 100,
-      stroke: MAJOR.has(t.highway.replace("_link", "")) ? MAJOR_ROAD : MINOR_ROAD,
-      width,
-    },
+    { order: 10 + width / 100, stroke: ROAD, width },
   ];
 }
 

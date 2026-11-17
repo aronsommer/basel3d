@@ -29,8 +29,8 @@ basel3d/
 │   ├── bridges.glb    Brücken in 3D (Kanton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
 │   ├── terrain/       Gelände: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
 │   ├── ground/        Bodenbilder, je 64 Kacheln (KTX2, 1 km, Name Spalte_Zeile)
-│   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), lädt erst beim Umschalten
-│   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), wird beim Start gezeigt
+│   │   ├── map/       Karte (OpenStreetMap, tools/map.mjs), lädt erst beim ersten Zeigen
+│   │   └── photo/     Luftbild (SWISSIMAGE, tools/terrain.mjs), wird ohne gespeicherte Wahl beim Start gezeigt
 │   ├── trees.bin      Baumstandorte (x, z)
 │   ├── water.ktx2     Wassermaske des ganzen Gebiets für den Wasser-Shader (tools/map.mjs)
 │   ├── trams.json     Tramstrecken: Linie, Betreiber, Farbe (tools/paths.mjs)
@@ -104,7 +104,7 @@ Alles Bewegte ist im Viewer ([src/main.js](src/main.js)) selbst gebaut, im Low-P
   - Ziehen verschiebt.
   - Rechte Maustaste oder Alt/Cmd + Ziehen dreht.
   - Das Mausrad zoomt.
-  - Der Knopf oben rechts wechselt zwischen Karte und Luftbild.
+  - Der Knopf oben rechts wechselt zwischen Karte und Luftbild. Der Browser merkt sich die Wahl (`localStorage`, Schlüssel `basel3d.ground`, Wert `map` oder `photo`) und zeigt sie beim nächsten Start.
   - Die URL hält die Ansicht fest, so zeigt Neuladen oder ein geteilter Link dieselbe. Format wie bei openstreetmap.org, mit Richtung und Neigung wie bei MapLibre: `#map=Zoom/Breite/Länge/Richtung/Neigung`, etwa `#map=15.20/47.556321/7.591912/34/48`. Breite und Länge (WGS84, 6 Stellen) des angeschauten Punkts; der Zoom einer Webkarte (256-px-Kacheln), die dort gleich viel Boden über die Fensterhöhe zeigt; die Blickrichtung in Grad (0 Norden, 90 Osten) und die Neigung in Grad (0 senkrecht von oben), beide freiwillig. Ein Link einer 2D-Karte wie `#map=13/47.545829/7.640734` zeigt so denselben Ort von oben.
 - **Mitfahren:** auf ein Tram, einen Zug oder ein Auto klicken (auf dem Handy doppelt tippen); unter der Maus wird es hervorgehoben. Die Kamera sitzt vorne im Führerstand. Esc (auf dem Handy ein Tipp) führt zurück zur Ansicht.
 - **Menü „Linien“** (oben rechts, unter dem Knopf Karte/Luftbild und zugeklappt gleich gross): zeigt die Schlaufen der Trams, Züge und Autos und den Kurs der Schiffe als kräftige magenta Linien (4 px, über allem), zum Prüfen; am Anfang keine. Unter „Trams“ hat jede Tramlinie ein eigenes Häkchen, und „Alle“ zeigt oder verbirgt alle auf einmal (angehakt, wenn alle gezeigt werden). Die Taste **L** zeigt alles, oder blendet alles aus, wenn alles gezeigt wird.
