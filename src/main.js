@@ -1495,15 +1495,31 @@ function ride(clientX, clientY, reach) {
   steerBox.hidden = found.ride !== helicopter.ride;
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
 }
-// The { ride, vehicle } at a screen point, else the first one found around it at reach / 2,
-// then at reach px (eight points each), if any.
+// The { ride, vehicle } at a screen point; else the helicopter if its middle is within
+// HELICOPTER_REACH on the screen (it does not grow far away, see boost) and not ridden; else the
+// first one found around the point at reach / 2, then at reach px (eight points each); if any.
+const HELICOPTER_REACH = 50; // px
+const helicopterAt = new THREE.Vector3();
 function vehicleAt(clientX, clientY, reach = 0) {
   for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
-  for (const r of reach ? [0, reach / 2, reach] : [0])
-    for (let k = 0; k < (r ? 8 : 1); k++) {
+  const found = vehicleOn(clientX, clientY);
+  if (found) return found;
+  helicopterAt.copy(helicopter.group.position).project(camera);
+  const [x, y] = [
+    ((helicopterAt.x + 1) / 2) * innerWidth,
+    ((1 - helicopterAt.y) / 2) * innerHeight,
+  ];
+  if (
+    riding?.ride !== helicopter.ride &&
+    helicopterAt.z < 1 && // not behind the camera
+    Math.hypot(x - clientX, y - clientY) < HELICOPTER_REACH
+  )
+    return { ride: helicopter.ride, vehicle: 0 };
+  for (const r of reach ? [reach / 2, reach] : [])
+    for (let k = 0; k < 8; k++) {
       const a = (k * Math.PI) / 4;
-      const found = vehicleOn(clientX + r * Math.cos(a), clientY + r * Math.sin(a));
-      if (found) return found;
+      const near = vehicleOn(clientX + r * Math.cos(a), clientY + r * Math.sin(a));
+      if (near) return near;
     }
   return null;
 }
