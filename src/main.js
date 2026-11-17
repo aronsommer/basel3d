@@ -46,7 +46,7 @@ const orbit = new MapControls(camera, renderer.domElement);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = 1.45;
 orbit.minDistance = 30;
-orbit.maxDistance = 9000;
+orbit.maxDistance = 5000;
 
 const pointers = new Set(); // pressed mouse buttons and fingers
 const fling = new THREE.Vector3(); // metres per second the view keeps gliding after a drag
@@ -1170,11 +1170,15 @@ function createHelicopter(cx, cz, radius, height, scale) {
       flown.climb += (input.climb - flown.climb) * ease;
       flown.turn += (input.turn - flown.turn) * ease;
       flown.heading += flown.turn * TURN * dt;
-      const { x0, z0, cell, nx, nz } = terrainInfo;
-      const { clamp } = THREE.MathUtils;
-      flown.x = clamp(flown.x + Math.sin(flown.heading) * SPEED * dt, x0, x0 + (nx - 1) * cell);
-      flown.z = clamp(flown.z + Math.cos(flown.heading) * SPEED * dt, z0, z0 + (nz - 1) * cell);
-      flown.y = clamp(flown.y + flown.climb * CLIMB * dt, heightAt(flown.x, flown.z) + LOW, HIGH);
+      [flown.x, flown.z] = intoArea(
+        flown.x + Math.sin(flown.heading) * SPEED * dt,
+        flown.z + Math.cos(flown.heading) * SPEED * dt,
+      );
+      flown.y = THREE.MathUtils.clamp(
+        flown.y + flown.climb * CLIMB * dt,
+        heightAt(flown.x, flown.z) + LOW,
+        HIGH,
+      );
       group.position.set(flown.x, flown.y, flown.z);
       group.rotation.set(0.12 - 0.15 * flown.climb, flown.heading, -0.3 * flown.turn);
     } else {
@@ -1481,6 +1485,13 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   return group;
 }
 
+// A scene position moved into the terrain's area, as [x, z].
+function intoArea(x, z) {
+  const { x0, z0, cell, nx, nz } = terrainInfo;
+  const { clamp } = THREE.MathUtils;
+  return [clamp(x, x0, x0 + (nx - 1) * cell), clamp(z, z0, z0 + (nz - 1) * cell)];
+}
+
 // Bilinear terrain height at a scene position.
 function heightAt(x, z) {
   const { x0, z0, cell, nx, nz } = terrainInfo;
@@ -1637,6 +1648,14 @@ function updateOrbit(dt) {
     fling.multiplyScalar(Math.exp(-FLING_FRICTION * dt));
   }
   orbit.update();
+  // The view's centre stays over the terrain; the camera moves along, the gliding stops there.
+  const [x, z] = intoArea(orbit.target.x, orbit.target.z);
+  camera.position.x += x - orbit.target.x;
+  camera.position.z += z - orbit.target.z;
+  if (x !== orbit.target.x) fling.x = 0;
+  if (z !== orbit.target.z) fling.z = 0;
+  orbit.target.x = x;
+  orbit.target.z = z;
   if (pointers.size && dt > 0)
     fling.lerp(velocity.subVectors(orbit.target, lastTarget).divideScalar(dt), 0.5);
   lastTarget.copy(orbit.target);
@@ -1696,7 +1715,7 @@ function readView() {
   const values = /^#map=([^/]+)\/([^/]+)\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?$/.exec(location.hash);
   const [zoom, lat, lon, bearing, pitch] = values?.slice(1).map((v) => Number(v ?? 0)) ?? [];
   if (!values || [zoom, lat, lon, bearing, pitch].some((n) => !Number.isFinite(n))) return false;
-  const [x, z] = fromWGS84(lat, lon);
+  const [x, z] = intoArea(...fromWGS84(lat, lon));
   const r = THREE.MathUtils.clamp(perZoom(lat) / 2 ** zoom, orbit.minDistance, orbit.maxDistance);
   const [h, t] = [bearing, THREE.MathUtils.clamp(pitch, 0, 83)].map(THREE.MathUtils.degToRad);
   orbit.target.set(x, heightAt(x, z) + 30, z);
