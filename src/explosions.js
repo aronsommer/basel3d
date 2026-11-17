@@ -2,6 +2,7 @@
 // faces (walls, roof planes) fly apart, fall and sink into the ground, with a fireball, smoke and
 // a bang. A building leaves scorched ground, where flames keep burning.
 import * as THREE from "three";
+import { audio, fade } from "./sound.js";
 
 const GRAVITY = 30; // m/s², three times real, so the pieces are down within about a second
 const SINK_AT = 2.5; // seconds after the bang, when the pieces start sinking into the ground
@@ -231,8 +232,8 @@ export function createExplosions(scene, structures, heightAt, camera) {
     }
   }
 
-  // A bright ball growing and fading fast, then smoke rising from all over.
-  function blast(box, scale, extent) {
+  // A bright ball growing and fading fast, then smoke rising from all over in puffs.
+  function blast(box, scale, extent, puffs) {
     for (let n = 0; n < 6; n++) {
       const size = extent * (0.6 + Math.random() * 0.6);
       const rise = new THREE.Vector3(0, 4 * scale, 0);
@@ -247,7 +248,6 @@ export function createExplosions(scene, structures, heightAt, camera) {
         },
       ).position.copy(inside(box));
     }
-    const puffs = THREE.MathUtils.clamp(Math.round(extent / 2), 12, 40);
     for (let n = 0; n < puffs; n++)
       puff(
         inside(box),
@@ -258,40 +258,28 @@ export function createExplosions(scene, structures, heightAt, camera) {
       );
   }
 
-  // A bang: a low thump and a rumble fading out, quieter far away. Made on the spot (Web Audio),
-  // so no sound file is needed; the first one starts the audio, within a click or key press.
-  let audio = null;
-  let noise = null;
-  function bang(distance, scale) {
-    audio ??= new AudioContext();
-    if (!noise) {
-      noise = audio.createBuffer(1, audio.sampleRate * 3, audio.sampleRate);
-      const data = noise.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    }
-    const now = audio.currentTime;
-    const volume = THREE.MathUtils.clamp(500 / Math.max(distance, 1), 0.05, 1);
-    const length = 1.8 + scale;
-    const out = (gain, until) => {
-      const node = audio.createGain();
-      node.gain.setValueAtTime(gain, now);
-      node.gain.exponentialRampToValueAtTime(0.001, now + until);
-      node.connect(audio.destination);
-      return node;
-    };
-    const rumble = audio.createBufferSource();
+  // A bang: a low thump and a dull rumble fading out, at most half as loud as the speakers allow,
+  // quieter far away and by loudness (0 to 1); each a little different in pitch and length.
+  function bang(distance, scale, loudness = 1) {
+    const { context, noise } = audio();
+    const now = context.currentTime;
+    const vary = () => 0.85 + Math.random() * 0.3;
+    const volume = 0.5 * loudness * THREE.MathUtils.clamp(500 / Math.max(distance, 1), 0.05, 1);
+    const length = (1.3 + scale) * vary();
+    const rumble = context.createBufferSource();
     rumble.buffer = noise;
-    const filter = audio.createBiquadFilter();
+    rumble.loop = true; // the rumble can be longer than the noise
+    const filter = context.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(1500, now);
+    filter.frequency.setValueAtTime(500 * vary(), now);
     filter.frequency.exponentialRampToValueAtTime(60, now + length);
-    rumble.connect(filter).connect(out(volume, length));
-    rumble.start(now);
+    rumble.connect(filter).connect(fade(volume, length));
+    rumble.start(now, Math.random()); // from somewhere in the noise
     rumble.stop(now + length);
-    const thump = audio.createOscillator();
-    thump.frequency.setValueAtTime(90, now);
+    const thump = context.createOscillator();
+    thump.frequency.setValueAtTime(90 * vary(), now);
     thump.frequency.exponentialRampToValueAtTime(30, now + 0.6);
-    thump.connect(out(volume, 0.7));
+    thump.connect(fade(volume, 0.7));
     thump.start(now);
     thump.stop(now + 0.7);
   }
@@ -319,9 +307,14 @@ export function createExplosions(scene, structures, heightAt, camera) {
       if (!gone) return;
       const { parts, box, middle, extent, scale } = gone;
       debris(parts, middle, scale);
-      blast(box, scale, extent);
+      blast(box, scale, extent, THREE.MathUtils.clamp(Math.round(extent / 2), 12, 40));
       if (!structures.isBridge(number)) burn(parts, scale);
       bang(camera.position.distanceTo(middle), scale);
+    },
+    // A small blast at a scene point, where a rocket hits the ground.
+    burst(point) {
+      blast(new THREE.Box3().setFromCenterAndSize(point, new THREE.Vector3(4, 4, 4)), 0.8, 12, 3);
+      bang(camera.position.distanceTo(point), 0, 0.25);
     },
     // Leaves it as explode does in the end, at once: gone, a building's ground burning.
     ruin(number) {

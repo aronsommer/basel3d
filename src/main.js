@@ -11,6 +11,7 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
 import { createExplosions } from "./explosions.js";
+import { createRockets } from "./rockets.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
@@ -230,6 +231,7 @@ function destroy(number) {
     );
   } catch {} // storage blocked
 }
+const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy);
 
 // The button switches the ground between map and aerial photo, loading each on first use. Only
 // the shown textures stay in GPU memory; the others are re-uploaded when shown again.
@@ -1109,7 +1111,7 @@ function createMovers({ routes }, points, kind, traffic) {
 
 // A low-poly helicopter circling (cx, cz) at the given radius and height (scene metres), banking
 // into the turn, with spinning rotors and blinking lights. Bright yellow, to stand out against the
-// sky as well as the red roofs.
+// sky as well as the red roofs. launchers: where its rockets leave, in its own frame.
 function createHelicopter(cx, cz, radius, height, scale) {
   // A part at [x, y, z], coloured by a colour or by a function of its own (untranslated) position.
   const part = (geometry, color, [x, y, z]) => {
@@ -1144,6 +1146,9 @@ function createHelicopter(cx, cz, radius, height, scale) {
     [-0.8, 1.0].map((z) => part(new THREE.BoxGeometry(0.1, 0.6, 0.1), DARK, [side * 1.0, -1.2, z])),
   );
   const mast = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 5);
+  // Where the rockets leave the pods, one on each side.
+  const launchers = [-1, 1].map((side) => new THREE.Vector3(side * 1.6, -0.75, 0.9));
+  const pod = () => new THREE.CylinderGeometry(0.18, 0.18, 1.2, 8).rotateX(Math.PI / 2);
   // The tail rotor's axle, along x.
   const axle = new THREE.CylinderGeometry(0.05, 0.05, 0.26, 6).rotateZ(Math.PI / 2);
   const body = mergeGeometries([
@@ -1153,6 +1158,8 @@ function createHelicopter(cx, cz, radius, height, scale) {
     part(fin, DARK, [0, 0.9, -5.8]),
     part(mast, DARK, [0, 1.45, 0]),
     part(axle, DARK, [0.19, 0.9, -5.8]), // from the fin to the tail rotor
+    part(new THREE.BoxGeometry(3.4, 0.08, 0.5), DARK, [0, -0.6, 0.2]), // stub wings
+    ...launchers.map(({ x, y }) => part(pod(), DARK, [x, y, 0.3])), // rocket pods
     ...skids,
     ...struts,
   ]);
@@ -1258,11 +1265,11 @@ function createHelicopter(cx, cz, radius, height, scale) {
     beacon.visible = seconds % 1 < 0.15; // once a second
     strobe.visible = seconds % 1.5 < 0.06 || (seconds % 1.5 > 0.18 && seconds % 1.5 < 0.24); // double flash
   };
-  // Riding along: from behind and above (before scaling).
+  // Riding along: from behind and well above, looking down on it a little (before scaling).
   const ride = riders([
-    { object: group, materials: [material], eye: [0, 3, -16], ahead: [0, 0, 12] },
+    { object: group, materials: [material], eye: [0, 6, -22], ahead: [0, -2, 14] },
   ]);
-  return { group, update, ride };
+  return { group, update, ride, launchers };
 }
 
 // A creepy sea serpent looking at (lookX, lookZ): a pale, ringed neck with spines that sways, an
@@ -1599,7 +1606,10 @@ addEventListener("keydown", (e) => {
 // Steering the helicopter while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
 // at the bottom hold the arrow keys while pressed.
 const keys = new Set(); // codes of the keys held
-addEventListener("keydown", (e) => keys.add(e.code));
+addEventListener("keydown", (e) => {
+  keys.add(e.code);
+  if (e.code === "Space" && flying()) e.preventDefault(); // fires, presses nothing else
+});
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear()); // the keyups come to another window
 // Buttons take no focus when clicked, so later key presses neither show a focus ring on one nor
@@ -1620,6 +1630,29 @@ function steering() {
     climb: held("KeyW", "ArrowUp") - held("KeyS", "ArrowDown"),
     turn: held("KeyA", "ArrowLeft") - held("KeyD", "ArrowRight"),
   };
+}
+
+// Shooting from the helicopter while flying it: holding Space, the fire button or the left mouse
+// button on the scene ("Mouse" in keys) sends a rocket every FIRE_GAP seconds, from its launchers
+// in turn, to where the line along its nose first meets something (rockets.aim).
+const FIRE_GAP = 0.1; // seconds
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (flying() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
+});
+addEventListener("pointerup", (e) => {
+  if (e.pointerType === "mouse") keys.delete("Mouse");
+});
+const nose = new THREE.Vector3();
+const launcher = new THREE.Vector3();
+let nextRocket = 0; // when the next may go (seconds)
+let side = 0; // the launcher it goes from
+function shoot(seconds) {
+  if (!flying() || !(keys.has("Space") || keys.has("Mouse")) || seconds < nextRocket) return;
+  nextRocket = seconds + FIRE_GAP;
+  side = 1 - side;
+  const { group, launchers } = helicopter;
+  const target = rockets.aim(group.position, group.getWorldDirection(nose));
+  rockets.fire(group.localToWorld(launcher.copy(launchers[side])), target);
 }
 
 const raycaster = new THREE.Raycaster();
@@ -1898,10 +1931,12 @@ renderer.setAnimationLoop((time) => {
   drive(dt);
   ships.update(time / 1000);
   explosions.update(dt);
+  rockets.update(dt);
   planes.update(time / 1000);
   birds.update(time / 1000);
   if (riding) riding.ride.cab(riding.vehicle, camera); // after all that moves
   camera.updateMatrixWorld(); // this frame's view for onScreen, not the last one rendered
+  shoot(time / 1000);
   updateBadges();
   updateNames();
   render();
