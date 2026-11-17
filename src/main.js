@@ -1192,36 +1192,58 @@ function createHelicopter(cx, cz, radius, height, scale) {
   group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
 
   // Steered while ridden (input { climb, turn }, each -1, 0 or 1, from steering()): always
-  // SPEED straight on, up to CLIMB up or down and TURN radians per second, both eased in, nose
-  // and side tilted along; at least LOW above the terrain, at most HIGH, over the terrain's area.
-  // Without input it is back on its circle.
+  // SPEED straight on, at least LOW above the terrain, at most HIGH, over the terrain's area.
+  // Holding climb changes the climb rate (-1 to 1, times CLIMB) by TRIM per second, and it stays
+  // when let go; passing level, or at LOW or HIGH, it is level until pressed anew.
+  // Turning is eased in up to TURN radians per second and back out when let go. Nose and side tilt
+  // along. Without input it is back on its circle.
   const SPEED = 60; // metres per second
   const CLIMB = 15; // metres per second
+  const TRIM = 1; // climb rate per second
   const TURN = 0.8;
   const LOW = 40; // metres
   const HIGH = 1000; // scene y
-  let flown = null; // { x, y, z, heading, climb, turn } while steered
+  // { x, y, z, heading, climb, pitch (the climb eased, for the nose), turn, levelled (the climb
+  // input that last reached level, while still held) } while steered
+  let flown = null;
   let last = 0;
   const update = (seconds, input) => {
     const dt = seconds - last;
     last = seconds;
     if (input) {
-      flown ??= { ...group.position, heading: group.rotation.y, climb: 0, turn: 0 };
+      flown ??= {
+        ...group.position,
+        heading: group.rotation.y,
+        climb: 0,
+        pitch: 0,
+        turn: 0,
+        levelled: 0,
+      };
+      if (input.climb !== flown.levelled) flown.levelled = 0;
+      if (input.climb && !flown.levelled) {
+        const next = THREE.MathUtils.clamp(flown.climb + input.climb * TRIM * dt, -1, 1);
+        if (flown.climb && Math.sign(next) !== Math.sign(flown.climb)) {
+          flown.climb = 0;
+          flown.levelled = input.climb;
+        } else flown.climb = next;
+      }
       const ease = Math.min(1, dt * 2);
-      flown.climb += (input.climb - flown.climb) * ease;
+      flown.pitch += (flown.climb - flown.pitch) * ease;
       flown.turn += (input.turn - flown.turn) * ease;
       flown.heading += flown.turn * TURN * dt;
       [flown.x, flown.z] = intoArea(
         flown.x + Math.sin(flown.heading) * SPEED * dt,
         flown.z + Math.cos(flown.heading) * SPEED * dt,
       );
-      flown.y = THREE.MathUtils.clamp(
-        flown.y + flown.climb * CLIMB * dt,
-        heightAt(flown.x, flown.z) + LOW,
-        HIGH,
-      );
+      const low = heightAt(flown.x, flown.z) + LOW;
+      flown.y += flown.climb * CLIMB * dt;
+      if ((flown.y <= low && flown.climb < 0) || (flown.y >= HIGH && flown.climb > 0)) {
+        flown.climb = 0;
+        flown.levelled = input.climb;
+      }
+      flown.y = THREE.MathUtils.clamp(flown.y, low, HIGH);
       group.position.set(flown.x, flown.y, flown.z);
-      group.rotation.set(0.12 - 0.15 * flown.climb, flown.heading, -0.3 * flown.turn);
+      group.rotation.set(0.12 - 0.15 * flown.pitch, flown.heading, -0.3 * flown.turn);
     } else {
       flown = null;
       const angle = seconds * 0.5; // about 13 s per round
@@ -1569,6 +1591,7 @@ const FINGER = 25; // px
 const rides = [...movers, ships.ride, planes.ride, helicopter.ride, serpent.ride];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
+const flying = () => riding?.ride === helicopter.ride; // steering it, so clicks do nothing
 document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
@@ -1579,6 +1602,11 @@ const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => keys.add(e.code));
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear()); // the keyups come to another window
+// Buttons take no focus when clicked, so later key presses neither show a focus ring on one nor
+// press it.
+addEventListener("mousedown", (e) => {
+  if (e.target.closest("button")) e.preventDefault();
+});
 const steerBox = document.getElementById("steer");
 for (const button of steerBox.querySelectorAll("button")) {
   button.addEventListener("pointerdown", () => keys.add(button.dataset.key));
@@ -1596,16 +1624,15 @@ function steering() {
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map, rides what is there, else blows up the building or bridge there.
+// only stopped the gliding map, rides what is there; nothing while flying the helicopter.
 let down = { x: 0, y: 0 }; // where the last button or finger went down
 renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0 || stoppedGlide) return;
+  if (e.button !== 0 || stoppedGlide || flying()) return;
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
-  else destroy(structures.at(e.clientX, e.clientY));
 });
 // Rides found ({ ride, vehicle }), clicked or tapped at a screen point.
 function ride(found, clientX, clientY) {
@@ -1661,22 +1688,20 @@ function vehicleOn(clientX, clientY) {
   return { ride, vehicle: ride.vehicleOf(hit) };
 }
 
-// The vehicle under the mouse (but the one ridden), else the building or bridge, shows HIGHLIGHT
-// and gets the hand cursor; checked at most once per frame, only after the mouse moved, and not
-// while dragging.
+// The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
+// checked at most once per frame, only after the mouse moved, and not while dragging or flying the
+// helicopter.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
 });
 function updateHover() {
   if (!hover) return;
-  let found = pointers.size ? null : vehicleAt(hover.x, hover.y);
+  let found = pointers.size || flying() ? null : vehicleAt(hover.x, hover.y);
   if (found?.ride === riding?.ride && found?.vehicle === riding?.vehicle) found = null;
-  const building = pointers.size || found ? -1 : structures.at(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  structures.highlight(building);
-  renderer.domElement.style.cursor = found || building >= 0 ? "pointer" : "";
+  renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
@@ -1869,7 +1894,7 @@ renderer.setAnimationLoop((time) => {
   updateTrees();
   water.waterTime.value = time / 1000;
   serpent.update(time / 1000);
-  helicopter.update(time / 1000, riding?.ride === helicopter.ride ? steering() : null);
+  helicopter.update(time / 1000, flying() ? steering() : null);
   drive(dt);
   ships.update(time / 1000);
   explosions.update(dt);

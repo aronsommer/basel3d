@@ -202,7 +202,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
         [2, w],
       ])
         at.addScaledVector(new THREE.Vector3().fromArray(ground, 9 * t + 3 * k), weight);
-      const size = (3 + Math.random() * 3) * scale;
+      const size = (5 + Math.random() * 4) * scale;
       const phase = Math.random() * 10;
       let nextPuff = Math.random();
       const flame = particle(
