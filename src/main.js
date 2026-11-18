@@ -758,6 +758,7 @@ const drones = createDrones(
     ...world,
     ground: (x, z, y) => Math.max(world.ground(x, z, y), structures.top(x, z, y + STEP)),
   },
+  camera,
 );
 scene.add(...[...police, ...motorcycles, ...tanks, ...drones].map((vehicle) => vehicle.group));
 let namesOn = false; // whether they were shown at the last update

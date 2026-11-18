@@ -1,5 +1,5 @@
 // FPV drones: small black quadcopters with orange propellers and a blinking red light, the same
-// size on the screen however far, hovering in their place. Ridden, one sees through its camera
+// size on the screen up to BEACON_MAX, hovering in their place. Ridden, one sees through its camera
 // (look): up and down tilt the nose, which stays when let go, and it flies where it looks; left
 // and right turn it and bank the view; stop hovers. It flies down to just over the ground,
 // bridges and roofs and slides along walls. Let go, it is back in its place at once.
@@ -20,13 +20,14 @@ const ABOVE = 0.5; // metres it keeps above what is below
 const HIGH = 600; // scene y it flies up to at most
 const AHEAD = 0.6; // metres ahead of it that must be free of walls
 const BEACON = 0.05; // the blinking light's size on the screen, about 40 px across
+const BEACON_MAX = 30; // metres across it is at most, far away
 
 // One per place ({ x, y, z, heading }), each { group, material, update, look }; they share their
 // geometries and all materials but their own (so one is highlighted alone). boost(position): how
 // much larger to draw one far away; world: { ground(x, z, y): the scene y of the top (ground,
 // bridge or roof) under a point at y, blocked(from, to): whether a wall is in the way,
-// intoArea(x, z): [x, z] moved into the terrain's area }.
-export function createDrones(places, boost, { ground, blocked, intoArea }) {
+// intoArea(x, z): [x, z] moved into the terrain's area }; camera: the one looking at them.
+export function createDrones(places, boost, { ground, blocked, intoArea }, camera) {
   const DARK = 0x1b1d22;
   const ORANGE = 0xff6a00;
   const body = mergeGeometries([
@@ -44,7 +45,7 @@ export function createDrones(places, boost, { ground, blocked, intoArea }) {
   ]);
   const blade = part(new THREE.BoxGeometry(0.24, 0.006, 0.03), ORANGE, [0, 0, 0]);
   const beaconMaterial = glow(0xff2020);
-  beaconMaterial.sizeAttenuation = false; // as large on the screen near and far
+  beaconMaterial.sizeAttenuation = false; // sized on the screen
   return places.map(createOne);
 
   function createOne(place) {
@@ -105,7 +106,9 @@ export function createDrones(places, boost, { ground, blocked, intoArea }) {
       group.rotation.y = s.heading;
       group.scale.setScalar(SIZE * boost(group.position));
       for (const propeller of propellers) propeller.rotation.y += dt * 60;
-      beacon.scale.setScalar(BEACON / group.scale.x); // not grown with the drone
+      // Not grown with the drone.
+      const far = camera.position.distanceTo(group.position);
+      beacon.scale.setScalar(Math.min(BEACON, BEACON_MAX / far) / group.scale.x);
       beacon.visible = seconds % 1 < 0.5;
     }
     update(0, 0, null); // in place before the first frame
