@@ -2024,6 +2024,37 @@ function ride(found, clientX, clientY) {
   steerBox.hidden = !pilots.has(found.ride);
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
+  head.yaw = head.pitch = 0;
+}
+// Looking around while riding, but not while flying: dragging turns the head, up to PITCH up or
+// down and sideways as far as no view ray points behind the camera, so the front of a tram, train
+// or car (just behind it) stays out of view.
+const PITCH = 0.25; // radians
+const head = { yaw: 0, pitch: 0 }; // radians, left and up
+let dragged = null; // { x, y } of the primary pointer while dragging
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (riding && !flying() && e.isPrimary) dragged = { x: e.clientX, y: e.clientY };
+});
+addEventListener("pointermove", (e) => {
+  if (!dragged || !e.isPrimary) return;
+  // Radians per px, so the scene follows the pointer.
+  const turn = THREE.MathUtils.degToRad(camera.fov) / innerHeight;
+  const up = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  // The widest ray, at a corner pitched by PITCH.
+  const wide = Math.atan((up * camera.aspect) / (Math.cos(PITCH) - up * Math.sin(PITCH)));
+  const yaw = Math.max(0, Math.PI / 2 - wide);
+  head.yaw = THREE.MathUtils.clamp(head.yaw + (e.clientX - dragged.x) * turn, -yaw, yaw);
+  head.pitch = THREE.MathUtils.clamp(head.pitch + (e.clientY - dragged.y) * turn, -PITCH, PITCH);
+  dragged = { x: e.clientX, y: e.clientY };
+});
+for (const type of ["pointerup", "pointercancel"])
+  addEventListener(type, (e) => {
+    if (e.isPrimary) dragged = null;
+  });
+// Turns the camera, just placed by cab, by the head.
+function turnHead() {
+  camera.rotateOnWorldAxis(THREE.Object3D.DEFAULT_UP, head.yaw);
+  camera.rotateX(head.pitch);
 }
 // The { ride, vehicle } at a screen point; else the helicopter if its middle is within
 // HELICOPTER_REACH on the screen (it does not grow far away, see boost) and not ridden; else the
@@ -2317,7 +2348,10 @@ renderer.setAnimationLoop((time) => {
   rockets.update(dt);
   planes.update(time / 1000);
   birds.update(time / 1000);
-  if (riding) riding.ride.cab(riding.vehicle, camera); // after all that moves
+  if (riding) {
+    riding.ride.cab(riding.vehicle, camera); // after all that moves
+    turnHead();
+  }
   camera.updateMatrixWorld(); // this frame's view for onScreen, not the last one rendered
   shoot(time / 1000);
   updateBadges();
