@@ -19,7 +19,9 @@ import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createDrones } from "./drone.js";
+import { BLACK_GUYS, createPeople, peopleTime, WORKERS } from "./people.js";
 import { createDev } from "./dev.js";
+import { createRecorder } from "./record.js";
 import { part } from "./parts.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
@@ -747,6 +749,131 @@ const motorcycles = createMotorcycles(
   parked([{ x: 375.9, z: -320.7, heading: 2.21 }]),
   boost,
   world,
+);
+// People (src/people.js) standing around a place, at [metres to its side, ahead], facing it or
+// toward, each turned up to spread radians away: Black guys (LV95 2611650.8, 1267914.0) and sex
+// workers in a lane in Kleinbasel (LV95 2611558.8, 1267979.2
+// down to 2611515.2, 1267957.1), facing up it (LV95 2611565.3, 1267979.1).
+const around = (centre, offsets, toward = centre, spread = 0) =>
+  parked(
+    offsets.map(([side, ahead], k) => {
+      const { x, z, heading: h = 0 } = centre;
+      const px = x + side * Math.cos(h) + ahead * Math.sin(h);
+      const pz = z - side * Math.sin(h) + ahead * Math.cos(h);
+      const heading = Math.atan2(toward.x - px, toward.z - pz) + spread * Math.sin(k * 2.7);
+      return { x: px, z: pz, heading };
+    }),
+  );
+const UP_THE_LANE = { x: 565.3, z: -579.1 };
+scene.add(
+  createPeople(
+    around({ x: 650.8, z: -514 }, [
+      [1.2, 0.3],
+      [-0.8, 1],
+      [-1, -0.9],
+      [0.6, -1.3],
+    ]),
+    BLACK_GUYS,
+  ),
+  // In the lane, from the top down, each in other clothes.
+  createPeople(
+    around(
+      { x: 558.8, z: -579.2 },
+      [
+        [2.5, 0],
+        [-2, 1.5],
+        [1.6, -2.9],
+      ],
+      UP_THE_LANE,
+      0.5,
+    ),
+    WORKERS,
+  ),
+  createPeople(
+    around(
+      { x: 549.6, z: -571.7, heading: -1.05 },
+      [
+        [-1.2, -3],
+        [1.2, 0],
+        [-1.2, 3],
+        [1.2, 6],
+      ],
+      UP_THE_LANE,
+      0.5,
+    ),
+    WORKERS.slice(7, 11),
+  ),
+  createPeople(
+    around(
+      { x: 536.3, z: -566.2, heading: -1.05 },
+      [
+        [1.2, -4.5],
+        [-1.2, -1.5],
+        [1.2, 1.5],
+        [-1.2, 4.5],
+      ],
+      UP_THE_LANE,
+      0.5,
+    ),
+    WORKERS.slice(3, 7),
+  ),
+  createPeople(
+    around(
+      { x: 515.2, z: -557.1, heading: 1.98 },
+      [
+        [1.2, 0],
+        [-1.2, 3.7],
+        [1.2, 7.4],
+        [-1.2, 11.1],
+        [1.2, 14.8],
+      ],
+      UP_THE_LANE,
+      0.5,
+    ),
+    WORKERS.slice(11),
+  ),
+);
+// More Black guys in Kleinbasel, each facing the others within 10 m, or alone k radians from
+// south.
+const KLEINBASEL = [
+  [2611638.7, 1267929.8],
+  [2611592.6, 1267974.9],
+  [2611589.4, 1267977.4],
+  [2611558.4, 1267983.2],
+  [2611520.5, 1268060.2],
+  [2611513.8, 1268085.4],
+  [2611507.0, 1268105.0],
+  [2611496.3, 1268113.9],
+  [2611502.3, 1268125.4],
+  [2611491.6, 1268139.5],
+  [2611491.0, 1268184.5],
+  [2611491.9, 1268221.2],
+  [2611491.5, 1268228.4],
+  [2611510.1, 1268207.5],
+  [2611479.0, 1268301.9],
+  [2611480.1, 1268309.8],
+  [2611476.2, 1268320.4],
+  [2611498.4, 1268292.8],
+  [2611494.9, 1268305.5],
+  [2611689.5, 1267931.0],
+  [2611698.6, 1267929.3],
+  [2611708.8, 1267932.1],
+  [2611709.9, 1267942.5],
+  [2611722.2, 1267940.4],
+].map(([e, n]) => ({ x: e - LV95[0], z: LV95[1] - n }));
+scene.add(
+  createPeople(
+    parked(
+      KLEINBASEL.map((p, k) => {
+        const near = KLEINBASEL.filter((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) < 10);
+        if (!near.length) return { ...p, heading: k };
+        const x = near.reduce((sum, q) => sum + q.x, 0) / near.length;
+        const z = near.reduce((sum, q) => sum + q.z, 0) / near.length;
+        return { ...p, heading: Math.atan2(x - p.x, z - p.z) };
+      }),
+    ),
+    BLACK_GUYS.slice(4),
+  ),
 );
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 const drones = createDrones(
@@ -2161,13 +2288,15 @@ function shoot(seconds) {
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map, rides what is there; nothing while steering.
+// only stopped the gliding map, is recorded while recording (src/record.js), else rides what is
+// there; nothing while steering.
 let down = { x: 0, y: 0 }; // where the last button or finger went down
 renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (e.button !== 0 || stoppedGlide || steered()) return;
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
+  if (recorder.click(e.clientX, e.clientY)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
 });
@@ -2295,8 +2424,17 @@ function updateHover() {
   renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
-// C copies "LV95 east, north, altitude" of the roof, bridge or ground under the mouse, and shows
-// "Coordinates copied" there for a moment.
+// The roof, bridge or ground at a screen point (px), or null; its "LV95 east, north, altitude".
+function pointAt(x, y) {
+  raycaster.setFromCamera(
+    new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1),
+    camera,
+  );
+  return raycaster.intersectObjects([buildings.scene, bridges.scene, terrain])[0]?.point ?? null;
+}
+const lv95 = (point) =>
+  `LV95 ${[LV95[0] + point.x, LV95[1] - point.z, point.y + 250].map((v) => v.toFixed(1)).join(", ")}`;
+// C copies the LV95 of what is under the mouse, and shows "Coordinates copied" there for a moment.
 let mouseAt = null; // { x, y } of the mouse while over the scene
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") mouseAt = { x: e.clientX, y: e.clientY };
@@ -2307,17 +2445,9 @@ let hideCopied = 0; // timeout
 addEventListener("keydown", (e) => {
   if (e.code !== "KeyC" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !mouseAt) return;
   const { x, y } = mouseAt;
-  raycaster.setFromCamera(
-    new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1),
-    camera,
-  );
-  const hit = raycaster.intersectObjects([buildings.scene, bridges.scene, terrain])[0];
-  if (!hit) return;
-  const { point } = hit;
-  const text = [LV95[0] + point.x, LV95[1] - point.z, point.y + 250]
-    .map((v) => v.toFixed(1))
-    .join(", ");
-  navigator.clipboard.writeText(`LV95 ${text}`).then(
+  const point = pointAt(x, y);
+  if (!point) return;
+  navigator.clipboard.writeText(lv95(point)).then(
     () => {
       copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
       copied.hidden = false;
@@ -2526,6 +2656,7 @@ const drawFrame = createDev(renderer, render, [
   ["Terrain", [terrain]],
   ["Trees", tree.meshes],
 ]);
+const recorder = createRecorder(pointAt, lv95, onScreen);
 
 let last = performance.now();
 renderer.setAnimationLoop((time) => {
@@ -2539,6 +2670,7 @@ renderer.setAnimationLoop((time) => {
   updateTerrain();
   water.waterTime.value = time / 1000;
   pavilionTime.value = time / 1000;
+  peopleTime.value = time / 1000;
   serpent.update(time / 1000);
   const flier = pilot();
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
@@ -2566,6 +2698,7 @@ renderer.setAnimationLoop((time) => {
   camera.updateMatrixWorld(); // this frame's view for onScreen, not the last one rendered
   shoot(time / 1000);
   updateBadges();
+  recorder.update();
   updateNames();
   drawFrame();
 });
