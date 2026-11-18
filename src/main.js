@@ -340,10 +340,11 @@ function deckOf(triangles) {
   };
 }
 // Blows up the building or bridge with this number (-1: none) and remembers it, if it was there;
-// vehicles vanish where a bridge was.
+// vehicles vanish where a bridge was, people on its roof with it.
 function destroy(number) {
   const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
+  scene.remove(...(onRoofs.get(number) ?? []));
   if (deck) for (const mover of movers) mover.cut(deck);
   if (deck) roads = null; // made anew without it
   destroyed.add(number);
@@ -942,7 +943,18 @@ scene.add(
   ...createPeople(standing(MEN), MEN_LOOKS),
   ...createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
 );
-// Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs.
+// Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
+// as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
+// bridge whose sidewalk runs along its edge.
+const AROUND = Array.from({ length: 8 }, (_, k) => [
+  2 * Math.sin((k * Math.PI) / 4),
+  2 * Math.cos((k * Math.PI) / 4),
+]); // 2 m away in eight directions
+const walkGround = (x, z, y) =>
+  Math.max(
+    world.ground(x, z, y), // makes roads first
+    ...AROUND.flatMap(([dx, dz]) => roads.heights(x + dx, z + dz).filter((h) => h <= y + STEP)),
+  );
 const walkers = createWalkers(
   walksBuffer,
   terrainInfo.x0,
@@ -975,12 +987,12 @@ const walkers = createWalkers(
       15,
     ),
   },
-  world.ground,
+  walkGround,
 );
 scene.add(...walkers.meshes);
 // Their loops in the layer "Walks", on the bridge or ground.
 kindLines.walk = Object.assign(
-  checkLines(walkers.stretches.flatMap(([x, z]) => [x, world.ground(x, z, Infinity) + 0.3, z])),
+  checkLines(walkers.stretches.flatMap(([x, z]) => [x, walkGround(x, z, Infinity) + 0.3, z])),
   { visible: false },
 );
 overlay.add(kindLines.walk);
@@ -1041,14 +1053,68 @@ const inside = (outline, x, z) =>
   }, false);
 for (const number of structures.within((x, z) => inside(ROCHE, x, z)))
   structures.paint(number, { wall: 0xf4f4f2 });
-// Its green roof (LV95 2612593.3, 1267509.4) grey as another's (LV95 2612855.8, 1267667.0).
-{
-  const { x, z } = fromLV95([2612593.3, 1267509.4]);
+// The standing building a ray from above first meets at LV95 east, north: its number and the
+// point hit (x, y, z); undefined if none.
+function roofAt(lv95) {
+  const { x, z } = fromLV95(lv95);
   fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
   const hit = fromAbove.intersectObject(buildings.scene)[0];
-  if (hit)
-    structures.paint(hit.object.geometry.attributes._building.getX(hit.face.a), { roof: 0x655d5a });
+  return hit && { number: hit.object.geometry.attributes._building.getX(hit.face.a), ...hit.point };
 }
+// Its green roof (LV95 2612593.3, 1267509.4) grey as another's (LV95 2612855.8, 1267667.0).
+const green = roofAt([2612593.3, 1267509.4]);
+if (green) structures.paint(green.number, { roof: 0x655d5a });
+// On each Roche tower's roof, four women dressed as the friends dancing 2 m around its middle,
+// each looking out another way (north-east, south-east, south-west, north-west). destroy()
+// removes them with their tower.
+const onRoofs = new Map(); // building number → the meshes of those on its roof
+for (const [t, tower] of [
+  [2612702, 1267635],
+  [2612756, 1267585],
+].entries()) {
+  const roof = roofAt(tower); // none if the tower is destroyed
+  if (!roof) continue;
+  const { number, x, y, z } = roof;
+  const meshes = createPeople(
+    [3, 1, -1, -3].map((k) => {
+      const heading = (k * Math.PI) / 4;
+      return {
+        x: x + 2 * Math.sin(heading),
+        y,
+        z: z + 2 * Math.cos(heading),
+        heading,
+        pose: "dance",
+      };
+    }),
+    FRIENDS.slice(2 * t),
+  );
+  scene.add(...meshes);
+  onRoofs.set(number, meshes);
+}
+// Basel SBB's platform roofs (LV95 2611267.0, 1266160.4): roofs as dark as the building's at LV95
+// 2611386.8, 1266248.2, walls as beige as the station building's (LV95 2611375.6, 1266339.0).
+const platforms = roofAt([2611267.0, 1266160.4]);
+if (platforms) structures.paint(platforms.number, { roof: 0x6a696a, wall: 0xded3bd });
+// The Badischer Bahnhof's platform roofs, each under one of these points, as dark as its building's
+// roof (LV95 2612676.3, 1268528.5).
+for (const point of [
+  [2612677.4, 1268620.4],
+  [2612700.4, 1268629.4],
+  [2612723.9, 1268634.2],
+  [2612743.5, 1268638.9],
+  [2612758.2, 1268657.9],
+  [2612792.6, 1268498.3],
+  [2612827.3, 1268519.9],
+  [2612772.1, 1268676.6],
+  [2612801.9, 1268621.3],
+]) {
+  const roof = roofAt(point);
+  if (roof) structures.paint(roof.number, { roof: 0x736d6a });
+}
+// That building with old-town windows in light surrounds and without shutters (src/facade.js:
+// style 0, seed 1), not a hall's none.
+const badischer = roofAt([2612676.3, 1268528.5]);
+if (badischer) structures.paint(badischer.number, { facade: 1 << 5 });
 const KIT = {
   body: "player",
   top: 0x1d3fbf,

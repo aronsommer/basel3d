@@ -6,8 +6,8 @@
 // - along footways, paths (not sidewalks or crossings, which the loops above cover), pedestrian
 //   streets and squares, AISLE metres either side of their middle, but not into the streets'
 //   sidewalks; those mostly along pedestrian streets and squares are busy.
-// No aisle reaches into water (OSM water areas but bridges); loops enclosing less than SMALLEST,
-// more than WETTEST of them on water or reaching the edge of the grid (MARGIN beyond BOX) are left
+// No aisle reaches into water (OSM water areas but bridges); lines running off the grid (MARGIN
+// beyond BOX) and loops enclosing less than SMALLEST or more than WETTEST of them on water are left
 // out. Each is simplified to within SIMPLIFY metres, left out if it then crosses itself, and
 // written as a Uint16 count of points (plus BUSY for a busy one) and the points as Uint16 pairs
 // (east, south) in 1/TREE_GRID m from the area's north-west corner; the last point leads back to
@@ -131,7 +131,8 @@ for (let j = 0; j < h; j++)
   }
 
 // The loops where a field is 0, anticlockwise around where it is positive: in each cell, from
-// where it is left to where it is entered next, anticlockwise, so saddles part.
+// where it is left to where it is entered next, anticlockwise, so saddles part. Lines running off
+// the grid are left out.
 const CORNERS = [
   [0, 0],
   [1, 0],
@@ -167,11 +168,13 @@ function contours(field) {
   for (const start of after.keys()) {
     if (!points.has(start)) continue;
     const loop = [];
-    for (let key = start; points.has(key); key = after.get(key)) {
+    let key = start;
+    do {
       loop.push(points.get(key));
       points.delete(key);
-    }
-    loops.push(loop);
+      key = after.get(key);
+    } while (points.has(key));
+    if (key === start) loops.push(loop); // else a piece of a line running off the grid
   }
   return loops;
 }
@@ -181,8 +184,6 @@ const area = (points) =>
     const [pe, pn] = points.at(i - 1);
     return sum + (pe * n - e * pn) / 2;
   }, 0);
-const edgeOfGrid = ([e, n]) =>
-  e < e0 + 2 * GRID || n < n0 + 2 * GRID || e > e0 + (w - 3) * GRID || n > n0 + (h - 3) * GRID;
 // Douglas–Peucker; a closed line keeps at least its point furthest from the start.
 function simplified(points) {
   if (points.length < 3) return points;
@@ -226,10 +227,7 @@ const onWater = (points) =>
   points.filter(([e, n]) => wet[Math.round((n - n0) / GRID) * w + Math.round((e - e0) / GRID)])
     .length / points.length;
 const kept = (loops) =>
-  loops.filter(
-    (points) =>
-      Math.abs(area(points)) > SMALLEST && !points.some(edgeOfGrid) && onWater(points) < WETTEST,
-  );
+  loops.filter((points) => Math.abs(area(points)) > SMALLEST && onWater(points) < WETTEST);
 // Busy: most of its points nearer pedestrian streets than other ways.
 const busy = (points) =>
   points.filter(([e, n]) => nearest(pedestrian, e, n) < nearest(ways, e, n)).length >

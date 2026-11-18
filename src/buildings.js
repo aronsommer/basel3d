@@ -345,16 +345,22 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       return found;
     },
     // Colours the one with this number: its roofs and walls (0xrrggbb each, by the materials'
-    // names; one left out keeps its colours); the walls keep their facade style (the alpha).
-    paint(number, { roof, wall }) {
+    // names; one left out keeps its colours), and gives its walls this facade (the alpha as a byte:
+    // style, flags and seed, src/facade.js; left out, they keep theirs).
+    paint(number, { roof, wall, facade }) {
       const colour = new THREE.Color();
       for (const mesh of meshesOf[number] ?? []) {
         const { color, _building } = mesh.geometry.attributes;
-        const wanted = mesh.material.name === "roof" ? roof : wall;
-        if (wanted === undefined) continue;
-        colour.set(wanted);
-        for (let i = 0; i < color.count; i++)
-          if (_building.getX(i) === number) color.setXYZ(i, colour.r, colour.g, colour.b);
+        const isRoof = mesh.material.name === "roof";
+        const wanted = isRoof ? roof : wall;
+        const restyle = !isRoof && facade !== undefined;
+        if (wanted === undefined && !restyle) continue;
+        if (wanted !== undefined) colour.set(wanted);
+        for (let i = 0; i < color.count; i++) {
+          if (_building.getX(i) !== number) continue;
+          if (wanted !== undefined) color.setXYZ(i, colour.r, colour.g, colour.b);
+          if (restyle) color.setW(i, facade / 255);
+        }
         color.needsUpdate = true;
       }
     },
