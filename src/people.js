@@ -1,6 +1,5 @@
 // People and dogs, low-poly: all of a body in one InstancedMesh, each with its own look and size;
-// their limbs move on the GPU, legs and arms swinging while walking, the arms a little while
-// standing.
+// their limbs move on the GPU by their pose (POSES).
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -18,6 +17,16 @@ const LEG = 0.45;
 const ARM = 0.35;
 const SWING = 0.3;
 const FORWARD = 0.2;
+// Their poses: standing, the arms swinging a little; walking, legs and arms swinging; lying on the
+// back, still; yoga, raising the arms slowly over the head and lowering them; dancing, waving the
+// arms, stepping, bouncing and twisting; up, lying on the back with arms and legs straight up,
+// spreading them apart and closing them slowly; angel, lying on the back sweeping the arms along
+// the ground up over the head and back and opening and closing the legs, as making a snow angel.
+const POSES = ["stand", "walk", "lie", "yoga", "dance", "up", "angel"];
+// Lying on the back: tilted about its own x after the heading, its back on the ground (BACK metres
+// up), turned round, so it lies from its place along the heading, the head furthest.
+const LYING = new Set(["lie", "up", "angel"]);
+const BACK = 0.12;
 // Metres up where they turn, by limb: legs, arms, a dog's legs.
 const PIVOTS = [0.9, 1.47, 0.34];
 
@@ -74,6 +83,21 @@ const BODIES = {
     piece(box(0.2, 0.24, 0.22), "skin", [0, 1.65, 0]),
     ...heads(1.76),
   ]),
+  // Barefoot in a bikini: its top (top) and bottom (bottom).
+  swim: mergeGeometries([
+    ...[-1, 1].flatMap((s) => [
+      piece(box(0.1, 0.06, 0.22), "skin", [s * 0.085, 0.03, 0.03], s),
+      piece(box(0.13, 0.83, 0.15), "skin", [s * 0.085, 0.48, 0], s),
+      piece(box(0.085, 0.6, 0.1), "skin", [s * 0.205, 1.17, 0], 2 * s),
+    ]),
+    piece(box(0.34, 0.14, 0.2), "bottom", [0, 0.9, 0]),
+    piece(box(0.32, 0.5, 0.19), "skin", [0, 1.2, 0]),
+    piece(box(0.33, 0.05, 0.2), "top", [0, 1.36, 0]), // the top's band
+    ...[-1, 1].map((s) => piece(box(0.14, 0.14, 0.11), "top", [s * 0.075, 1.31, 0.13])), // cups
+    piece(box(0.09, 0.07, 0.09), "skin", [0, 1.48, 0]),
+    piece(box(0.2, 0.24, 0.22), "skin", [0, 1.63, 0]),
+    ...heads(1.74),
+  ]),
   // Knee-high boots (shoes), a miniskirt (bottom), a crop top, long hair and a handbag.
   night: mergeGeometries([
     ...[-1, 1].flatMap((s) => [
@@ -115,8 +139,8 @@ export const mix = (lists, n) =>
   );
 
 // Per instance: colours (0xrrggbb, exact in a float) look = skin, hair, top, bottom and more =
-// shoes, hat, the bits of its OPTIONS, 1 walking (else 0); phase, radians of the walk, or the
-// arms' own phase while standing. Parts shown only with options it lacks collapse to a point.
+// shoes, hat, the bits of its OPTIONS, the index of its pose (POSES); phase, radians of the walk,
+// or the arms' own phase while standing. Parts shown only with options it lacks collapse to a point.
 const material = new THREE.MeshLambertMaterial({ flatShading: true });
 material.onBeforeCompile = (shader) => {
   shader.uniforms.peopleTime = peopleTime;
@@ -147,11 +171,42 @@ material.onBeforeCompile = (shader) => {
         int limb = int(abs(piece.y));
         float pivot = limb == 1 ? ${PIVOTS[0]} : limb == 2 ? ${PIVOTS[1]} : ${PIVOTS[2]};
         // Positive turns the limb back.
-        float a = more.w > 0.5 ? (limb == 2 ? ${ARM} : -${LEG}) * sin(phase) * side
-          : limb == 2 ? ${SWING} * sin(peopleTime * 2.0 + phase + side * 1.4) - ${FORWARD} : 0.0;
+        int pose = int(more.w + 0.5);
+        float t = peopleTime;
+        float a = pose == 1 ? (limb == 2 ? ${ARM} : -${LEG}) * sin(phase) * side
+          : pose == 0 && limb == 2 ? ${SWING} * sin(t * 2.0 + phase + side * 1.4) - ${FORWARD}
+          : pose == 3 && limb == 2 ? -1.5 + 1.5 * cos(t * 0.6 + phase)
+          : pose == 4 && limb == 2 ? -1.6 - 0.8 * sin(t * 4.0 + phase + side * 1.6)
+          : pose == 4 ? 0.3 * sin(t * 4.0 + phase) * side
+          : pose == 5 ? -1.5708
+          : 0.0;
         vec2 p = transformed.yz - vec2(pivot, 0.0);
         transformed.yz = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))
           + vec2(pivot, 0.0);
+        if (pose == 6) {
+          // Out to its side in the body's plane, about the shoulder or hip of a slim body.
+          float spread = 0.5 - 0.5 * cos(t * 1.5 + phase);
+          float b = side * (limb == 2 ? 0.2 + 2.2 * spread : 0.05 + 0.45 * spread);
+          vec2 joint = vec2(side * (limb == 2 ? 0.2 : 0.09), pivot);
+          vec2 q = transformed.xy - joint;
+          transformed.xy = joint + vec2(q.x * cos(b) - q.y * sin(b), q.x * sin(b) + q.y * cos(b));
+        }
+        if (pose == 5) {
+          // Out to its side, about the body's upright middle.
+          float b = side * (0.55 + 0.35 * sin(t * 1.2 + phase));
+          transformed.xz = vec2(
+            transformed.x * cos(b) + transformed.z * sin(b),
+            transformed.z * cos(b) - transformed.x * sin(b)
+          );
+        }
+      }
+      if (int(more.w + 0.5) == 4) {
+        float w = 0.4 * sin(peopleTime * 1.0 + phase);
+        transformed.xz = vec2(
+          transformed.x * cos(w) + transformed.z * sin(w),
+          transformed.z * cos(w) - transformed.x * sin(w)
+        );
+        transformed.y += 0.05 * abs(sin(peopleTime * 2.0 + phase));
       }`,
     );
   shader.fragmentShader = shader.fragmentShader
@@ -159,8 +214,8 @@ material.onBeforeCompile = (shader) => {
     .replace("vec4( diffuse, opacity )", "vec4( vLook, opacity )");
 };
 
-// count of a body (BODIES): { mesh, dress(i, look, walking), place(i, x, y, z, heading, phase,
-// size) }; a look's head is short hair unless given.
+// count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
+// tilt: radians about its own x after the heading) }; a look's head is short hair unless given.
 export function createCrowd(body, count) {
   const geometry = new THREE.BufferGeometry();
   for (const name of ["position", "piece"])
@@ -175,21 +230,18 @@ export function createCrowd(body, count) {
   );
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  const [matrix, scale] = [new THREE.Matrix4(), new THREE.Vector3()];
+  const [matrix, tilted, scale] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Vector3()];
   return {
     mesh,
-    dress(
-      i,
-      { skin, hair, top = 0, bottom = 0, shoes = 0, hat = 0, head = "hair", dress },
-      walking,
-    ) {
+    dress(i, { skin, hair, top = 0, bottom = 0, shoes = 0, hat = 0, head = "hair", dress }, pose) {
       const options = (1 << OPTIONS.indexOf(head)) | (dress ? 1 << OPTIONS.indexOf("dress") : 0);
       look.set([skin, hair, top, bottom], 4 * i);
-      more.set([shoes, hat, options, walking ? 1 : 0], 4 * i);
+      more.set([shoes, hat, options, POSES.indexOf(pose)], 4 * i);
       look.needsUpdate = more.needsUpdate = true;
     },
-    place(i, x, y, z, heading, phase, size = 1) {
-      matrix.makeRotationY(heading).scale(scale.setScalar(size)).setPosition(x, y, z);
+    place(i, x, y, z, heading, phase, size = 1, tilt = 0) {
+      matrix.makeRotationY(heading).multiply(tilted.makeRotationX(tilt));
+      matrix.scale(scale.setScalar(size)).setPosition(x, y, z);
       mesh.setMatrixAt(i, matrix);
       phases.array[i] = phase;
       mesh.instanceMatrix.needsUpdate = phases.needsUpdate = true;
@@ -197,15 +249,18 @@ export function createCrowd(body, count) {
   };
 }
 
-// People standing at places ({ x, y, z, heading }), with these looks in turn; a mesh per body.
+// People at places ({ x, y, z, heading, pose }), standing unless another pose (POSES) is given;
+// one lying has its place at its feet (were they on the ground) and its head away along the
+// heading. With these looks in turn; a mesh per body.
 export function createPeople(places, looks) {
   const bodies = Map.groupBy(places.keys(), (k) => looks[k % looks.length].body);
   return [...bodies].map(([body, ks]) => {
     const crowd = createCrowd(body, ks.length);
     ks.forEach((k, i) => {
-      const { x, y, z, heading } = places[k];
-      crowd.dress(i, looks[k % looks.length], false);
-      crowd.place(i, x, y, z, heading, k * 2.3);
+      const { x, y, z, heading, pose = "stand" } = places[k];
+      crowd.dress(i, looks[k % looks.length], pose);
+      if (LYING.has(pose)) crowd.place(i, x, y + BACK, z, heading + Math.PI, 0, 1, -Math.PI / 2);
+      else crowd.place(i, x, y, z, heading, k * 2.3);
     });
     crowd.mesh.computeBoundingSphere();
     return crowd.mesh;

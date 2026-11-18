@@ -859,7 +859,83 @@ const WOMEN_LOOKS = [
   [0xd9a27a, 0x2a1d14, 0x64ffda, 0x111111, 0x64ffda], // mint and black
   [0x8a5634, 0x111111, 0xff4081, 0x311b92, 0x311b92], // pink and indigo
 ].map(([skin, hair, top, bottom, shoes]) => ({ body: "night", skin, hair, top, bottom, shoes }));
+// On their backs on beach towels, 0.9 by 2 m: a woman in a bikini sunbathing, her head to the
+// south (her feet at LV95 2610512.9, 1268549.5) on a blue towel, and one in a black one making a
+// snow angel, her head to the north (her feet at LV95 2610510.6, 1268549.7) on a red one. Their
+// friends in bikinis: three doing yoga in a row facing west, one lying on her back on a pink
+// towel with her head to the east, spreading her arms and legs up, two dancing facing each other.
+const BIKINI = {
+  body: "swim",
+  skin: 0xe8b996,
+  hair: 0x7a3a1a,
+  top: 0xe8175d,
+  bottom: 0xe8175d,
+  head: "long",
+};
+const ANGEL = { ...BIKINI, skin: 0xf1c7a5, hair: 0xe2c46e, top: 0x111111, bottom: 0x111111 };
+// Each [LV95 east, north, heading, look, pose, towel's colour].
+const SUNBATHERS = [
+  [2610512.9, 1268549.5, 0, BIKINI, "lie", 0x1e88e5],
+  [2610510.6, 1268549.7, Math.PI, ANGEL, "angel", 0xd32f2f],
+];
+const sunbathing = parked(
+  SUNBATHERS.map(([e, n, heading, , pose]) => ({ ...fromLV95([e, n]), heading, pose })),
+);
+// Metres the towels' tops are above the ground at the feet, so uneven ground does not cover them.
+const TOWEL = 0.06;
+const SLIDE = 0.5; // metres
+const towelShape = new THREE.BoxGeometry(0.9, 0.02, 2).translate(0, TOWEL - 0.01, 0.9);
+// A towel of this colour under one lying at a place (feet there, head along the heading).
+function towel({ x, y, z, heading }, color) {
+  const mesh = new THREE.Mesh(towelShape, new THREE.MeshLambertMaterial({ color }));
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = heading;
+  return mesh;
+}
+// Each [LV95 east, north, heading, pose]: the yoga row about 1 m apart around LV95 2610515.3,
+// 1268548.5, the dancers 1.4 m apart around LV95 2610511.5, 1268552.2.
+const friends = parked(
+  [
+    [2610515.3, 1268549.5, -Math.PI / 2, "yoga"],
+    [2610515.3, 1268548.5, -Math.PI / 2, "yoga"],
+    [2610515.3, 1268547.5, -Math.PI / 2, "yoga"],
+    [2610513, 1268550.8, Math.PI / 2, "up"],
+    [2610510.8, 1268552.2, Math.PI / 2, "dance"],
+    [2610512.2, 1268552.2, -Math.PI / 2, "dance"],
+  ].map(([e, n, heading, pose]) => ({ ...fromLV95([e, n]), heading, pose })),
+);
+const FRIENDS = mix(
+  {
+    body: ["swim"],
+    skin: [0xf1c7a5, 0x8a5634, 0xd9a27a, 0xf6d5b8, 0xc58c5c],
+    hair: [0x111111, 0xe2c46e, 0x2a1d14, 0x7a3a1a],
+    top: [0x1e88e5, 0xffd600, 0x111111, 0x00bcd4, 0xff6f00],
+    bottom: [0x1e88e5, 0xffd600, 0x111111, 0x00bcd4, 0xff6f00],
+    head: ["long", "long", "hair", "long", "long"],
+  },
+  friends.length,
+);
 scene.add(
+  ...sunbathing.map((place, k) => towel(place, SUNBATHERS[k][5])),
+  ...friends.filter(({ pose }) => pose === "up").map((place) => towel(place, 0xec407a)),
+  ...createPeople(
+    sunbathing.map((place) => ({ ...place, y: place.y + TOWEL })),
+    SUNBATHERS.map(([, , , look]) => look),
+  ),
+  ...createPeople(
+    // On her towel, with her legs up, SLIDE back towards its middle.
+    friends.map((p) =>
+      p.pose === "up"
+        ? {
+            ...p,
+            x: p.x - Math.sin(p.heading) * SLIDE,
+            y: p.y + TOWEL,
+            z: p.z - Math.cos(p.heading) * SLIDE,
+          }
+        : p,
+    ),
+    FRIENDS,
+  ),
   ...createPeople(standing(MEN), MEN_LOOKS),
   ...createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
 );

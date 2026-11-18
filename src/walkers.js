@@ -84,7 +84,7 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground) {
   }
   const crowds = new Map([...counts].map(([body, count]) => [body, createCrowd(body, count)]));
   for (const crowd of crowds.values()) crowd.mesh.frustumCulled = false; // they move
-  const dress = ({ look, me: [body, i] }) => crowds.get(body).dress(i, look, true);
+  const dress = ({ look, me: [body, i] }) => crowds.get(body).dress(i, look, "walk");
   const hide = ({ me: [body, i] }) => crowds.get(body).place(i, 0, -1000, 0, 0, 0);
   walkers.forEach((w, i) => {
     Object.assign(w, { loop: null, at: 0, step: 1, along: 0, right: 0, pace: 0, phase: i });
