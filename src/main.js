@@ -252,8 +252,8 @@ const structures = createBuildings(buildings.scene, bridges.scene, [terrain], re
 }
 const deckMaps = createDecks(bridges.scene, materials.bridge);
 const explosions = createExplosions(scene, structures, heightAt, camera);
-// What is blown up stays so in this browser until Reset, as long as the models are the same (by
-// their sizes and totals), since the numbers belong to them. Reset forgets it and loads the page
+// What is blown up stays so in this browser until Rebuild, as long as the models are the same (by
+// their sizes and totals), since the numbers belong to them. Rebuild forgets it and loads the page
 // again. destroyed holds only what was really removed, so the counter is exact.
 const DESTROYED_KEY = "basel3d.destroyed"; // { models, numbers }
 const { total } = structures;
