@@ -2,7 +2,8 @@
 // closed loops in BOX from the streets of data/osm.json (tools/osm.mjs), traced through a grid of
 // GRID metres (marching squares), so they never cross themselves or a street:
 // - around each block, along the middle of its sidewalks: where the distance to the nearest
-//   street is half its width plus half a sidewalk, as the map draws them (tools/map.mjs);
+//   street is half its width plus half a sidewalk, as the map draws them (tools/map.mjs), on a
+//   bridge INSET less, so they stay on its deck;
 // - along footways, paths (not sidewalks or crossings, which the loops above cover), pedestrian
 //   streets and squares, AISLE metres either side of their middle, but not into the streets'
 //   sidewalks; those mostly along pedestrian streets and squares are busy.
@@ -22,6 +23,7 @@ const BOX = { e0: 2610200, e1: 2612600, n0: 1266400, n1: 1268800 };
 const MARGIN = 200; // metres
 const GRID = 2; // metres
 const AISLE = 1.5; // metres
+const INSET = 2; // metres
 const SMALLEST = 50; // m²
 const SIMPLIFY = 0.5; // metres
 const WETTEST = 0.02; // share of a loop on water at most
@@ -62,7 +64,10 @@ for (const { type, tags = {}, geometry } of osm) {
   if (type !== "way" || (tags.tunnel && tags.tunnel !== "no")) continue;
   const bins = binsOf(tags);
   if (!bins) continue;
-  const offset = bins === streets ? roadWidth(tags.highway) / 2 + SIDEWALK_WIDTH / 2 : AISLE;
+  const offset =
+    bins === streets
+      ? roadWidth(tags.highway) / 2 + SIDEWALK_WIDTH / 2 - (onBridge(tags) ? INSET : 0)
+      : AISLE;
   const points = geometry.map((p) => p && toLV95(p));
   for (let i = 1; i < points.length; i++) {
     if (!points[i - 1] || !points[i]) continue;

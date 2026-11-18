@@ -722,6 +722,8 @@ const ufo = createUfo(boost, (x, z) => {
 scene.add(...ufo.meshes);
 // The decks of all standing bridges (deckOf), made when a vehicle on the ground first needs them.
 let roads = null;
+// On the Rhine the terrain lies flat at the water's surface, at most WATER.
+const WATER = -4.9; // scene y
 // Where the vehicles on the ground (src/drive.js) drive: each stands on the terrain or on the
 // highest bridge deck at most STEP above its wheels.
 const STEP = 1; // metres
@@ -945,16 +947,20 @@ scene.add(
 );
 // Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
 // as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
-// bridge whose sidewalk runs along its edge.
+// bridge whose sidewalk runs along its edge; never on the water: there on the highest deck at or
+// around them, however high.
 const AROUND = Array.from({ length: 8 }, (_, k) => [
   2 * Math.sin((k * Math.PI) / 4),
   2 * Math.cos((k * Math.PI) / 4),
 ]); // 2 m away in eight directions
-const walkGround = (x, z, y) =>
-  Math.max(
-    world.ground(x, z, y), // makes roads first
-    ...AROUND.flatMap(([dx, dz]) => roads.heights(x + dx, z + dz).filter((h) => h <= y + STEP)),
-  );
+const walkGround = (x, z, y) => {
+  const below = world.ground(x, z, y); // makes roads first
+  const decks = [[0, 0], ...AROUND].flatMap(([dx, dz]) => roads.heights(x + dx, z + dz));
+  const reached = decks.filter((h) => h <= y + STEP);
+  return below > WATER
+    ? Math.max(below, ...reached)
+    : Math.max(below, ...(reached.length ? reached : decks));
+};
 const walkers = createWalkers(
   walksBuffer,
   terrainInfo.x0,
@@ -1172,7 +1178,6 @@ const drones = createDrones(
 // the Johanniterbrücke (LV95 2611109.0, 1267968.1), the police speedboat below the Mittlere Brücke
 // (LV95 2611324.4, 1267926.5), 7 m off the bank, so it can turn. They float on the water, where the
 // terrain lies flat at the water's surface, at most WATER; banks and bridge piers stop them.
-const WATER = -4.9; // scene y
 const onWater = {
   ground: (x, z) => heightAt(x, z),
   blocked: (from, to) => heightAt(to.x, to.z) > WATER || structures.wall(from, to, true),
