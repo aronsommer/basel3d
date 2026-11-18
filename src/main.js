@@ -2650,7 +2650,7 @@ render(true);
 render(false);
 for (const object of culled) object.frustumCulled = true;
 
-// Draws a frame, with the "Dev info" (src/dev.js) while it is ticked.
+// Draws a frame, with the "Dev panel" (src/dev.js) while it is ticked.
 const drawFrame = createDev(renderer, render, [
   ["Buildings", [buildings.scene, bridges.scene]],
   ["Terrain", [terrain]],

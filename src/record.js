@@ -1,4 +1,4 @@
-// Record clicks at the bottom of the Dev info panel (src/dev.js): while recording, each click on
+// Record clicks at the bottom of the Dev panel (src/dev.js): while recording, each click on
 // the scene marks what is there with a number; Undo takes back the last; Stop & copy copies them
 // all, "1 LV95 east, north, altitude" per line, and leaves the marks until the next recording.
 // pointAt(x, y): the scene point at a screen point (px), or null; lv95(point): its text;
