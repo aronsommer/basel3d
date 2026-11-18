@@ -87,13 +87,14 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     return t0;
   };
 
-  // Per mesh, per number, its steep triangles (walls) as [x0, z0, x1, z1, bottom, top] each: the
-  // two of its corners furthest apart seen from above and its height range.
+  // Per mesh, per number, { walls, roofs }: its steep triangles as [x0, z0, x1, z1, bottom, top]
+  // each (the two of its corners furthest apart seen from above and its height range), and those
+  // not upright as their corners [x, y, z, x, y, z, x, y, z] each (some steep ones are both).
   // Made when first needed; hide() forgets those of the meshes it changes.
-  const walls = new Map(); // mesh → Map(number → [x0, z0, x1, z1, bottom, top, …])
+  const surfaces = new Map(); // mesh → Map(number → { walls, roofs })
   const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
-  function wallsOf(mesh) {
-    if (walls.has(mesh)) return walls.get(mesh);
+  function surfacesOf(mesh) {
+    if (surfaces.has(mesh)) return surfaces.get(mesh);
     const found = new Map();
     const { index, attributes } = mesh.geometry;
     const { position, _building } = attributes;
@@ -106,7 +107,12 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         c.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
       );
       const [a, b, c] = corners;
-      if (Math.abs(THREE.Triangle.getNormal(a, b, c, normal).y) > 0.7) continue; // flat
+      const n = _building.getX(at(t));
+      if (!found.has(n)) found.set(n, { walls: [], roofs: [] });
+      const { walls, roofs } = found.get(n);
+      const up = Math.abs(THREE.Triangle.getNormal(a, b, c, normal).y);
+      if (up > 0.3) roofs.push(...a, ...b, ...c);
+      if (up > 0.7) continue; // flat
       const [p, q] = [
         [a, b],
         [b, c],
@@ -117,11 +123,9 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           ? pair
           : far,
       );
-      const n = _building.getX(at(t));
-      if (!found.has(n)) found.set(n, []);
-      found.get(n).push(p.x, p.z, q.x, q.z, Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y));
+      walls.push(p.x, p.z, q.x, q.z, Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y));
     }
-    walls.set(mesh, found);
+    surfaces.set(mesh, found);
     return found;
   }
 
@@ -222,7 +226,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           for (const n of cells.get(`${x},${z}`) ?? []) {
             if (n >= count || !meshesOf[n].length || enter(from, to, n) === Infinity) continue;
             for (const mesh of meshesOf[n]) {
-              const list = wallsOf(mesh).get(n) ?? [];
+              const list = surfacesOf(mesh).get(n)?.walls ?? [];
               for (let i = 0; i < list.length; i += 6) {
                 const [ax, az, bx, bz] = [list[i], list[i + 1], list[i + 2], list[i + 3]];
                 if (
@@ -238,6 +242,42 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
             }
           }
       return false;
+    },
+    // The height of the highest roof (or other face not upright) of a building (not a bridge) at
+    // the point x, z, at most y; -Infinity if none. Hidden ones are left out.
+    top(x, z, y) {
+      if (!boxes) measure();
+      let best = -Infinity;
+      const [column] = cellRange(x, x);
+      const [row] = cellRange(z, z);
+      for (const n of cells.get(`${column},${row}`) ?? []) {
+        if (n >= count || !meshesOf[n].length) continue;
+        const b = 6 * n;
+        if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
+        for (const mesh of meshesOf[n]) {
+          const list = surfacesOf(mesh).get(n)?.roofs ?? [];
+          for (let i = 0; i < list.length; i += 9) {
+            const [ax, az, bx, bz, cx, cz] = [
+              list[i],
+              list[i + 2],
+              list[i + 3],
+              list[i + 5],
+              list[i + 6],
+              list[i + 8],
+            ];
+            const [ay, by, cy] = [list[i + 1], list[i + 4], list[i + 7]];
+            const d1 = side(ax, az, bx, bz, x, z);
+            const d2 = side(bx, bz, cx, cz, x, z);
+            const d3 = side(cx, cz, ax, az, x, z);
+            const sum = d1 + d2 + d3;
+            if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)))
+              continue;
+            const h = (ay * d2 + by * d3 + cy * d1) / sum; // barycentric
+            if (h <= y && h > best) best = h;
+          }
+        }
+      }
+      return best;
     },
     // The triangles of those with these numbers, but hidden ones, in scene coordinates: a Map from
     // each number to [{ color, positions }] per mesh, nine numbers per triangle. Each mesh is
@@ -280,7 +320,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     hide(numbers) {
       const wanted = new Set(numbers);
       for (const mesh of meshesWith(wanted)) {
-        walls.delete(mesh);
+        surfaces.delete(mesh);
         const { position, _building } = mesh.geometry.attributes;
         const first = new Map(); // number → its first vertex in this mesh
         for (let i = 0; i < position.count; i++) {
