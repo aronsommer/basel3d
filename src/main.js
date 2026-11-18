@@ -1358,22 +1358,24 @@ function createHelicopter(cx, cz, radius, height, scale) {
   group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
 
   // Steered while ridden (input { climb, turn, stop }, climb and turn each -1, 0 or 1, from
-  // steering()), at least LOW above the terrain, at most HIGH, over the terrain's area. Flying,
-  // it goes SPEED straight on, climbs or sinks at CLIMB while climb is held and the nose tilts
-  // along by NOSE. Stopped, it hovers and climb tilts the nose instead, by TILT radians per
-  // second between level and AIM down, and it stays when let go. Speed, climb, nose and turning
-  // (up to TURN radians per second) are eased. Without input it is back on its circle.
+  // steering()), at least LOW above the terrain, at most HIGH, over the terrain's area. Holding
+  // climb tilts the nose by TILT radians per second, and it stays when let go. Flying, it goes
+  // SPEED along the nose, from UP above level to DOWN below; tilting through level, it stops
+  // there until pressed anew, and it levels out at LOW or HIGH. Stopped, it hovers and the nose
+  // only aims, from level to AIM down. Speed, nose and turning (up to TURN radians per second)
+  // are eased. Without input it is back on its circle.
   const SPEED = 60; // metres per second
-  const CLIMB = 40; // metres per second
   const LEVEL = 0.12; // the nose down when flying level (radians)
-  const NOSE = 0.4; // radians
-  const TILT = 1.2;
+  const UP = 0.35; // radians, about 20°
+  const DOWN = 0.8; // radians, about 45°
   const AIM = 1.2; // radians, about 70°
+  const TILT = 1.2;
   const TURN = 1.1;
   const LOW = 40; // metres
   const HIGH = 1000; // scene y
-  // { x, y, z, heading, speed (0 to 1, times SPEED), climb (-1 to 1, times CLIMB), nose (radians
-  // down), aim (the nose while stopped), turn } while steered
+  // { x, y, z, heading, speed (0 to 1, times SPEED), aim (where the nose goes, radians down),
+  // nose, turn, levelled (the climb input that last reached level, while still held) } while
+  // steered
   let flown = null;
   let last = 0;
   const update = (seconds, input) => {
@@ -1384,29 +1386,40 @@ function createHelicopter(cx, cz, radius, height, scale) {
         ...group.position,
         heading: group.rotation.y,
         speed: 1,
-        climb: 0,
-        nose: LEVEL,
         aim: LEVEL,
+        nose: LEVEL,
         turn: 0,
+        levelled: 0,
       };
       const ease = (value, to, rate) => value + (to - value) * Math.min(1, dt * rate);
-      if (input.stop)
-        flown.aim = THREE.MathUtils.clamp(flown.aim - input.climb * TILT * dt, 0, AIM);
-      else flown.aim = flown.nose; // so stopping starts from there
+      if (input.climb !== flown.levelled) flown.levelled = 0;
+      if (input.climb && !flown.levelled) {
+        const next = flown.aim - input.climb * TILT * dt;
+        if (!input.stop && (next - LEVEL) * (flown.aim - LEVEL) < 0) {
+          flown.aim = LEVEL;
+          flown.levelled = input.climb;
+        } else flown.aim = next;
+      }
+      flown.aim = input.stop
+        ? THREE.MathUtils.clamp(flown.aim, 0, AIM)
+        : THREE.MathUtils.clamp(flown.aim, LEVEL - UP, LEVEL + DOWN);
       flown.speed = ease(flown.speed, input.stop ? 0 : 1, 6);
-      flown.climb = ease(flown.climb, input.stop ? 0 : input.climb, 7);
-      flown.nose = ease(flown.nose, input.stop ? flown.aim : LEVEL - NOSE * flown.climb, 8);
+      flown.nose = ease(flown.nose, flown.aim, 8);
       flown.turn = ease(flown.turn, input.turn, 4);
       flown.heading += flown.turn * TURN * dt;
+      const down = flown.nose - LEVEL; // the angle it flies below level
+      const step = flown.speed * SPEED * dt;
       [flown.x, flown.z] = intoArea(
-        flown.x + Math.sin(flown.heading) * flown.speed * SPEED * dt,
-        flown.z + Math.cos(flown.heading) * flown.speed * SPEED * dt,
+        flown.x + Math.sin(flown.heading) * Math.cos(down) * step,
+        flown.z + Math.cos(flown.heading) * Math.cos(down) * step,
       );
-      flown.y = THREE.MathUtils.clamp(
-        flown.y + flown.climb * CLIMB * dt,
-        heightAt(flown.x, flown.z) + LOW,
-        HIGH,
-      );
+      const low = heightAt(flown.x, flown.z) + LOW;
+      const y = flown.y - Math.sin(down) * step;
+      if (!input.stop && ((y < low && down > 0) || (y > HIGH && down < 0))) {
+        flown.aim = LEVEL;
+        flown.levelled = input.climb;
+      }
+      flown.y = THREE.MathUtils.clamp(y, low, HIGH);
       group.position.set(flown.x, flown.y, flown.z);
       group.rotation.set(flown.nose, flown.heading, -0.3 * flown.turn * flown.speed);
     } else {
@@ -1861,8 +1874,7 @@ addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
 });
 // Steering the helicopter while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
-// at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on; stopped,
-// W/S tilt the nose instead.
+// at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
