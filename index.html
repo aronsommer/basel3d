@@ -205,27 +205,31 @@
       #layers {
         top: 56px;
       }
-      /* Open: a panel of the layers as wide as they need, left-aligned, the chevron on the right of
-         the title; above all else (nothing else has a z-index). */
+      /* Open: a panel of the layers as wide as they need, left-aligned; above all else (nothing
+         else has a z-index). */
       #layers[open] {
         z-index: 1;
         width: auto;
         min-width: 96px;
         text-align: left;
       }
+      /* The title fills the closed menu, so all of it can be tapped; open, it stays as it was, in
+         the top right corner, so the title and the chevron do not move. */
       #layers summary {
-        list-style: none;
+        display: block;
+        box-sizing: border-box;
+        margin: -8px -14px;
+        padding: 8px 14px;
+        text-align: center;
         cursor: pointer;
+      }
+      #layers[open] summary {
+        width: 96px;
+        margin-left: auto;
+        margin-bottom: 0;
       }
       #layers summary::-webkit-details-marker {
         display: none;
-      }
-      /* As tall as the rows below, to be easy to tap. */
-      #layers[open] summary {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        min-height: 28px;
       }
       /* A chevron: down when closed, up when open. */
       #layers summary::after {
@@ -241,21 +245,15 @@
       #layers[open] summary::after {
         transform: translateY(2px) rotate(-135deg);
       }
-      /* A box close to its text; "All" a little apart from "Trams". Each label only as wide as its
-         box and text, so a tap beside it does not tick it. */
-      #layers label,
-      #layers .heading {
+      /* A box close to its text. Each label only as wide as its box and text, so a tap beside it
+         does not tick it. */
+      #layers label {
         display: flex;
         align-items: center;
         gap: 6px;
         min-height: 28px;
-      }
-      #layers label {
         width: fit-content;
         cursor: pointer;
-      }
-      #layers .heading {
-        gap: 16px;
       }
       #layers input {
         width: 16px;
@@ -277,12 +275,13 @@
       #layers #dev-box {
         accent-color: #1d242b;
       }
-      /* The tram lines one by one below the heading, five in a row, each pair of box and number
+      /* "Trams", "All", then the tram lines one by one, five in a row, each pair of box and number
          well apart from the next. */
       #tram-lines {
         display: grid;
         grid-template-columns: repeat(5, auto);
         justify-content: start;
+        align-items: center;
         column-gap: 16px;
         font-variant-numeric: tabular-nums;
       }
@@ -565,11 +564,10 @@
       <summary>Layers</summary>
       <label><input type="checkbox" id="names-box" /> Names</label>
       <hr />
-      <div class="heading">
-        Trams
+      <div id="tram-lines">
+        <span>Trams</span>
         <label><input type="checkbox" id="trams" /> All</label>
       </div>
-      <div id="tram-lines"></div>
       <label><input type="checkbox" data-kind="train" /> Trains</label>
       <label><input type="checkbox" data-kind="car" /> Cars</label>
       <label><input type="checkbox" data-kind="ship" /> Ships</label>
