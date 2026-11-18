@@ -1,46 +1,31 @@
 // Basel police cars: white, with an orange line along the middle of each side, POLIZEI on the
-// back and a light bar whose blue lights flash in turn. Ridden, one is driven: up speeds up, down
-// brakes and then reverses, left and right steer; it rolls over the ground and bridge decks, falls
-// where there is none, and slides along or stops at walls. Let go, it is back in its place at once.
+// back and a light bar whose blue lights flash in turn; driven as in src/drive.js.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { part, profile } from "./parts.js";
+import { createDriving } from "./drive.js";
 
-const MAX = 35; // metres per second forward
-const BACK = 8; // metres per second in reverse
-const ACCELERATE = 11; // metres per second²
-const BRAKE = 18; // metres per second²
-const ROLL = 3; // metres per second² it slows down by itself
-const STEER = 0.6; // radians the front wheels turn at most, at a standstill
-const AXLES = 2.9; // metres between the axles
-const HALF = 2.4; // metres from the middle to the nose and to the tail
 const WIDTH = 1.84; // metres
+const AXLES = 2.9; // metres between them
 const WHEEL = 0.34; // radius in metres
-const GRAVITY = 9.81;
+const SPEC = {
+  max: 35,
+  back: 8,
+  accelerate: 11,
+  brake: 50,
+  roll: 5,
+  steer: 0.6,
+  grip: 150,
+  react: 6,
+  axles: AXLES,
+  half: 2.4,
+  width: WIDTH,
+};
 
 // One car per place ({ x, y, z, heading }), each { group, material, update }; they share their
 // geometries and all materials but the body's (so one is highlighted alone). boost(position): how
-// much larger to draw one far away; world: { ground(x, z, y): the scene y of the top under a point
-// at y, blocked(from, to): whether a building is in the way, intoArea(x, z): [x, z] moved into the
-// terrain's area }.
-export function createPolice(places, boost, { ground, blocked, intoArea }) {
-  // A part at [x, y, z] in one colour, without normals and uvs (flat shading makes them).
-  const part = (geometry, color, [x, y, z]) => {
-    const g = geometry.index ? geometry.toNonIndexed() : geometry;
-    g.deleteAttribute("normal");
-    g.deleteAttribute("uv");
-    const colors = new Float32Array(g.attributes.position.count * 3);
-    for (let i = 0; i < colors.length; i += 3) new THREE.Color(color).toArray(colors, i);
-    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return g.translate(x, y, z);
-  };
-  // A side profile ([z, y] points) extruded across, width wide, centred.
-  const profile = (points, width) =>
-    new THREE.ExtrudeGeometry(new THREE.Shape(points.map(([z, y]) => new THREE.Vector2(z, y))), {
-      depth: width,
-      bevelEnabled: false,
-    })
-      .rotateY(-Math.PI / 2)
-      .translate(width / 2, 0, 0);
+// much larger to draw one far away; world: as for createDriving (src/drive.js).
+export function createPolice(places, boost, world) {
   const WHITE = 0xf4f6f8;
   const ORANGE = 0xff7a10;
   const GLASS = 0x18202a;
@@ -155,43 +140,25 @@ export function createPolice(places, boost, { ground, blocked, intoArea }) {
     const wheels = [1, -1].flatMap((end) =>
       [1, -1].map((side) => {
         const wheel = new THREE.Mesh(tyre, material);
-        wheel.position.set(side * 0.86, WHEEL, end * AXLES * 0.5); // a little out of the body
+        wheel.position.set(side * 0.86, WHEEL, (end * AXLES) / 2); // a little out of the body
         wheel.rotation.order = "YXZ"; // steered, then turning
         group.add(wheel);
         return wheel;
       }),
     );
+    const driving = createDriving(place, SPEC, world);
+    const s = driving.state;
 
-    const parked = { ...place, speed: 0, fall: 0, steer: 0, pitch: 0 };
-    const state = { ...parked };
-    const from = new THREE.Vector3();
-    const to = new THREE.Vector3();
-    // Whether moving by mx, mz is free: checked from the middle to both corners ahead (the front
-    // ones going forward, the back ones in reverse) where they would be.
-    const free = (mx, mz) => {
-      const [fx, fz] = [Math.sin(state.heading), Math.cos(state.heading)];
-      const ahead = Math.sign(state.speed) * HALF;
-      from.set(state.x, state.y + 1, state.z);
-      return [-1, 1].every((side) => {
-        const across = (side * WIDTH) / 2;
-        to.set(
-          state.x + mx + fx * ahead + fz * across,
-          from.y,
-          state.z + mz + fz * ahead - fx * across,
-        );
-        return !blocked(from, to);
-      });
-    };
-
-    // Placed, its lights flashing. It drives on by input ({ climb, turn }, each -1, 0 or 1, from
-    // steering() in src/main.js), or is back in its place without (null).
+    // Driven by input (createDriving), else in its place; its lights flashing.
     function update(seconds, dt, input) {
-      const s = state;
-      if (input) move(dt, input);
-      else Object.assign(s, parked);
+      driving.step(dt, input);
       group.position.set(s.x, s.y, s.z);
       group.rotation.set(s.pitch, s.heading, 0);
       group.scale.setScalar(boost(group.position));
+      wheels.forEach((wheel, k) => {
+        wheel.rotation.x = s.rolled / WHEEL;
+        if (k < 2) wheel.rotation.y = s.steer;
+      });
       // Each side flashes twice, then the other, 0.6 s in all.
       const t = (seconds + late) % 0.6;
       const flash = t % 0.3 < 0.07 || (t % 0.3 > 0.12 && t % 0.3 < 0.19);
@@ -200,46 +167,8 @@ export function createPolice(places, boost, { ground, blocked, intoArea }) {
         core.material = glow.visible ? on : off;
       });
     }
-    function move(dt, input) {
-      const s = state;
-      const gas = input.climb;
-      const towards = Math.sign(gas);
-      if (gas && Math.sign(s.speed) === -towards) s.speed += towards * BRAKE * dt;
-      else if (gas) s.speed += towards * ACCELERATE * dt;
-      else s.speed -= Math.sign(s.speed) * Math.min(Math.abs(s.speed), ROLL * dt);
-      s.speed = THREE.MathUtils.clamp(s.speed, -BACK, MAX);
-      // Less steering the faster it goes, so it stays easy to hold on the road.
-      const steer = (input.turn * STEER) / (1 + s.speed ** 2 / 150);
-      s.steer += (steer - s.steer) * Math.min(1, dt * 6);
-      s.heading += ((s.speed * Math.tan(s.steer)) / AXLES) * dt;
-
-      const [fx, fz] = [Math.sin(s.heading), Math.cos(s.heading)];
-      const step = s.speed * dt;
-      const [dx, dz] = [fx * step, fz * step];
-      if (step && !free(dx, dz)) {
-        // Slides along a wall, slowing down; head on, it stops.
-        if (free(dx, 0)) [s.x, s.z] = [s.x + dx, s.z];
-        else if (free(0, dz)) [s.x, s.z] = [s.x, s.z + dz];
-        else s.speed = 0;
-        s.speed *= 1 - Math.min(1, dt * 3);
-      } else [s.x, s.z] = [s.x + dx, s.z + dz];
-      [s.x, s.z] = intoArea(s.x, s.z);
-
-      s.fall += GRAVITY * dt;
-      s.y -= s.fall * dt;
-      const below = ground(s.x, s.z, s.y);
-      if (s.y <= below) [s.y, s.fall] = [below, 0];
-      // Tilted by the ground under its axles, nose down where the front is lower.
-      const front = ground(s.x + fx * AXLES * 0.5, s.z + fz * AXLES * 0.5, s.y);
-      const back = ground(s.x - fx * AXLES * 0.5, s.z - fz * AXLES * 0.5, s.y);
-      s.pitch += (Math.atan2(back - front, AXLES) - s.pitch) * Math.min(1, dt * 8);
-      wheels.forEach((wheel, k) => {
-        wheel.rotation.x += step / WHEEL;
-        if (k < 2) wheel.rotation.y = s.steer;
-      });
-    }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update };
+    return { group, material, update, state: s };
   }
 }

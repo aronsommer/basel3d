@@ -16,6 +16,8 @@ import { createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
+import { createMotorcycles } from "./motorcycle.js";
+import { part } from "./parts.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const LV95 = [2611000, 1267400]; // E, N of the scene's origin
@@ -443,17 +445,6 @@ scene.add(birds.mesh);
 function createPlanes() {
   const SPEED = 80; // metres per second
   const SCALE = 1.5;
-  const part = (geometry, color, [x, y, z]) => {
-    const g = geometry.toNonIndexed();
-    g.deleteAttribute("normal");
-    g.deleteAttribute("uv");
-    g.translate(x, y, z);
-    const c = new THREE.Color(color);
-    const colors = new Float32Array(g.attributes.position.count * 3);
-    for (let i = 0; i < colors.length; i += 3) c.toArray(colors, i);
-    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return g;
-  };
   // Along +z, in metres: fuselage, nose, wings, tailplane, fin, engines.
   const WHITE = 0xf2f2f0;
   const fuselage = new THREE.CylinderGeometry(2, 2, 30, 8).rotateX(Math.PI / 2);
@@ -707,20 +698,12 @@ const ufo = createUfo(boost, (x, z) => {
   return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
 });
 scene.add(...ufo.meshes);
-// The decks of all standing bridges (deckOf), made when a police car first needs them.
+// The decks of all standing bridges (deckOf), made when a vehicle on the ground first needs them.
 let roads = null;
-// The police cars (src/police.js), parked in St. Johann and on the Rhine in Klybeck by the
-// Dreirosenbrücke, both facing south (heading: radians from south towards east). Each stands on
-// the terrain or on the highest bridge deck at most STEP above its wheels.
+// Where the vehicles on the ground (src/drive.js) drive: each stands on the terrain or on the
+// highest bridge deck at most STEP above its wheels.
 const STEP = 1; // metres
-const parked = [
-  { x: -1002.3, z: -765.7, heading: 0 },
-  { x: 132.7, z: -1427.2, heading: -0.05 },
-].map((place) => {
-  fromAbove.set(new THREE.Vector3(place.x, 2000, place.z), DOWN);
-  return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
-});
-const police = createPolice(parked, boost, {
+const world = {
   ground(x, z, y) {
     roads ??= deckOf(
       [...structures.triangles(structures.bridgeNumbers).values()].flatMap((parts) =>
@@ -731,8 +714,29 @@ const police = createPolice(parked, boost, {
   },
   blocked: (from, to) => structures.wall(from, to),
   intoArea,
-});
-scene.add(...police.map((car) => car.group));
+};
+// The places ({ x, z, heading: radians from south towards east }) on the bridge or ground there.
+const parked = (places) =>
+  places.map((place) => {
+    fromAbove.set(new THREE.Vector3(place.x, 2000, place.z), DOWN);
+    return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
+  });
+// Police cars (src/police.js) in St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke,
+// both facing south; a motorcycle (src/motorcycle.js) on the Mittlere Brücke facing Kleinbasel.
+const police = createPolice(
+  parked([
+    { x: -1002.3, z: -765.7, heading: 0 },
+    { x: 132.7, z: -1427.2, heading: -0.05 },
+  ]),
+  boost,
+  world,
+);
+const motorcycles = createMotorcycles(
+  parked([{ x: 375.9, z: -320.7, heading: 2.21 }]),
+  boost,
+  world,
+);
+scene.add(...[...police, ...motorcycles].map((vehicle) => vehicle.group));
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;
@@ -893,7 +897,7 @@ function createShips(course) {
 }
 
 // Riding along on single objects (ships, planes, the helicopter, the sea monster, the UFO, the
-// police cars), each { object, materials, eye, ahead } (points in the object's own frame): the
+// police cars, the motorcycles), each { object, materials, eye, ahead } (points in the object's own frame): the
 // camera at eye, looking at ahead with the horizon level; under the mouse the materials show
 // HIGHLIGHT.
 function riders(list) {
@@ -1278,21 +1282,6 @@ function createMovers({ routes }, points, kind, traffic) {
 // with a black window, legs and weapons, to stand out against the sky as well as the red roofs.
 // launchers: where its rockets leave, in its own frame.
 function createHelicopter(cx, cz, radius, height, scale) {
-  // A part at [x, y, z], coloured by a colour or by a function of its own (untranslated) position.
-  const part = (geometry, color, [x, y, z]) => {
-    const g = geometry.index ? geometry.toNonIndexed() : geometry;
-    g.deleteAttribute("normal");
-    g.deleteAttribute("uv");
-    const position = g.attributes.position;
-    const colors = new Float32Array(position.count * 3);
-    for (let i = 0; i < position.count; i++) {
-      const c = typeof color === "function" ? color(position.getY(i), position.getZ(i)) : color;
-      new THREE.Color(c).toArray(colors, 3 * i);
-    }
-    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    g.translate(x, y, z);
-    return g;
-  };
   const YELLOW = 0xffd000;
   const DARK = 0x1c1f24; // legs, weapons, rotors
   const GLASS = 0x141a22;
@@ -1915,22 +1904,35 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster, the
-// UFO or a police car to ride along; while riding, a click or tap on another one changes to it.
+// UFO, a police car or a motorcycle to ride along; while riding, a click or tap on another one
+// changes to it.
 // A finger also finds one up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
 // The UFO from behind and above, looking down on it.
 const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
-// The police cars from behind and above.
-const policeRide = riders(
-  police.map(({ group, material }) => ({
-    object: group,
-    materials: [material],
-    eye: [0, 3, -8.5],
-    ahead: [0, 1.2, 8],
-  })),
-);
+// What is driven, each [vehicles, ride]: the police cars and the motorcycles, from behind and
+// above. The camera turns with the vehicle's look (src/drive.js), not its heading, so it swings
+// round smoothly after it.
+const drives = [
+  [police, [0, 3, -8.5], [0, 1.2, 8]],
+  [motorcycles, [0, 2.2, -4.5], [0, 1, 6]],
+].map(([vehicles, eye, ahead]) => {
+  const ride = riders(
+    vehicles.map(({ group, material }) => ({ object: group, materials: [material], eye, ahead })),
+  );
+  const at = new THREE.Vector3();
+  ride.cab = (v, view) => {
+    const { group, state } = vehicles[v];
+    view.position.fromArray(eye).applyAxisAngle(THREE.Object3D.DEFAULT_UP, state.look);
+    view.position.add(group.position);
+    view.lookAt(
+      at.fromArray(ahead).applyAxisAngle(THREE.Object3D.DEFAULT_UP, state.look).add(group.position),
+    );
+  };
+  return [vehicles, ride];
+});
 // What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
 const rides = [
   ...movers,
@@ -1939,7 +1941,7 @@ const rides = [
   helicopter.ride,
   serpent.ride,
   ufoRide,
-  policeRide,
+  ...drives.map(([, ride]) => ride),
 ];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
@@ -1958,7 +1960,7 @@ addEventListener("keydown", (e) => {
 });
 // Steering the helicopter or the UFO while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
 // at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on. The
-// police cars are driven with the same keys and buttons, without fire and stop.
+// police cars and motorcycles are driven with the same keys and buttons, without fire and stop.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
@@ -2072,7 +2074,7 @@ function ride(found, clientX, clientY) {
     document.body.dataset.mode = "ride";
   }
   riding = found;
-  const driving = found.ride === policeRide;
+  const driving = drives.some(([, ride]) => ride === found.ride);
   steerBox.hidden = !pilots.has(found.ride) && !driving;
   fireButton.hidden = stopButton.hidden = driving;
   flown = null; // from where it is
@@ -2394,13 +2396,14 @@ renderer.setAnimationLoop((time) => {
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
   helicopter.update(time / 1000, flier === helicopter ? flown : null);
   ufo.update(time / 1000, dt, flier === ufo ? flown : null);
-  police.forEach((car, v) =>
-    car.update(
-      time / 1000,
-      dt,
-      riding?.ride === policeRide && riding.vehicle === v ? steering() : null,
-    ),
-  );
+  for (const [vehicles, ride] of drives)
+    vehicles.forEach((vehicle, v) =>
+      vehicle.update(
+        time / 1000,
+        dt,
+        riding?.ride === ride && riding.vehicle === v ? steering() : null,
+      ),
+    );
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);
