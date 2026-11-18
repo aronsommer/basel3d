@@ -15,6 +15,7 @@ import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
+import { createPolice } from "./police.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const LV95 = [2611000, 1267400]; // E, N of the scene's origin
@@ -272,7 +273,7 @@ function decksOf(numbers) {
   );
 }
 // Where a bridge's triangles (nine numbers each) face up: whether a point lies within 1.5 m of
-// one, above or below it, as the ways on bridges do (tools/paths.mjs).
+// one, above or below it, as the ways on bridges do (tools/paths.mjs), and their heights at a point.
 function deckOf(triangles) {
   const GRID = 10; // metres
   const cells = new Map(); // "column,row" -> offsets of the triangles reaching into it
@@ -298,19 +299,22 @@ function deckOf(triangles) {
       }
   }
   const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+  function heights(x, z) {
+    const found = [];
+    for (const t of cells.get(`${Math.floor(x / GRID)},${Math.floor(z / GRID)}`) ?? []) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = triangles.slice(t, t + 9);
+      const d1 = side(ax, az, bx, bz, x, z);
+      const d2 = side(bx, bz, cx, cz, x, z);
+      const d3 = side(cx, cz, ax, az, x, z);
+      const sum = d1 + d2 + d3;
+      if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
+      found.push((ay * d2 + by * d3 + cy * d1) / sum); // barycentric
+    }
+    return found;
+  }
   return {
-    covers(x, y, z) {
-      for (const t of cells.get(`${Math.floor(x / GRID)},${Math.floor(z / GRID)}`) ?? []) {
-        const [ax, ay, az, bx, by, bz, cx, cy, cz] = triangles.slice(t, t + 9);
-        const d1 = side(ax, az, bx, bz, x, z);
-        const d2 = side(bx, bz, cx, cz, x, z);
-        const d3 = side(cx, cz, ax, az, x, z);
-        const sum = d1 + d2 + d3;
-        if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
-        if (Math.abs((ay * d2 + by * d3 + cy * d1) / sum - y) < 1.5) return true; // barycentric
-      }
-      return false;
-    },
+    covers: (x, y, z) => heights(x, z).some((h) => Math.abs(h - y) < 1.5),
+    heights,
   };
 }
 // Blows up the building or bridge with this number (-1: none) and remembers it, if it was there;
@@ -319,6 +323,7 @@ function destroy(number) {
   const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
   if (deck) for (const mover of movers) mover.cut(deck);
+  if (deck) roads = null; // made anew without it
   destroyed.add(number);
   showCount();
   try {
@@ -702,6 +707,27 @@ const ufo = createUfo(boost, (x, z) => {
   return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
 });
 scene.add(...ufo.meshes);
+// The decks of all standing bridges (deckOf), made when the police car first needs them.
+let roads = null;
+// The police car (src/police.js), parked in St. Johann facing south. It stands on the terrain or
+// on the highest bridge deck at most STEP above its wheels.
+const STEP = 1; // metres
+const PARKED = { x: -1002.3, z: -765.7, heading: 0 };
+fromAbove.set(new THREE.Vector3(PARKED.x, 2000, PARKED.z), DOWN);
+PARKED.y = fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y;
+const police = createPolice(PARKED, boost, {
+  ground(x, z, y) {
+    roads ??= deckOf(
+      [...structures.triangles(structures.bridgeNumbers).values()].flatMap((parts) =>
+        parts.flatMap(({ positions }) => positions),
+      ),
+    );
+    return Math.max(heightAt(x, z), ...roads.heights(x, z).filter((h) => h <= y + STEP));
+  },
+  blocked: (from, to) => structures.wall(from, to),
+  intoArea,
+});
+scene.add(police.group);
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;
@@ -861,9 +887,10 @@ function createShips(course) {
   return { meshes: fleet.map((ship) => ship.mesh), route, update, ride };
 }
 
-// Riding along on single objects (ships, planes, the helicopter, the sea monster, the UFO), each
-// { object, materials, eye, ahead } (points in the object's own frame): the camera at eye, looking
-// at ahead with the horizon level; under the mouse the materials show HIGHLIGHT.
+// Riding along on single objects (ships, planes, the helicopter, the sea monster, the UFO, the
+// police car), each { object, materials, eye, ahead } (points in the object's own frame): the
+// camera at eye, looking at ahead with the horizon level; under the mouse the materials show
+// HIGHLIGHT.
 function riders(list) {
   const colors = list.map(({ materials }) => materials.map((m) => m.color.clone()));
   const ahead = new THREE.Vector3();
@@ -1882,16 +1909,28 @@ function getOff() {
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster or the
-// UFO to ride along; while riding, a click or tap on another one changes to it.
+// --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster, the
+// UFO or the police car to ride along; while riding, a click or tap on another one changes to it.
 // A finger also finds one up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
 // The UFO from behind and above, looking down on it.
 const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
+// The police car from behind and above.
+const policeRide = riders([
+  { object: police.group, materials: [police.material], eye: [0, 3, -8.5], ahead: [0, 1.2, 8] },
+]);
 // What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
-const rides = [...movers, ships.ride, planes.ride, helicopter.ride, serpent.ride, ufoRide];
+const rides = [
+  ...movers,
+  ships.ride,
+  planes.ride,
+  helicopter.ride,
+  serpent.ride,
+  ufoRide,
+  policeRide,
+];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
 // The helicopter or the UFO, each { group, speed, turn, lift? }, while riding and so steering it;
@@ -1908,7 +1947,8 @@ addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
 });
 // Steering the helicopter or the UFO while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
-// at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on.
+// at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on. The
+// police car is driven with the same keys and buttons, without fire and stop.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
@@ -1930,6 +1970,7 @@ for (const button of steerBox.querySelectorAll("[data-key]")) {
 }
 let stopped = false;
 const stopButton = document.getElementById("stop");
+const fireButton = steerBox.querySelector('[data-key="Space"]');
 function stop(on) {
   stopped = on;
   stopButton.firstChild.data = on ? "Go" : "Stop";
@@ -2021,7 +2062,9 @@ function ride(found, clientX, clientY) {
     document.body.dataset.mode = "ride";
   }
   riding = found;
-  steerBox.hidden = !pilots.has(found.ride);
+  const driving = found.ride === policeRide;
+  steerBox.hidden = !pilots.has(found.ride) && !driving;
+  fireButton.hidden = stopButton.hidden = driving;
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
   head.yaw = head.pitch = 0;
@@ -2113,8 +2156,8 @@ function updateHover() {
   renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
-// C copies the Swiss coordinates (LV95 east, north) and the altitude of the roof, bridge or ground
-// under the mouse, and shows "Coordinates copied" there for a moment.
+// C copies "LV95 east, north, altitude" of the roof, bridge or ground under the mouse, and shows
+// "Coordinates copied" there for a moment.
 let mouseAt = null; // { x, y } of the mouse while over the scene
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") mouseAt = { x: e.clientX, y: e.clientY };
@@ -2135,7 +2178,7 @@ addEventListener("keydown", (e) => {
   const text = [LV95[0] + point.x, LV95[1] - point.z, point.y + 250]
     .map((v) => v.toFixed(1))
     .join(", ");
-  navigator.clipboard.writeText(`${text} m`).then(
+  navigator.clipboard.writeText(`LV95 ${text}`).then(
     () => {
       copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
       copied.hidden = false;
@@ -2341,6 +2384,7 @@ renderer.setAnimationLoop((time) => {
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
   helicopter.update(time / 1000, flier === helicopter ? flown : null);
   ufo.update(time / 1000, dt, flier === ufo ? flown : null);
+  police.update(time / 1000, dt, riding?.ride === policeRide ? steering() : null);
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);

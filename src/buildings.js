@@ -23,10 +23,11 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   buildings.traverse((o) => register(o, 0));
   const count = meshesOf.length; // of buildings
   bridges.traverse((o) => register(o, count));
+  const bridgeNumbers = [...meshesOf.keys()].filter((n) => n >= count && meshesOf[n]);
   // How many buildings and bridges there are: the numbers found in the models.
   const total = {
     buildings: meshesOf.slice(0, count).filter(Boolean).length,
-    bridges: meshesOf.slice(count).filter(Boolean).length,
+    bridges: bridgeNumbers.length,
   };
   // The meshes with vertices of these numbers.
   const meshesWith = (numbers) => new Set([...numbers].flatMap((n) => meshesOf[n] ?? []));
@@ -85,6 +86,44 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     }
     return t0;
   };
+
+  // Per mesh, per number, its steep triangles (walls) as [x0, z0, x1, z1, bottom, top] each: the
+  // two of its corners furthest apart seen from above and its height range.
+  // Made when first needed; hide() forgets those of the meshes it changes.
+  const walls = new Map(); // mesh → Map(number → [x0, z0, x1, z1, bottom, top, …])
+  const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+  function wallsOf(mesh) {
+    if (walls.has(mesh)) return walls.get(mesh);
+    const found = new Map();
+    const { index, attributes } = mesh.geometry;
+    const { position, _building } = attributes;
+    const at = (i) => (index ? index.getX(i) : i);
+    const corners = [...Array(3)].map(() => new THREE.Vector3());
+    const normal = new THREE.Vector3();
+    mesh.updateWorldMatrix(true, false);
+    for (let t = 0; t < (index ?? position).count; t += 3) {
+      corners.forEach((c, k) =>
+        c.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
+      );
+      const [a, b, c] = corners;
+      if (Math.abs(THREE.Triangle.getNormal(a, b, c, normal).y) > 0.7) continue; // flat
+      const [p, q] = [
+        [a, b],
+        [b, c],
+        [c, a],
+      ].reduce((far, pair) =>
+        Math.hypot(pair[0].x - pair[1].x, pair[0].z - pair[1].z) >
+        Math.hypot(far[0].x - far[1].x, far[0].z - far[1].z)
+          ? pair
+          : far,
+      );
+      const n = _building.getX(at(t));
+      if (!found.has(n)) found.set(n, []);
+      found.get(n).push(p.x, p.z, q.x, q.z, Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y));
+    }
+    walls.set(mesh, found);
+    return found;
+  }
 
   // The one shown in HIGHLIGHT (its number; -1 for none).
   const highlighted = { value: -1 };
@@ -154,6 +193,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       highlighted.value = number;
     },
     total,
+    bridgeNumbers,
     isBridge: (number) => number >= count,
     // The number of the building or bridge whose bounding box the segment from → to (scene points,
     // short against GRID) enters first, or -1; hidden ones are left out.
@@ -170,6 +210,34 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
             if (t < first) [best, first] = [n, t];
           }
       return best;
+    },
+    // Whether a wall of a building (not a bridge) crosses the level segment from → to (short
+    // against GRID) at the height of from; hidden ones are left out.
+    wall(from, to) {
+      if (!boxes) measure();
+      const [x0, x1] = cellRange(Math.min(from.x, to.x), Math.max(from.x, to.x));
+      const [z0, z1] = cellRange(Math.min(from.z, to.z), Math.max(from.z, to.z));
+      for (let x = x0; x <= x1; x++)
+        for (let z = z0; z <= z1; z++)
+          for (const n of cells.get(`${x},${z}`) ?? []) {
+            if (n >= count || !meshesOf[n].length || enter(from, to, n) === Infinity) continue;
+            for (const mesh of meshesOf[n]) {
+              const list = wallsOf(mesh).get(n) ?? [];
+              for (let i = 0; i < list.length; i += 6) {
+                const [ax, az, bx, bz] = [list[i], list[i + 1], list[i + 2], list[i + 3]];
+                if (
+                  list[i + 4] < from.y &&
+                  from.y < list[i + 5] &&
+                  side(ax, az, bx, bz, from.x, from.z) * side(ax, az, bx, bz, to.x, to.z) < 0 &&
+                  side(from.x, from.z, to.x, to.z, ax, az) *
+                    side(from.x, from.z, to.x, to.z, bx, bz) <
+                    0
+                )
+                  return true;
+              }
+            }
+          }
+      return false;
     },
     // The triangles of those with these numbers, but hidden ones, in scene coordinates: a Map from
     // each number to [{ color, positions }] per mesh, nine numbers per triangle. Each mesh is
@@ -207,11 +275,12 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       }
       return found;
     },
-    // Hides those with these numbers for good, also from at(), hit() and raycasts: the vertices of
-    // each collapse into one point. Each mesh is gone through once.
+    // Hides those with these numbers for good, also from at(), hit(), wall() and raycasts: the
+    // vertices of each collapse into one point. Each mesh is gone through once.
     hide(numbers) {
       const wanted = new Set(numbers);
       for (const mesh of meshesWith(wanted)) {
+        walls.delete(mesh);
         const { position, _building } = mesh.geometry.attributes;
         const first = new Map(); // number → its first vertex in this mesh
         for (let i = 0; i < position.count; i++) {
