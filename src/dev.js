@@ -6,6 +6,8 @@
 // and the triangles drawn. Below, a box per part hides and shows it, to see what it costs; a button
 // steps through the SCALES of the resolution. All of it lives here, the menu entry and the styles
 // in index.html (#dev-box, #dev), so it can be taken out whole.
+import { copy } from "./copy.js";
+
 const KEY = "basel3d.dev"; // "1" (on) or "0"
 const SAMPLE = 5;
 const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
@@ -41,16 +43,16 @@ export function createDev(renderer, render, parts) {
   };
   rescale(0);
   resolution.addEventListener("click", () => rescale((scale + 1) % SCALES.length));
-  // At the top, copies the numbers and settings; where the page may not (not https), selects the
+  // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.
-  const copy = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
-  copy.addEventListener("click", () => {
+  const button = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
+  button.addEventListener("click", () => {
     const settings = parts.map(([name], i) => `${name} ${boxes[i].checked ? "on" : "off"}`);
     const text = [...shown, ...settings, `Resolution ${SCALES[scale] * 100}%`];
-    if (!navigator.clipboard) return getSelection().selectAllChildren(stats);
-    navigator.clipboard.writeText(text.join("\n")).then(() => {
-      copy.textContent = "Copied";
-      setTimeout(() => (copy.textContent = "Copy stats"), 1500);
+    copy(text.join("\n")).then((done) => {
+      if (!done) return getSelection().selectAllChildren(stats);
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy stats"), 1500);
     });
   });
 

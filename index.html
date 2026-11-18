@@ -23,8 +23,12 @@
         color: #1d242b;
         -webkit-tap-highlight-color: transparent; /* no blue flash on tap on mobile */
       }
+      /* Holding a finger on it copies coordinates (src/main.js), so no callout or selection. */
       canvas {
         display: block;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none; /* Safari */
+        user-select: none;
       }
       p {
         margin: 0;

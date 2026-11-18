@@ -1,6 +1,8 @@
 // Record clicks at the bottom of the Dev panel (src/dev.js): while recording, each click on
 // the scene marks what is there with a number; Undo takes back the last; Stop & copy copies them
 // all, "1 LV95 east, north, altitude" per line, and leaves the marks until the next recording.
+import { copy } from "./copy.js";
+
 // pointAt(x, y): the scene point at a screen point (px), or null; lv95(point): its text;
 // onScreen(point): { x, y, front } (src/main.js).
 export function createRecorder(pointAt, lv95, onScreen) {
@@ -22,10 +24,7 @@ export function createRecorder(pointAt, lv95, onScreen) {
       return;
     }
     const text = points.map(({ point }, k) => `${k + 1} ${lv95(point)}`).join("\n");
-    navigator.clipboard?.writeText(text).then(
-      () => (record.textContent = "Copied"),
-      () => {}, // not allowed
-    );
+    copy(text).then((done) => done && (record.textContent = "Copied"));
     setTimeout(() => !on && (record.textContent = "Record clicks"), 1500);
   });
   undo.addEventListener("click", () => points.pop()?.mark.remove());

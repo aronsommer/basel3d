@@ -23,6 +23,7 @@ import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
 import { createRecorder } from "./record.js";
+import { copy } from "./copy.js";
 import { part } from "./parts.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
@@ -2316,14 +2317,19 @@ function shoot(seconds) {
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map, is recorded while recording (src/record.js), else rides what is
-// there; nothing while steering.
-let down = { x: 0, y: 0 }; // where the last button or finger went down
-renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
+// only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
+// as browsers allow copying only then), else is recorded while recording (src/record.js), else
+// rides what is there; nothing while steering.
+let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
+renderer.domElement.addEventListener(
+  "pointerdown",
+  (e) => (down = { x: e.clientX, y: e.clientY, time: e.timeStamp }),
+);
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (e.button !== 0 || stoppedGlide || steered()) return;
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
+  if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
   if (recorder.click(e.clientX, e.clientY)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
@@ -2462,7 +2468,9 @@ function pointAt(x, y) {
 }
 const lv95 = (point) =>
   `LV95 ${[LV95[0] + point.x, LV95[1] - point.z, point.y + 250].map((v) => v.toFixed(1)).join(", ")}`;
-// C copies the LV95 of what is under the mouse, and shows "Coordinates copied" there for a moment.
+// C copies the LV95 of what is under the mouse, as holding a finger still for HOLD does of what is
+// under it (the tap handler above), and shows "Coordinates copied" there for a moment.
+const HOLD = 2000; // ms
 let mouseAt = null; // { x, y } of the mouse while over the scene
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") mouseAt = { x: e.clientX, y: e.clientY };
@@ -2472,19 +2480,19 @@ const copied = document.getElementById("copied");
 let hideCopied = 0; // timeout
 addEventListener("keydown", (e) => {
   if (e.code !== "KeyC" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !mouseAt) return;
-  const { x, y } = mouseAt;
+  copyAt(mouseAt.x, mouseAt.y);
+});
+function copyAt(x, y) {
   const point = pointAt(x, y);
   if (!point) return;
-  navigator.clipboard.writeText(lv95(point)).then(
-    () => {
-      copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
-      copied.hidden = false;
-      clearTimeout(hideCopied);
-      hideCopied = setTimeout(() => (copied.hidden = true), 1200);
-    },
-    () => {},
-  ); // not allowed: nothing to show
-});
+  copy(lv95(point)).then((done) => {
+    if (!done) return; // not allowed: nothing to show
+    copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
+    copied.hidden = false;
+    clearTimeout(hideCopied);
+    hideCopied = setTimeout(() => (copied.hidden = true), 1200);
+  });
+}
 
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
 const lastTarget = new THREE.Vector3();
