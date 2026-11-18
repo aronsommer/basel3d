@@ -55,7 +55,7 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, scen
 const orbit = new MapControls(camera, renderer.domElement);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = 1.45;
-orbit.minDistance = 30;
+orbit.minDistance = 15;
 orbit.maxDistance = 5000;
 
 const pointers = new Set(); // pressed mouse buttons and fingers
@@ -1916,7 +1916,7 @@ const ufoRide = riders([
 // above.
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
-  [motorcycles, [0, 2.2, -4.5], [0, 1, 6]],
+  [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
 ].map(([vehicles, eye, ahead]) => [
   vehicles,
   riders(
@@ -2214,7 +2214,7 @@ function updateOrbit(dt) {
   lastTarget.copy(orbit.target);
   camera.position.y = Math.max(
     camera.position.y,
-    heightAt(camera.position.x, camera.position.z) + 10,
+    heightAt(camera.position.x, camera.position.z) + 5,
   );
 }
 
