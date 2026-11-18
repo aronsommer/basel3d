@@ -8,6 +8,7 @@ const SPEED = 350; // metres per second
 const RANGE = 900; // metres
 const AIM_STEP = 10; // metres between the points tested along the line of fire
 const MAX = 64; // rockets in flight at most
+const SHELL = 0.35; // a shell's size, of a rocket's
 
 // structures: from buildings.js; explosions: from explosions.js; heightAt(x, z): the terrain
 // height; camera: where the whoosh is heard.
@@ -49,10 +50,10 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
     mesh.frustumCulled = false; // they fly all over
     scene.add(mesh);
   }
-  const flying = new Set(); // { position, velocity, turn (from +z), travelled }
+  const flying = new Set(); // { position, velocity, turn (from +z), size, travelled }
   const before = new THREE.Vector3();
   const matrix = new THREE.Matrix4();
-  const one = new THREE.Vector3(1, 1, 1);
+  const scale = new THREE.Vector3();
 
   // Whether the segment from → to meets the ground or a building or bridge: "ground", the
   // number of the building or bridge, or null.
@@ -100,16 +101,18 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
       }
       return to;
     },
-    // A rocket from a scene point towards another, unless MAX are flying.
-    fire(from, to) {
+    // A rocket from a scene point towards another, unless MAX are flying; or a shell, smaller and
+    // silent (its bang is the gun's).
+    fire(from, to, shell = false) {
+      const size = shell ? SHELL : 1;
       if (flying.size >= MAX) return;
       const velocity = to.clone().sub(from).setLength(SPEED);
       const turn = new THREE.Quaternion().setFromUnitVectors(
         new THREE.Vector3(0, 0, 1),
         velocity.clone().normalize(),
       );
-      flying.add({ position: from.clone(), velocity, turn, travelled: 0 });
-      whoosh(camera.position.distanceTo(from));
+      flying.add({ position: from.clone(), velocity, turn, size, travelled: 0 });
+      if (!shell) whoosh(camera.position.distanceTo(from));
     },
     update(dt) {
       let n = 0;
@@ -120,7 +123,7 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
         rocket.travelled += SPEED * dt;
         const met = meets(before, position);
         if (met === null && rocket.travelled < RANGE) {
-          matrix.compose(position, rocket.turn, one);
+          matrix.compose(position, rocket.turn, scale.setScalar(rocket.size));
           bodies.setMatrixAt(n, matrix);
           trails.setMatrixAt(n, matrix);
           n++;

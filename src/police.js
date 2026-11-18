@@ -2,7 +2,7 @@
 // back and a light bar whose blue lights flash in turn; driven as in src/drive.js.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { part, profile } from "./parts.js";
+import { glow, part, profile } from "./parts.js";
 import { createDriving } from "./drive.js";
 
 const WIDTH = 1.84; // metres
@@ -11,12 +11,13 @@ const WHEEL = 0.34; // radius in metres
 const SPEC = {
   max: 35,
   back: 8,
-  accelerate: 11,
+  accelerate: 16,
   brake: 50,
   roll: 5,
-  steer: 0.6,
-  grip: 150,
-  react: 6,
+  steer: 0.8,
+  grip: 500,
+  spin: 0,
+  react: 14,
   axles: AXLES,
   half: 2.4,
   width: WIDTH,
@@ -95,20 +96,7 @@ export function createPolice(places, boost, world) {
   const on = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3060ff).multiplyScalar(3) });
   const off = new THREE.MeshBasicMaterial({ color: 0x1a3a8a });
   const lens = new THREE.BoxGeometry(0.5, 0.14, 0.3);
-  const fade = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
-  const brush = fade.getContext("2d");
-  const gradient = brush.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, "#fff");
-  gradient.addColorStop(0.25, "rgba(255, 255, 255, 0.6)");
-  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-  brush.fillStyle = gradient;
-  brush.fillRect(0, 0, 64, 64);
-  const glowMaterial = new THREE.SpriteMaterial({
-    map: new THREE.CanvasTexture(fade),
-    color: 0x1848ff,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
+  const glowMaterial = glow(0x1848ff);
   const tyre = part(
     new THREE.CylinderGeometry(WHEEL, WHEEL, 0.24, 10).rotateZ(Math.PI / 2),
     DARK,

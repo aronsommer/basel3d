@@ -19,6 +19,25 @@ export function part(geometry, color, [x, y, z]) {
   return g.translate(x, y, z);
 }
 
+// A sprite material that adds a soft round glow of this colour onto what is behind it, drawn here,
+// so nothing is loaded.
+export function glow(color) {
+  const canvas = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
+  const brush = canvas.getContext("2d");
+  const gradient = brush.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, "#fff");
+  gradient.addColorStop(0.25, "rgba(255, 255, 255, 0.6)");
+  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+  brush.fillStyle = gradient;
+  brush.fillRect(0, 0, 64, 64);
+  return new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas),
+    color,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
 // A side profile ([z, y] points) extruded across, width wide, centred on x = 0.
 export const profile = (points, width) =>
   new THREE.ExtrudeGeometry(new THREE.Shape(points.map(([z, y]) => new THREE.Vector2(z, y))), {

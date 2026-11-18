@@ -8,8 +8,9 @@ const GRAVITY = 9.81;
 // A vehicle parked at place ({ x, y, z, heading }), driven by spec ({ max and back: metres per
 // second forward and in reverse, accelerate, brake and roll (slowing down by itself): metres per
 // second², steer: radians the front wheel turns at most at a standstill, grip: the squared speed
-// (m²/s²) at which that halves, react: how fast (per second) turn follows the input, axles:
-// metres between them, half: from the middle to the nose and tail, width }) in world
+// (m²/s²) at which that halves, spin: radians per second it turns on the spot (tracks), react:
+// how fast (per second) turn follows the input, axles: metres between them, half: from the
+// middle to the nose and tail, width }) in world
 // ({ ground(x, z, y): the scene y of the top under a point at y, blocked(from, to): whether a
 // building is in the way, intoArea(x, z): [x, z] moved into the terrain's area }). Its state:
 // { x, y, z, heading, speed, turn (the input eased, -1 to 1), steer (the front wheel's angle),
@@ -50,7 +51,7 @@ export function createDriving(place, spec, { ground, blocked, intoArea }) {
     // Less steering the faster it goes, so it stays easy to hold on the road.
     s.turn += (input.turn - s.turn) * Math.min(1, dt * spec.react);
     s.steer = (s.turn * spec.steer) / (1 + s.speed ** 2 / spec.grip);
-    s.heading += ((s.speed * Math.tan(s.steer)) / spec.axles) * dt;
+    s.heading += ((s.speed * Math.tan(s.steer)) / spec.axles + s.turn * spec.spin) * dt;
 
     const [fx, fz] = [Math.sin(s.heading), Math.cos(s.heading)];
     const travel = s.speed * dt;

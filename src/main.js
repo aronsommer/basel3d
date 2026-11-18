@@ -17,11 +17,13 @@ import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
+import { createTanks } from "./tank.js";
 import { part } from "./parts.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const LV95 = [2611000, 1267400]; // E, N of the scene's origin
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
+const CENTRE = 2; // metres the view's centre (turned round, zoomed to) is above the terrain
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
@@ -722,7 +724,8 @@ const parked = (places) =>
     return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
   });
 // Police cars (src/police.js) in St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke,
-// both facing south; a motorcycle (src/motorcycle.js) on the Mittlere Brücke facing Kleinbasel.
+// both facing south; a motorcycle (src/motorcycle.js) on the Mittlere Brücke facing Kleinbasel; a
+// tank (src/tank.js) in the yard of the Kaserne facing east.
 const police = createPolice(
   parked([
     { x: -1002.3, z: -765.7, heading: 0 },
@@ -736,7 +739,8 @@ const motorcycles = createMotorcycles(
   boost,
   world,
 );
-scene.add(...[...police, ...motorcycles].map((vehicle) => vehicle.group));
+const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
+scene.add(...[...police, ...motorcycles, ...tanks].map((vehicle) => vehicle.group));
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;
@@ -1912,11 +1916,12 @@ const FINGER = 25; // px
 const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
-// What is driven, each [vehicles, ride]: the police cars and the motorcycles, from behind and
-// above.
+// What is driven, each [vehicles, ride]: the police cars, the motorcycles and the tanks, from
+// behind and above.
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
+  [tanks, [0, 7, -16], [0, 2, 14]],
 ].map(([vehicles, eye, ahead]) => [
   vehicles,
   riders(
@@ -1935,14 +1940,19 @@ const rides = [
 ];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
-// The helicopter or the UFO, each { group, speed, turn, lift? }, while riding and so steering it;
-// then clicks do nothing.
+// The helicopter or the UFO, each { group, speed, turn, lift? }, while riding and so steering it.
 const pilots = new Map([
   [helicopter.ride, helicopter],
   [ufoRide, ufo],
 ]);
 const pilot = () => pilots.get(riding?.ride);
 const flying = () => pilot() !== undefined;
+// The tank ridden, if any (src/tank.js).
+const tankRide = drives.find(([vehicles]) => vehicles === tanks)[1];
+const gunner = () => (riding?.ride === tankRide ? tanks[riding.vehicle] : null);
+// Whether what is ridden fires (flying or in a tank); then clicks fire instead of riding or
+// looking around.
+const armed = () => flying() || gunner() !== null;
 let flown = null; // the state of flying it (createFlight)
 document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
@@ -1954,7 +1964,7 @@ addEventListener("keydown", (e) => {
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
-  if (e.code === "Space" && flying()) e.preventDefault(); // fires, presses nothing else
+  if (e.code === "Space" && armed()) e.preventDefault(); // fires, presses nothing else
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear()); // the keyups come to another window
@@ -1990,44 +2000,61 @@ function steering() {
   };
 }
 
-// Shooting while flying: holding Space, the fire button or the left mouse button on the scene
-// ("Mouse" in keys) aims along the nose to where it first meets something (rockets.aim), which
-// the crosshair shows. The helicopter sends a rocket there every FIRE_GAP seconds, from its
-// launchers in turn. The UFO sends a laser bolt there every BOLT_GAP seconds, from its cannons in
-// turn, which on arriving destroys what it meets: a building or bridge (destroy) or the ground (a
-// small blast).
+// Shooting while flying or in a tank: holding Space, the fire button or the left mouse button on
+// the scene ("Mouse" in keys) aims along the nose or the gun to where it first meets something
+// (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every FIRE_GAP
+// seconds, from its launchers in turn. The UFO sends a laser bolt there every BOLT_GAP seconds,
+// from its cannons in turn, which on arriving destroys what it meets: a building or bridge
+// (destroy) or the ground (a small blast). The tank fires a shell along its gun every SHELL_GAP
+// seconds; its crosshair stays SIGHT metres ahead on that line, as what the line first meets
+// changes all the time while it drives and would make it jump.
 const FIRE_GAP = 0.1; // seconds
 const BOLT_GAP = 0.12; // seconds
+const SHELL_GAP = 1; // seconds
+const SIGHT = 200; // metres
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (flying() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
+  if (armed() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
 });
 addEventListener("pointerup", (e) => {
   if (e.pointerType === "mouse") keys.delete("Mouse");
 });
-const nose = new THREE.Vector3();
+const muzzle = new THREE.Vector3(); // where shots leave
+const sight = new THREE.Vector3(); // where the tank's crosshair is
+const nose = new THREE.Vector3(); // which way
 const launcher = new THREE.Vector3();
 const crosshair = document.getElementById("crosshair");
 let nextShot = 0; // when the next may go (seconds)
 let side = 0; // the launcher the next rocket goes from
 function shoot(seconds) {
   const flier = pilot();
-  if (!flier) {
+  const tank = gunner();
+  if (!flier && !tank) {
     crosshair.hidden = true;
     return;
   }
-  const { group } = flier;
-  const { heading, nose: pitch } = flown;
-  nose.set(
-    Math.sin(heading) * Math.cos(pitch),
-    -Math.sin(pitch),
-    Math.cos(heading) * Math.cos(pitch),
-  );
-  const target = rockets.aim(group.position, nose);
+  if (tank) tank.aim(muzzle, nose);
+  else {
+    const { heading, nose: pitch } = flown;
+    muzzle.copy(flier.group.position);
+    nose.set(
+      Math.sin(heading) * Math.cos(pitch),
+      -Math.sin(pitch),
+      Math.cos(heading) * Math.cos(pitch),
+    );
+  }
+  const target = tank ? sight.copy(muzzle).addScaledVector(nose, SIGHT) : rockets.aim(muzzle, nose);
   const { x, y, front } = onScreen(target);
   crosshair.hidden = !front;
   crosshair.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
   const firing = keys.has("Space") || keys.has("Mouse");
   if (!firing || seconds < nextShot) return;
+  if (tank) {
+    nextShot = seconds + SHELL_GAP;
+    tank.fire();
+    rockets.fire(muzzle, target, true);
+    return;
+  }
+  const { group } = flier;
   if (flier === helicopter) {
     nextShot = seconds + FIRE_GAP;
     side = 1 - side;
@@ -2044,11 +2071,11 @@ function shoot(seconds) {
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map, rides what is there; nothing while flying.
+// only stopped the gliding map, rides what is there; nothing while armed.
 let down = { x: 0, y: 0 }; // where the last button or finger went down
 renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0 || stoppedGlide || flying()) return;
+  if (e.button !== 0 || stoppedGlide || armed()) return;
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
@@ -2066,19 +2093,20 @@ function ride(found, clientX, clientY) {
   riding = found;
   const driving = drives.some(([, ride]) => ride === found.ride);
   steerBox.hidden = !pilots.has(found.ride) && !driving;
-  fireButton.hidden = stopButton.hidden = driving;
+  stopButton.hidden = driving;
+  fireButton.hidden = driving && found.ride !== tankRide;
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
   head.yaw = head.pitch = 0;
 }
-// Looking around while riding, but not while flying: dragging turns the head, up to PITCH up or
+// Looking around while riding, but not while armed: dragging turns the head, up to PITCH up or
 // down and sideways as far as no view ray points behind the camera, so the front of a tram, train
 // or car (just behind it) stays out of view.
 const PITCH = 0.25; // radians
 const head = { yaw: 0, pitch: 0 }; // radians, left and up
 let dragged = null; // { x, y } of the primary pointer while dragging
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (riding && !flying() && e.isPrimary) dragged = { x: e.clientX, y: e.clientY };
+  if (riding && !armed() && e.isPrimary) dragged = { x: e.clientX, y: e.clientY };
 });
 addEventListener("pointermove", (e) => {
   if (!dragged || !e.isPrimary) return;
@@ -2162,15 +2190,14 @@ function vehicleOn(clientX, clientY) {
 }
 
 // The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
-// checked at most once per frame, only after the mouse moved, and not while dragging or flying the
-// helicopter.
+// checked at most once per frame, only after the mouse moved, and not while dragging or armed.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
 });
 function updateHover() {
   if (!hover) return;
-  let found = pointers.size || flying() ? null : vehicleAt(hover.x, hover.y);
+  let found = pointers.size || armed() ? null : vehicleAt(hover.x, hover.y);
   if (found?.ride === riding?.ride && found?.vehicle === riding?.vehicle) found = null;
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
@@ -2213,6 +2240,7 @@ addEventListener("keydown", (e) => {
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
 const lastTarget = new THREE.Vector3();
 const velocity = new THREE.Vector3();
+const shift = new THREE.Vector3();
 function updateOrbit(dt) {
   if (!pointers.size) {
     orbit.target.addScaledVector(fling, dt);
@@ -2220,16 +2248,19 @@ function updateOrbit(dt) {
     fling.multiplyScalar(Math.exp(-FLING_FRICTION * dt));
   }
   orbit.update();
-  // The view's centre stays over the terrain; the camera moves along, the gliding stops there.
+  // The view's centre stays over the terrain's area, CENTRE above it, so a drag moves the ground
+  // under the pointer and zooming goes towards it; the camera moves along, the gliding stops at
+  // the area's edge.
   const [x, z] = intoArea(orbit.target.x, orbit.target.z);
-  camera.position.x += x - orbit.target.x;
-  camera.position.z += z - orbit.target.z;
+  const y = heightAt(x, z) + CENTRE;
+  camera.position.add(shift.set(x, y, z).sub(orbit.target));
   if (x !== orbit.target.x) fling.x = 0;
   if (z !== orbit.target.z) fling.z = 0;
-  orbit.target.x = x;
-  orbit.target.z = z;
-  if (pointers.size && dt > 0)
+  orbit.target.set(x, y, z);
+  if (pointers.size && dt > 0) {
     fling.lerp(velocity.subVectors(orbit.target, lastTarget).divideScalar(dt), 0.5);
+    fling.y = 0; // the centre follows the terrain by itself
+  }
   lastTarget.copy(orbit.target);
   camera.position.y = Math.max(
     camera.position.y,
@@ -2290,7 +2321,7 @@ function readView() {
   const [x, z] = intoArea(...fromWGS84(lat, lon));
   const r = THREE.MathUtils.clamp(perZoom(lat) / 2 ** zoom, orbit.minDistance, orbit.maxDistance);
   const [h, t] = [bearing, THREE.MathUtils.clamp(pitch, 0, 83)].map(THREE.MathUtils.degToRad);
-  orbit.target.set(x, heightAt(x, z) + 30, z);
+  orbit.target.set(x, heightAt(x, z) + CENTRE, z);
   camera.position
     .copy(orbit.target)
     .add(
@@ -2324,7 +2355,7 @@ addEventListener("hashchange", readView);
 
 // Start where the URL says, else above the city, looking at the Münster.
 if (!readView()) {
-  orbit.target.set(537, heightAt(537, 99) + 30, 99);
+  orbit.target.set(537, heightAt(537, 99) + CENTRE, 99);
   camera.position.copy(orbit.target).add(new THREE.Vector3(-1500, 1400, 2200));
 }
 document.body.dataset.mode = "orbit";
