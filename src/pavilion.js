@@ -2,9 +2,16 @@
 // solar modules on a grid of tubes, an LED in each, over the upper floor, the outer roof slope and
 // the flat top, above a glazed ground floor. Here it plays light shows one after another, all around the ring.
 // Found by its place, so it needs nothing in basel.glb. All colours are linear.
+// Scene x, z of the ring's middle (LV95 E 2610851 / N 1268996).
+export const PAVILION_CENTRE = [-148.9, -1595.8];
+// Metres from the middle that belong to it; no other building within 30 m.
+export const PAVILION_RADIUS = 24;
+// Black (linear, 0x141518), inside the ring, for its debris (src/explosions.js) and on the UFO
+// (src/ufo.js).
+export const PAVILION_BLACK = [0.007, 0.0075, 0.009];
 const SETTINGS = {
-  centre: "vec2(-148.9, -1595.8)", // scene x, z of the ring's middle (LV95 E 2610851 / N 1268996)
-  radius: "24.0", // metres from the middle that belong to it; no other building within 30 m
+  centre: `vec2(${PAVILION_CENTRE})`,
+  radius: PAVILION_RADIUS.toFixed(1),
   rim: "15.0", // metres from the middle where the outer roof slope meets the flat top
   groundFloor: "6.5", // scene y of the glazed ground floor's top
   top: "21.0", // scene y above which its flat roof is the ring's top
@@ -17,7 +24,6 @@ export const pavilionTime = { value: 0 }; // seconds
 
 const HELPERS = `
 uniform float pavilionTime;
-varying vec3 vPavilion;
 float pavilionHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 vec3 pavilionRainbow(float t) {
   vec3 c = 0.5 + 0.5 * cos(6.2832 * (t + vec3(0.0, 0.33, 0.67)));
@@ -50,6 +56,31 @@ vec3 pavilionShow(int s, float a, float h, float c, float t) {
   float spark = step(0.995, pavilionHash(vec2(c, floor(h / ${SETTINGS.row}) + floor(t * 12.0))));
   return mix(vec3(0.0, 0.6, 1.0), vec3(1.0), step(d, 0.8)) * exp(-d * 0.25) * 1.3 + spark;
 }
+// The modules at off (metres from the ring's middle, x and z), y (scene) up, seen at mpp metres
+// per pixel: their colour into diffuse, their LEDs' light added to emissive.
+void pavilionModules(vec2 off, float y, float mpp, inout vec3 diffuse, inout vec3 emissive) {
+  float r = length(off), a = atan(off.y, off.x), aa = mpp * 0.7;
+  // Metres up the facade from the ground floor, then inwards across the top.
+  float s = y - ${SETTINGS.groundFloor} + max(0.0, ${SETTINGS.rim} - r);
+  // A grid turned by 45° makes the diamonds; g in columns and rows, p within a diamond.
+  vec2 g = vec2((a / 6.2832 + 0.5) * ${SETTINGS.columns}, s / ${SETTINGS.row});
+  vec2 cell = floor(vec2(g.x + g.y, g.x - g.y)) + 0.5;
+  vec2 p = vec2(g.x + g.y, g.x - g.y) - cell;
+  // Each diamond in its LED's colour; too small to see, the colours run smoothly instead.
+  vec2 at = mpp > ${SETTINGS.row} * 0.6 ? g : vec2(cell.x + cell.y, cell.x - cell.y) * 0.5;
+  float t = pavilionTime, k = fract(t / ${SETTINGS.show}), i = floor(t / ${SETTINGS.show});
+  float la = (at.x / ${SETTINGS.columns} - 0.5) * 6.2832, h = at.y * ${SETTINGS.row};
+  float c = mod(floor(at.x), ${SETTINGS.columns});
+  vec3 led = mix(pavilionShow(int(mod(i, 4.0)), la, h, c, t),
+    pavilionShow(int(mod(i + 1.0, 4.0)), la, h, c, t), smoothstep(0.92, 1.0, k));
+  led += exp(-k * ${SETTINGS.show} * 5.0) * 0.8; // a white flash as each show begins
+  // unit: metres per unit of p, a diamond's side; tubes 6 cm thick along its edges.
+  float unit = ${SETTINGS.row} * 0.71, detail = 1.0 - smoothstep(0.1, 0.35, mpp);
+  float tube = 1.0 - smoothstep(0.03 - aa, 0.03 + aa, (0.5 - max(abs(p.x), abs(p.y))) * unit);
+  float glow = 0.3 + 1.2 * exp(-length(p) * unit * 9.0); // the LED, its light through the module
+  diffuse = mix(vec3(0.06, 0.07, 0.09), vec3(0.45, 0.46, 0.48), tube * detail);
+  emissive += led * mix(0.5, glow, detail) * (1.0 - tube * detail) * 2.0;
+}
 `;
 
 // After the normal. Uses vHighlight (src/highlight.js), which the building materials have.
@@ -66,26 +97,9 @@ const PAVILION = `
     bool outwards = dot(n.xz, off) > 0.3 * r;
     bool top = abs(n.y) > 0.9 && vPavilion.y > ${SETTINGS.top};
     if (vPavilion.y > ${SETTINGS.groundFloor} && (outwards || top)) {
-      // Metres up the facade from the ground floor, then inwards across the top.
-      float s = vPavilion.y - ${SETTINGS.groundFloor} + max(0.0, ${SETTINGS.rim} - r);
-      // A grid turned by 45° makes the diamonds; g in columns and rows, p within a diamond.
-      vec2 g = vec2((a / 6.2832 + 0.5) * ${SETTINGS.columns}, s / ${SETTINGS.row});
-      vec2 cell = floor(vec2(g.x + g.y, g.x - g.y)) + 0.5;
-      vec2 p = vec2(g.x + g.y, g.x - g.y) - cell;
-      // Each diamond in its LED's colour; too small to see, the colours run smoothly instead.
-      vec2 at = mpp > ${SETTINGS.row} * 0.6 ? g : vec2(cell.x + cell.y, cell.x - cell.y) * 0.5;
-      float t = pavilionTime, k = fract(t / ${SETTINGS.show}), i = floor(t / ${SETTINGS.show});
-      float la = (at.x / ${SETTINGS.columns} - 0.5) * 6.2832, h = at.y * ${SETTINGS.row};
-      float c = mod(floor(at.x), ${SETTINGS.columns});
-      vec3 led = mix(pavilionShow(int(mod(i, 4.0)), la, h, c, t),
-        pavilionShow(int(mod(i + 1.0, 4.0)), la, h, c, t), smoothstep(0.92, 1.0, k));
-      led += exp(-k * ${SETTINGS.show} * 5.0) * 0.8; // a white flash as each show begins
-      // unit: metres per unit of p, a diamond's side; tubes 6 cm thick along its edges.
-      float unit = ${SETTINGS.row} * 0.71, detail = 1.0 - smoothstep(0.1, 0.35, mpp);
-      float tube = 1.0 - smoothstep(0.03 - aa, 0.03 + aa, (0.5 - max(abs(p.x), abs(p.y))) * unit);
-      float glow = 0.3 + 1.2 * exp(-length(p) * unit * 9.0); // the LED, its light through the module
-      diffuseColor.rgb = mix(vec3(0.06, 0.07, 0.09), vec3(0.45, 0.46, 0.48), tube * detail);
-      totalEmissiveRadiance += led * mix(0.5, glow, detail) * (1.0 - tube * detail) * 2.0;
+      pavilionModules(off, vPavilion.y, mpp, diffuseColor.rgb, totalEmissiveRadiance);
+    } else if (r < ${SETTINGS.rim}) {
+      diffuseColor.rgb = vec3(${PAVILION_BLACK}); // inside the ring
     } else if (abs(n.y) < 0.3) {
       // Glass between mullions every 1.6 m.
       float m = 0.8 - abs(fract(a * r / 1.6) - 0.5) * 1.6;
@@ -96,9 +110,18 @@ const PAVILION = `
 }
 `;
 
+// Adds pavilionTime and pavilionModules to a shader (onBeforeCompile).
+export function pavilionLights(shader) {
+  shader.uniforms.pavilionTime = pavilionTime;
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <common>",
+    `#include <common>\n${HELPERS}`,
+  );
+}
+
 // Adds the media facade to a Lambert shader (onBeforeCompile).
 export function pavilionShader(shader) {
-  shader.uniforms.pavilionTime = pavilionTime;
+  pavilionLights(shader);
   shader.vertexShader = shader.vertexShader
     .replace("#include <common>", "#include <common>\nvarying vec3 vPavilion;")
     .replace(
@@ -106,6 +129,6 @@ export function pavilionShader(shader) {
       "#include <begin_vertex>\nvPavilion = (modelMatrix * vec4(transformed, 1.0)).xyz;",
     );
   shader.fragmentShader = shader.fragmentShader
-    .replace("#include <common>", `#include <common>\n${HELPERS}`)
+    .replace("#include <common>", "#include <common>\nvarying vec3 vPavilion;")
     .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${PAVILION}`);
 }

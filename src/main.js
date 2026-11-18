@@ -12,10 +12,12 @@ import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
+import { createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
+const LV95 = [2611000, 1267400]; // E, N of the scene's origin
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 const SKY = 0xbfd8ea;
@@ -362,6 +364,7 @@ scene.add(serpent.group);
 // Circling over the monster and the Roche towers (around the point between them), six times life
 // size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking) stays 40 m
 // above the monster's horns (221 m) and 50 m above the taller tower (213 m).
+const flight = createFlight();
 const helicopter = createHelicopter(1728, -64, 150, 300, 6);
 scene.add(helicopter.group);
 // Lines to check the ways of what moves (the menu "Layers"): strong magenta unless given a colour,
@@ -678,10 +681,11 @@ namesBox.addEventListener("change", () => {
 const nameLayer = document.getElementById("names");
 scene.updateMatrixWorld(); // for the rays from above
 const fromAbove = new THREE.Raycaster();
+const DOWN = new THREE.Vector3(0, -1, 0);
 const labels = JSON.parse(new TextDecoder().decode(namesJson)).map(({ name, kind, x, z }) => {
   const at = new THREE.Vector3(x, heightAt(x, z), z);
   if (kind === "landmark") {
-    fromAbove.set(new THREE.Vector3(x, 2000, z), new THREE.Vector3(0, -1, 0));
+    fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
     const hit = fromAbove.intersectObjects([buildings.scene, bridges.scene, terrain])[0];
     if (hit) at.y = hit.point.y;
   }
@@ -692,6 +696,12 @@ const labels = JSON.parse(new TextDecoder().decode(namesJson)).map(({ name, kind
   });
   return { at, kind, element: nameLayer.appendChild(element) };
 });
+// The UFO (src/ufo.js) hovers over where a ray from above first meets a roof or the ground.
+const ufo = createUfo(boost, (x, z) => {
+  fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
+  return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
+});
+scene.add(...ufo.meshes);
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;
@@ -851,9 +861,9 @@ function createShips(course) {
   return { meshes: fleet.map((ship) => ship.mesh), route, update, ride };
 }
 
-// Riding along on single objects (ships, planes, the helicopter, the sea monster), each { object,
-// materials, eye, ahead } (points in the object's own frame): the camera at eye, looking at ahead
-// with the horizon level; under the mouse the materials show HIGHLIGHT.
+// Riding along on single objects (ships, planes, the helicopter, the sea monster, the UFO), each
+// { object, materials, eye, ahead } (points in the object's own frame): the camera at eye, looking
+// at ahead with the horizon level; under the mouse the materials show HIGHLIGHT.
 function riders(list) {
   const colors = list.map(({ materials }) => materials.map((m) => m.color.clone()));
   const ahead = new THREE.Vector3();
@@ -1357,40 +1367,71 @@ function createHelicopter(cx, cz, radius, height, scale) {
   group.scale.setScalar(scale);
   group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
 
-  // Steered while ridden (input { climb, turn, stop }, climb and turn each -1, 0 or 1, from
-  // steering()), at least LOW above the terrain, at most HIGH, over the terrain's area. Holding
-  // climb tilts the nose by TILT radians per second, and it stays when let go. Flying, it goes
-  // SPEED along the nose, from UP above level to DOWN below; tilting through level, it stops
-  // there until pressed anew, and it levels out at LOW or HIGH. Stopped, it hovers and the nose
-  // only aims, from level to AIM down. Speed, nose and turning (up to TURN radians per second)
-  // are eased. Without input it is back on its circle.
-  const SPEED = 60; // metres per second
+  // Placed by flown (createFlight) while steered, else back on its circle.
+  const update = (seconds, flown) => {
+    if (flown) {
+      group.position.set(flown.x, flown.y, flown.z);
+      group.rotation.set(flown.nose, flown.heading, -0.3 * flown.turn * flown.speed);
+    } else {
+      const angle = seconds * 0.5; // about 13 s per round
+      const y = height + 25 * Math.sin(seconds * 0.35); // gently up and down, ±25 m
+      group.position.set(cx + radius * Math.cos(angle), y, cz + radius * Math.sin(angle));
+      group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle)); // along the circle
+      group.rotation.x = flight.LEVEL;
+      group.rotation.z = 0.5; // banking towards the centre
+    }
+    main.rotation.y = seconds * 25;
+    tail.rotation.x = seconds * 40;
+    beacon.visible = seconds % 1 < 0.15; // once a second
+    strobe.visible = seconds % 1.5 < 0.06 || (seconds % 1.5 > 0.18 && seconds % 1.5 < 0.24); // double flash
+  };
+  // Riding along: from behind and well above, looking down on it a little (before scaling).
+  const ride = riders([
+    { object: group, materials: [material], eye: [0, 6, -22], ahead: [0, -2, 14] },
+  ]);
+  // Flown at speed metres per second, turning up to turn radians per second (createFlight).
+  return { group, update, ride, launchers, speed: 60, turn: 1.1 };
+}
+
+// Flying the helicopter or the UFO while riding it (input { climb, turn, stop }, climb and turn
+// each -1, 0 or 1, from steering()), at least LOW above the terrain, at most HIGH, over the
+// terrain's area. Holding climb tilts the nose by TILT radians per second, and it stays when let
+// go. Flying, it goes craft.speed (metres per second) along the nose, from UP above level to DOWN
+// below; tilting through level, it stops there until pressed anew, and it levels out at LOW or
+// HIGH. Stopped, it hovers and the nose only aims, from level to AIM down. Speed, nose and turning
+// (up to craft.turn radians per second) are eased. A craft with lift (metres) first rises straight
+// up that far at half its speed, then goes on from a standstill. The state, flown: { x, y, z,
+// heading, speed (0 to 1, times craft.speed), aim (where the nose goes, radians down), nose, turn,
+// levelled (the climb input that last reached level, while still held), lift (metres still to
+// rise) }.
+function createFlight() {
   const LEVEL = 0.12; // the nose down when flying level (radians)
   const UP = 0.35; // radians, about 20°
   const DOWN = 0.8; // radians, about 45°
   const AIM = 1.2; // radians, about 70°
   const TILT = 1.2;
-  const TURN = 1.1;
   const LOW = 40; // metres
   const HIGH = 1000; // scene y
-  // { x, y, z, heading, speed (0 to 1, times SPEED), aim (where the nose goes, radians down),
-  // nose, turn, levelled (the climb input that last reached level, while still held) } while
-  // steered
-  let flown = null;
-  let last = 0;
-  const update = (seconds, input) => {
-    const dt = seconds - last;
-    last = seconds;
-    if (input) {
-      flown ??= {
-        ...group.position,
-        heading: group.rotation.y,
-        speed: 1,
-        aim: LEVEL,
-        nose: LEVEL,
-        turn: 0,
-        levelled: 0,
-      };
+  return {
+    LEVEL,
+    // The state to fly a craft ({ group, lift }) on from where it is.
+    start: ({ group, lift = 0 }) => ({
+      ...group.position,
+      heading: group.rotation.y,
+      speed: lift ? 0 : 1,
+      aim: LEVEL,
+      nose: LEVEL,
+      turn: 0,
+      levelled: 0,
+      lift,
+    }),
+    step(flown, input, dt, craft) {
+      if (flown.lift > 0) {
+        const rise = Math.min(flown.lift, (craft.speed / 2) * dt, HIGH - flown.y);
+        flown.y += rise;
+        flown.lift = rise > 0 ? flown.lift - rise : 0;
+        return;
+      }
       const ease = (value, to, rate) => value + (to - value) * Math.min(1, dt * rate);
       if (input.climb !== flown.levelled) flown.levelled = 0;
       if (input.climb && !flown.levelled) {
@@ -1406,9 +1447,9 @@ function createHelicopter(cx, cz, radius, height, scale) {
       flown.speed = ease(flown.speed, input.stop ? 0 : 1, 6);
       flown.nose = ease(flown.nose, flown.aim, 8);
       flown.turn = ease(flown.turn, input.turn, 4);
-      flown.heading += flown.turn * TURN * dt;
+      flown.heading += flown.turn * craft.turn * dt;
       const down = flown.nose - LEVEL; // the angle it flies below level
-      const step = flown.speed * SPEED * dt;
+      const step = flown.speed * craft.speed * dt;
       [flown.x, flown.z] = intoArea(
         flown.x + Math.sin(flown.heading) * Math.cos(down) * step,
         flown.z + Math.cos(flown.heading) * Math.cos(down) * step,
@@ -1420,27 +1461,8 @@ function createHelicopter(cx, cz, radius, height, scale) {
         flown.levelled = input.climb;
       }
       flown.y = THREE.MathUtils.clamp(y, low, HIGH);
-      group.position.set(flown.x, flown.y, flown.z);
-      group.rotation.set(flown.nose, flown.heading, -0.3 * flown.turn * flown.speed);
-    } else {
-      flown = null;
-      const angle = seconds * 0.5; // about 13 s per round
-      const y = height + 25 * Math.sin(seconds * 0.35); // gently up and down, ±25 m
-      group.position.set(cx + radius * Math.cos(angle), y, cz + radius * Math.sin(angle));
-      group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle)); // along the circle
-      group.rotation.x = LEVEL;
-      group.rotation.z = 0.5; // banking towards the centre
-    }
-    main.rotation.y = seconds * 25;
-    tail.rotation.x = seconds * 40;
-    beacon.visible = seconds % 1 < 0.15; // once a second
-    strobe.visible = seconds % 1.5 < 0.06 || (seconds % 1.5 > 0.18 && seconds % 1.5 < 0.24); // double flash
+    },
   };
-  // Riding along: from behind and well above, looking down on it a little (before scaling).
-  const ride = riders([
-    { object: group, materials: [material], eye: [0, 6, -22], ahead: [0, -2, 14] },
-  ]);
-  return { group, update, ride, launchers };
 }
 
 // A creepy sea serpent looking at (lookX, lookZ): a pale, ringed neck with spines that sways, an
@@ -1860,20 +1882,32 @@ function getOff() {
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: click or tap a tram, train, car, ship, plane, the helicopter
-// or the sea monster to ride along; while riding, a click or tap on another one changes to it.
+// --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster or the
+// UFO to ride along; while riding, a click or tap on another one changes to it.
 // A finger also finds one up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
+// The UFO from behind and above, looking down on it.
+const ufoRide = riders([
+  { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
+]);
 // What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
-const rides = [...movers, ships.ride, planes.ride, helicopter.ride, serpent.ride];
+const rides = [...movers, ships.ride, planes.ride, helicopter.ride, serpent.ride, ufoRide];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
-const flying = () => riding?.ride === helicopter.ride; // steering it, so clicks do nothing
+// The helicopter or the UFO, each { group, speed, turn, lift? }, while riding and so steering it;
+// then clicks do nothing.
+const pilots = new Map([
+  [helicopter.ride, helicopter],
+  [ufoRide, ufo],
+]);
+const pilot = () => pilots.get(riding?.ride);
+const flying = () => pilot() !== undefined;
+let flown = null; // the state of flying it (createFlight)
 document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
 });
-// Steering the helicopter while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
+// Steering the helicopter or the UFO while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
 // at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
@@ -1913,11 +1947,14 @@ function steering() {
   };
 }
 
-// Shooting from the helicopter while flying it: holding Space, the fire button or the left mouse
-// button on the scene ("Mouse" in keys) sends a rocket every FIRE_GAP seconds, from its launchers
-// in turn, to where the line along its nose first meets something (rockets.aim), which the
-// crosshair shows.
+// Shooting while flying: holding Space, the fire button or the left mouse button on the scene
+// ("Mouse" in keys) aims along the nose to where it first meets something (rockets.aim), which
+// the crosshair shows. The helicopter sends a rocket there every FIRE_GAP seconds, from its
+// launchers in turn. The UFO sends a laser bolt there every BOLT_GAP seconds, from its cannons in
+// turn, which on arriving destroys what it meets: a building or bridge (destroy) or the ground (a
+// small blast).
 const FIRE_GAP = 0.1; // seconds
+const BOLT_GAP = 0.12; // seconds
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (flying() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
 });
@@ -1927,27 +1964,44 @@ addEventListener("pointerup", (e) => {
 const nose = new THREE.Vector3();
 const launcher = new THREE.Vector3();
 const crosshair = document.getElementById("crosshair");
-let nextRocket = 0; // when the next may go (seconds)
-let side = 0; // the launcher it goes from
+let nextShot = 0; // when the next may go (seconds)
+let side = 0; // the launcher the next rocket goes from
 function shoot(seconds) {
-  if (!flying()) {
+  const flier = pilot();
+  if (!flier) {
     crosshair.hidden = true;
     return;
   }
-  const { group, launchers } = helicopter;
-  const target = rockets.aim(group.position, group.getWorldDirection(nose));
+  const { group } = flier;
+  const { heading, nose: pitch } = flown;
+  nose.set(
+    Math.sin(heading) * Math.cos(pitch),
+    -Math.sin(pitch),
+    Math.cos(heading) * Math.cos(pitch),
+  );
+  const target = rockets.aim(group.position, nose);
   const { x, y, front } = onScreen(target);
   crosshair.hidden = !front;
   crosshair.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
-  if (!(keys.has("Space") || keys.has("Mouse")) || seconds < nextRocket) return;
-  nextRocket = seconds + FIRE_GAP;
-  side = 1 - side;
-  rockets.fire(group.localToWorld(launcher.copy(launchers[side])), target);
+  const firing = keys.has("Space") || keys.has("Mouse");
+  if (!firing || seconds < nextShot) return;
+  if (flier === helicopter) {
+    nextShot = seconds + FIRE_GAP;
+    side = 1 - side;
+    rockets.fire(group.localToWorld(launcher.copy(helicopter.launchers[side])), target);
+    return;
+  }
+  nextShot = seconds + BOLT_GAP;
+  const number = structures.hit(group.position, target);
+  ufo.fire(target, () => {
+    if (number >= 0) destroy(number);
+    else if (target.y < heightAt(target.x, target.z)) explosions.burst(target);
+  });
 }
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map, rides what is there; nothing while flying the helicopter.
+// only stopped the gliding map, rides what is there; nothing while flying.
 let down = { x: 0, y: 0 }; // where the last button or finger went down
 renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 renderer.domElement.addEventListener("pointerup", (e) => {
@@ -1967,7 +2021,8 @@ function ride(found, clientX, clientY) {
     document.body.dataset.mode = "ride";
   }
   riding = found;
-  steerBox.hidden = found.ride !== helicopter.ride;
+  steerBox.hidden = !pilots.has(found.ride);
+  flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
 }
 // The { ride, vehicle } at a screen point; else the helicopter if its middle is within
@@ -2027,6 +2082,39 @@ function updateHover() {
   renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
+// C copies the Swiss coordinates (LV95 east, north) and the altitude of the roof, bridge or ground
+// under the mouse, and shows "Coordinates copied" there for a moment.
+let mouseAt = null; // { x, y } of the mouse while over the scene
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") mouseAt = { x: e.clientX, y: e.clientY };
+});
+renderer.domElement.addEventListener("pointerleave", () => (mouseAt = null));
+const copied = document.getElementById("copied");
+let hideCopied = 0; // timeout
+addEventListener("keydown", (e) => {
+  if (e.code !== "KeyC" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !mouseAt) return;
+  const { x, y } = mouseAt;
+  raycaster.setFromCamera(
+    new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1),
+    camera,
+  );
+  const hit = raycaster.intersectObjects([buildings.scene, bridges.scene, terrain])[0];
+  if (!hit) return;
+  const { point } = hit;
+  const text = [LV95[0] + point.x, LV95[1] - point.z, point.y + 250]
+    .map((v) => v.toFixed(1))
+    .join(", ");
+  navigator.clipboard.writeText(`${text} m`).then(
+    () => {
+      copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
+      copied.hidden = false;
+      clearTimeout(hideCopied);
+      hideCopied = setTimeout(() => (copied.hidden = true), 1200);
+    },
+    () => {},
+  ); // not allowed: nothing to show
+});
+
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
 const lastTarget = new THREE.Vector3();
 const velocity = new THREE.Vector3();
@@ -2079,11 +2167,11 @@ function fromWGS84(lat, lon) {
     76.63 * p * p -
     194.56 * l * l * p +
     119.79 * p ** 3;
-  return [e - 2611000, 1267400 - n];
+  return [e - LV95[0], LV95[1] - n];
 }
 function toWGS84(x, z) {
-  const y = (x + 2611000 - 2600000) / 1e6;
-  const v = (1267400 - z - 1200000) / 1e6;
+  const y = (x + LV95[0] - 2600000) / 1e6;
+  const v = (LV95[1] - z - 1200000) / 1e6;
   const lon = 2.6779094 + 4.728982 * y + 0.791484 * y * v + 0.1306 * y * v * v - 0.0436 * y ** 3;
   const lat =
     16.9023892 +
@@ -2218,7 +2306,10 @@ renderer.setAnimationLoop((time) => {
   water.waterTime.value = time / 1000;
   pavilionTime.value = time / 1000;
   serpent.update(time / 1000);
-  helicopter.update(time / 1000, flying() ? steering() : null);
+  const flier = pilot();
+  if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
+  helicopter.update(time / 1000, flier === helicopter ? flown : null);
+  ufo.update(time / 1000, dt, flier === ufo ? flown : null);
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);

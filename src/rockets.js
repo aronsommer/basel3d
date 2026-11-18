@@ -80,13 +80,22 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
 
   return {
     // The first point on the line from origin along direction (unit) that meets the ground or a
-    // building or bridge, else the point at RANGE.
+    // building or bridge, to within AIM_STEP / 64 by halving the step there, so it does not jump;
+    // else the point at RANGE.
     aim(origin, direction) {
       const from = origin.clone();
       const to = new THREE.Vector3();
+      const half = new THREE.Vector3();
       for (let d = AIM_STEP; d <= RANGE; d += AIM_STEP) {
         to.copy(origin).addScaledVector(direction, d);
-        if (meets(from, to) !== null) return to;
+        if (meets(from, to) !== null) {
+          for (let step = AIM_STEP; step > AIM_STEP / 64; step /= 2) {
+            half.lerpVectors(from, to, 0.5);
+            if (meets(from, half) !== null) to.copy(half);
+            else from.copy(half);
+          }
+          return to;
+        }
         from.copy(to);
       }
       return to;

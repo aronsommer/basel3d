@@ -283,6 +283,20 @@
         font-variant-numeric: tabular-nums;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
       }
+      /* Above the mouse for a moment after C copied the coordinates there (src/main.js). */
+      #copied {
+        position: absolute;
+        top: 0;
+        left: 0;
+        padding: 4px 10px;
+        font-size: 13px;
+        line-height: 20px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        pointer-events: none;
+      }
       /* Where the helicopter's rockets would hit (shoot in src/main.js): a ring with a dot, white
          in a dark halo, to be seen on any ground. */
       #crosshair {
@@ -300,11 +314,12 @@
         background: radial-gradient(#fff 2px, rgba(0, 0, 0, 0.5) 3px, transparent 4px);
         pointer-events: none;
       }
-      /* The helicopter's steering buttons, at the bottom in the middle, while riding it, laid out
-         like the arrow keys. The fire and stop buttons are round, to their right and left but
-         outside the grid, so they stay in the middle; with a mouse fire is a space bar below
-         them, stop sits left of ↑ like Q, and each button also shows its key (W, A, S, D, Q,
-         Space / Mouse). */
+      /* The steering buttons of the helicopter and the UFO, at the bottom in the middle, while
+         riding one, laid out like the arrow keys. The fire and stop buttons are round, to their
+         right and left but outside the grid, so they stay in the middle; with a mouse fire is a
+         space bar below them, stop sits left of ↑ like Q, and each button also shows its key (W,
+         A, S, D, Q, Space / Mouse), but only shows it: clicks go through to the scene, so a click
+         anywhere fires. */
       #steer {
         position: absolute;
         bottom: 24px;
@@ -371,6 +386,7 @@
       }
       @media (pointer: fine) {
         #steer {
+          pointer-events: none;
           grid-template-areas:
             "Stop ArrowUp ."
             "ArrowLeft ArrowDown ArrowRight"
@@ -465,6 +481,7 @@
       </p>
     </div>
     <div id="crosshair" hidden></div>
+    <div id="copied" hidden>Coordinates<br />copied</div>
     <div id="steer" hidden>
       <button data-key="ArrowLeft" aria-label="Turn left">←<kbd>A</kbd></button>
       <button data-key="ArrowUp" aria-label="Up">↑<kbd>W</kbd></button>

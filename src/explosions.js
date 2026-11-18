@@ -3,11 +3,16 @@
 // a bang. A building leaves scorched ground, where flames keep burning.
 import * as THREE from "three";
 import { audio, fade } from "./sound.js";
+import { PAVILION_BLACK, PAVILION_CENTRE, PAVILION_RADIUS } from "./pavilion.js";
 
 const GRAVITY = 30; // m/s², three times real, so the pieces are down within about a second
 const SINK_AT = 2.5; // seconds after the bang, when the pieces start sinking into the ground
 const GONE_AT = 5; // seconds after the bang, when the pieces are gone
-const MAX_FLAMES = 10;
+const MAX_FLAMES = 10; // per building
+const FIRES = 2000; // fire particles at most
+// Flames burning for good at most; beyond, the oldest go out, so new ruins burn too and the rest
+// of FIRES is left for fireballs.
+const BURNING = 1500;
 
 // heightAt(x, z): the terrain height; camera: where the bang is heard.
 export function createExplosions(scene, structures, heightAt, camera) {
@@ -17,7 +22,8 @@ export function createExplosions(scene, structures, heightAt, camera) {
     side: THREE.DoubleSide,
   });
   const running = new Set(); // per frame: step(dt), false when done
-  const fire = createParticles(scene, camera, true, 2000);
+  const fire = createParticles(scene, camera, true, FIRES);
+  const burning = []; // the flames burning for good, oldest first
   const smoke = createParticles(scene, camera, false, 4000);
 
   // All scorched ground in one mesh, growing with each building burnt down.
@@ -90,8 +96,12 @@ export function createExplosions(scene, structures, heightAt, camera) {
       THREE.MathUtils.lerp(box.min.z, box.max.z, Math.random()),
     );
 
-  // The faces fly apart from the middle, spinning, and come to rest on the terrain.
+  // The faces fly apart from the middle, spinning, and come to rest on the terrain. The Novartis
+  // Pavillon's are black (src/pavilion.js), not in the model's colours.
+  const pavilionBlack = new THREE.Color().setRGB(...PAVILION_BLACK);
   function debris(parts, middle, scale) {
+    const pavilion =
+      Math.hypot(middle.x - PAVILION_CENTRE[0], middle.z - PAVILION_CENTRE[1]) < PAVILION_RADIUS;
     const pieces = [];
     let vertices = 0;
     for (const { color, positions } of parts)
@@ -108,7 +118,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
         pieces.push({
           positions,
           face,
-          color,
+          color: pavilion ? pavilionBlack : color,
           start: vertices,
           centre,
           velocity: out,
@@ -210,7 +220,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
         [2, w],
       ])
         at.addScaledVector(new THREE.Vector3().fromArray(ground, 9 * t + 3 * k), weight);
-      fire.add({
+      const flame = {
         position: at,
         size: (5 + Math.random() * 4) * scale,
         lift: 0.35, // stands on the ground
@@ -220,7 +230,9 @@ export function createExplosions(scene, structures, heightAt, camera) {
         step: stepFlame,
         phase: Math.random() * 10,
         nextPuff: Math.random(),
-      });
+      };
+      if (fire.add(flame)) burning.push(flame);
+      if (burning.length > BURNING) burning.shift().life = 0; // out at its next update
     }
   }
 
@@ -427,8 +439,11 @@ function createParticles(scene, camera, additive, capacity) {
   scene.add(mesh);
   const list = [];
   return {
+    // Whether there was room for it.
     add(p) {
-      if (list.length < capacity) list.push(p);
+      if (list.length >= capacity) return false;
+      list.push(p);
+      return true;
     },
     update(dt) {
       for (let i = list.length - 1; i >= 0; i--) {
