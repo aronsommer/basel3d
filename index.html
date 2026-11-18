@@ -314,22 +314,25 @@
         background: radial-gradient(#fff 2px, rgba(0, 0, 0, 0.5) 3px, transparent 4px);
         pointer-events: none;
       }
-      /* The steering buttons of the helicopter and the UFO, at the bottom in the middle, while
-         riding one, laid out like the arrow keys. The fire and stop buttons are round, to their
-         right and left but outside the grid, so they stay in the middle; with a mouse fire is a
-         space bar below them, stop sits left of ↑ like Q, and each button also shows its key (W,
-         A, S, D, Q, Space / Mouse), but only shows it: clicks go through to the scene, so a click
-         anywhere fires. */
+      /* The steering buttons while riding the helicopter, the UFO, a police car or a motorcycle.
+         On touch screens in the bottom corners, for two thumbs: ← and → on the left; on the right
+         ↓, then ↑ outermost as the one held most, with the round stop and fire buttons above them;
+         the middle stays free and passes taps to the scene. With a mouse in the middle, laid out like the keys they show
+         (W, A, S, D, Q, Space / Mouse), but only showing them: clicks go through to the scene, so
+         a click anywhere fires. */
       #steer {
         position: absolute;
         bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 16px;
+        right: 16px;
         display: grid;
+        grid-template-columns: auto auto 1fr auto auto;
         grid-template-areas:
-          ". ArrowUp ."
-          "ArrowLeft ArrowDown ArrowRight";
+          ". . . Stop Space"
+          "ArrowLeft ArrowRight . ArrowDown ArrowUp";
+        align-items: center;
         gap: 8px;
+        pointer-events: none;
       }
       #steer [data-key="ArrowUp"] {
         grid-area: ArrowUp;
@@ -343,40 +346,37 @@
       #steer [data-key="ArrowRight"] {
         grid-area: ArrowRight;
       }
-      #steer [data-key="Space"],
-      #steer #stop {
-        position: absolute;
-        top: -16px; /* up and into the empty corner beside ↑, clear of ← and → */
-        width: 64px;
-        height: 64px;
-        font-size: 16px;
-        border-radius: 50%;
-      }
       #steer [data-key="Space"] {
-        left: calc(100% - 16px);
+        grid-area: Space;
       }
       #steer #stop {
-        right: calc(100% - 16px);
+        grid-area: Stop;
       }
       #steer[hidden] {
         display: none;
       }
       #steer button {
-        width: 48px;
-        height: 48px;
+        width: 56px;
+        height: 56px;
         padding: 0;
         font: inherit;
-        font-size: 20px;
+        font-size: 22px;
         color: inherit;
         background: rgba(255, 255, 255, 0.9);
         border: 0;
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         cursor: pointer;
+        pointer-events: auto;
         touch-action: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none; /* Safari */
         user-select: none;
+      }
+      #steer [data-key="Space"],
+      #steer #stop {
+        font-size: 14px;
+        border-radius: 50%;
       }
       #steer kbd {
         display: none;
@@ -386,34 +386,30 @@
       }
       @media (pointer: fine) {
         #steer {
-          pointer-events: none;
+          left: 50%;
+          right: auto;
+          transform: translateX(-50%);
+          grid-template-columns: none;
           grid-template-areas:
             "Stop ArrowUp ."
             "ArrowLeft ArrowDown ArrowRight"
             "Space Space Space";
-          gap: 8px;
         }
-        /* The arrows smaller, as they only show the keys. */
+        /* The buttons smaller, as they only show the keys. */
         #steer button {
           width: 36px;
           height: 36px;
           font-size: 16px;
           border-radius: 8px;
+          pointer-events: none;
         }
         #steer [data-key="Space"] {
-          position: static;
-          grid-area: Space;
           width: auto; /* as wide as the three above */
-          height: 36px;
           padding: 0 12px;
           font-size: 14px;
           border-radius: 8px;
         }
         #steer #stop {
-          position: static;
-          grid-area: Stop;
-          width: 36px;
-          height: 36px;
           font-size: 12px;
           border-radius: 8px;
         }

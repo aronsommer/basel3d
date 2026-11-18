@@ -2101,21 +2101,32 @@ function turnHead() {
   camera.rotateOnWorldAxis(THREE.Object3D.DEFAULT_UP, head.yaw);
   camera.rotateX(head.pitch);
 }
-// The { ride, vehicle } at a screen point; else the helicopter if its middle is within
-// HELICOPTER_REACH on the screen (it does not grow far away, see boost) and not ridden; else the
-// first one found around the point at reach / 2, then at reach px (eight points each); if any.
-const HELICOPTER_REACH = 50; // px
+// The { ride, vehicle } at a screen point; else the nearest of the steerable ones (handles) whose
+// middle is within REACH + reach on the screen, not ridden and not hidden; else the first one
+// found around the point at reach / 2, then at reach px (eight points each); if any.
+const REACH = 50; // px
+// All that is steered, flown (pilots) or driven (drives), small to hit: each { ride, vehicle,
+// object, up (metres from its origin to its middle, before scaling) }.
+const handles = [
+  ...[...pilots].map(([ride, { group }]) => ({ ride, vehicle: 0, object: group, up: 0 })),
+  ...drives.flatMap(([vehicles, ride]) =>
+    vehicles.map(({ group }, vehicle) => ({ ride, vehicle, object: group, up: 0.8 })),
+  ),
+];
+const middle = new THREE.Vector3();
 function vehicleAt(clientX, clientY, reach = 0) {
   for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
   const found = vehicleOn(clientX, clientY);
   if (found) return found;
-  const { x, y, front } = onScreen(helicopter.group.position);
-  if (
-    riding?.ride !== helicopter.ride &&
-    front &&
-    Math.hypot(x - clientX, y - clientY) < HELICOPTER_REACH
-  )
-    return { ride: helicopter.ride, vehicle: 0 };
+  let [best, nearest] = [null, REACH + reach];
+  for (const { ride, vehicle, object, up } of handles) {
+    if (riding?.ride === ride && riding.vehicle === vehicle) continue;
+    middle.copy(object.position).y += up * object.scale.y;
+    const { x, y, front } = onScreen(middle);
+    const away = Math.hypot(x - clientX, y - clientY);
+    if (front && away < nearest && !hidden(middle)) [best, nearest] = [{ ride, vehicle }, away];
+  }
+  if (best) return best;
   for (const r of reach ? [reach / 2, reach] : [])
     for (let k = 0; k < 8; k++) {
       const a = (k * Math.PI) / 4;
@@ -2123,6 +2134,14 @@ function vehicleAt(clientX, clientY, reach = 0) {
       if (near) return near;
     }
   return null;
+}
+// Whether the terrain, a building or a bridge is between the camera and a point.
+function hidden(point) {
+  raycaster.set(camera.position, point.clone().sub(camera.position).normalize());
+  raycaster.far = camera.position.distanceTo(point);
+  const behind = raycaster.intersectObjects([terrain, buildings.scene, bridges.scene]).length > 0;
+  raycaster.far = Infinity;
+  return behind;
 }
 // The { ride, vehicle } at a screen point, if visible: not in a tunnel under the terrain or
 // behind a building or bridge.
