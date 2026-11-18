@@ -98,16 +98,61 @@
       #reset {
         cursor: pointer;
       }
-      /* Frame times while "Dev info" is ticked (src/dev.js), below the reset button. */
+      /* Frame times while "Dev info" is ticked (src/dev.js), below the reset button; the numbers,
+         then a box per part and the buttons, one below the other; smaller and tighter, to fit the
+         column's width and hide little of the scene. */
       #dev {
         top: 148px;
-        width: auto; /* as wide as its lines */
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        font-size: 12px;
+        line-height: 16px;
         text-align: left;
-        white-space: pre;
+      }
+      #dev[hidden] {
+        display: none;
+      }
+      /* Names left, values right, so the units and decimal points line up. */
+      #dev .stats {
+        align-self: stretch;
+        display: grid;
+        grid-template-columns: auto auto;
+        column-gap: 4px;
+        white-space: nowrap; /* "Draw 10.8 ms" on one line */
         font-variant-numeric: tabular-nums;
-        cursor: pointer;
-        -webkit-user-select: text; /* Safari; to copy by hand where the click cannot */
+        -webkit-user-select: text; /* Safari; to copy by hand where Copy cannot */
         user-select: text;
+      }
+      #dev .stats span:nth-child(even) {
+        text-align: right;
+      }
+      #dev label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 20px;
+        cursor: pointer;
+      }
+      #dev input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: #1d242b;
+        cursor: pointer;
+      }
+      #dev button {
+        align-self: stretch;
+        min-height: 22px;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        background: #fff;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        cursor: pointer;
       }
       /* The key to get off, only where there is a keyboard; less padding then, to fit in the same
          width. */
@@ -157,8 +202,9 @@
         top: 56px;
       }
       /* Open: a panel of the layers as wide as they need, left-aligned, the chevron on the right of
-         the title. */
+         the title; above all else (nothing else has a z-index). */
       #layers[open] {
+        z-index: 1;
         width: auto;
         min-width: 96px;
         text-align: left;
