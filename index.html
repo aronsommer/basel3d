@@ -95,6 +95,19 @@
       #reset {
         cursor: pointer;
       }
+      /* The key to get off, only where there is a keyboard; the button then as wide as it needs. */
+      #off kbd {
+        display: none;
+        font: inherit;
+      }
+      @media (pointer: fine) {
+        #off {
+          width: auto;
+        }
+        #off kbd {
+          display: inline;
+        }
+      }
       /* Tiny, in the corner, with a white halo. */
       #credit {
         position: absolute;
@@ -399,7 +412,7 @@
     <div id="badges"></div>
     <div id="loading">Loading <span id="progress">0%</span></div>
     <button id="ground"></button>
-    <button id="off">Get off</button>
+    <button id="off">Get off<kbd> (Esc)</kbd></button>
     <button id="reset" title="Rebuild all that was blown up" hidden>Reset</button>
     <div id="counter">
       <p title="Buildings">

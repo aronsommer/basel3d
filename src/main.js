@@ -583,8 +583,7 @@ function createBirds() {
 }
 // The menu "Layers" shows the names (see updateNames) and the loops of the trams (each line on its
 // own), trains and cars and the course of the ships as lines above them; at first none. "All"
-// shows or hides all tram lines (ticked when all are shown); L shows all lines, or hides all if
-// all are shown; N shows or hides the names.
+// shows or hides all tram lines (ticked when all are shown).
 const trams = movers[MOVER_KINDS.indexOf("tram")];
 const tramGroup = trams.routes;
 tramGroup.visible = true;
@@ -617,17 +616,8 @@ tramBox.addEventListener("change", () => {
   const all = tramBox.checked; // showTram changes it on the way
   for (const line of tramLines) showTram(line, all);
 });
-const showKind = (box, on) => {
-  box.checked = on;
-  kindLines[box.dataset.kind].visible = on;
-};
-for (const box of kindBoxes) box.addEventListener("change", () => showKind(box, box.checked));
-addEventListener("keydown", (e) => {
-  if (e.code !== "KeyL") return;
-  const all = !(tramBox.checked && kindBoxes.every((box) => box.checked));
-  for (const line of tramLines) showTram(line, all);
-  for (const box of kindBoxes) showKind(box, all);
-});
+for (const box of kindBoxes)
+  box.addEventListener("change", () => (kindLines[box.dataset.kind].visible = box.checked));
 // Where a scene point is on the screen (px) and whether it is in front of the camera, by the view
 // of the camera's last updateMatrixWorld.
 const projected = new THREE.Vector3();
@@ -680,15 +670,10 @@ const namesBox = document.getElementById("names-box");
 try {
   namesBox.checked = localStorage.getItem(NAMES_KEY) === "on";
 } catch {} // storage blocked
-function showNames(on) {
-  namesBox.checked = on;
+namesBox.addEventListener("change", () => {
   try {
-    localStorage.setItem(NAMES_KEY, on ? "on" : "off");
+    localStorage.setItem(NAMES_KEY, namesBox.checked ? "on" : "off");
   } catch {} // storage blocked
-}
-namesBox.addEventListener("change", () => showNames(namesBox.checked));
-addEventListener("keydown", (e) => {
-  if (e.code === "KeyN") showNames(!namesBox.checked);
 });
 const nameLayer = document.getElementById("names");
 scene.updateMatrixWorld(); // for the rays from above
@@ -1884,10 +1869,10 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear()); // the keyups come to another window
-// Buttons take no focus when clicked, so later key presses neither show a focus ring on one nor
-// press it.
+// Buttons, the menu and its boxes take no focus when clicked, so later key presses neither show a
+// focus ring on one nor press it.
 addEventListener("mousedown", (e) => {
-  if (e.target.closest("button")) e.preventDefault();
+  if (e.target.closest("button, summary, label")) e.preventDefault();
 });
 const steerBox = document.getElementById("steer");
 for (const button of steerBox.querySelectorAll("button")) {
