@@ -330,6 +330,20 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       }
       return best;
     },
+    // The numbers of the buildings (not bridges) whose bounding box's middle (x, z) passes test.
+    within(test) {
+      if (!boxes) measure();
+      const found = [];
+      for (let n = 0; n < count; n++) {
+        const b = 6 * n;
+        if (
+          meshesOf[n]?.length &&
+          test((boxes[b] + boxes[b + 3]) / 2, (boxes[b + 2] + boxes[b + 5]) / 2)
+        )
+          found.push(n);
+      }
+      return found;
+    },
     // Colours the one with this number: its roofs and walls (0xrrggbb each, by the materials'
     // names); the walls keep their facade style (the alpha).
     paint(number, { roof, wall }) {

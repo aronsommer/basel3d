@@ -1002,6 +1002,54 @@ const stadium = structures.widest(
   STADIUM,
 );
 if (stadium >= 0) structures.paint(stadium, { roof: 0xd51f2a, wall: 0x1d3fbf });
+// The buildings on Roche's site (its outline in OSM, landuse=industrial "Roche", in LV95) alike,
+// so they show as one company's: white walls as its towers and grey roofs, as on one of them on
+// the aerial photo (LV95 2612537.6, 1267604.0); the towers keep their light roofs (those whose
+// middle is within 20 m of TOWERS).
+const ROCHE = [
+  [2612493.7, 1267596.1],
+  [2612482.7, 1267693.6],
+  [2612556.1, 1267702.2],
+  [2612546.5, 1267783.5],
+  [2612562.9, 1267785.6],
+  [2612554.3, 1267826.9],
+  [2612554.3, 1267843.6],
+  [2612606.1, 1267850.7],
+  [2612664.7, 1267859.4],
+  [2612695.4, 1267863.1],
+  [2612730.6, 1267870.9],
+  [2612776.5, 1267884.8],
+  [2612803.1, 1267893.7],
+  [2612834.6, 1267904.8],
+  [2612858.6, 1267788.5],
+  [2612885.5, 1267793.9],
+  [2612891.8, 1267767.1],
+  [2612913.7, 1267660.3],
+  [2612875.0, 1267651.7],
+  [2612845.2, 1267644.6],
+  [2612844.7, 1267647.6],
+  [2612834.9, 1267647.5],
+  [2612821.6, 1267644.7],
+  [2612831.1, 1267608.2],
+  [2612847.2, 1267508.5],
+  [2612598.6, 1267443.0],
+  [2612573.3, 1267603.4],
+].map(fromLV95);
+// Whether the point x, z is inside the outline (even-odd).
+const inside = (outline, x, z) =>
+  outline.reduce((odd, a, i) => {
+    const b = outline.at(i - 1);
+    return a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x ? !odd : odd;
+  }, false);
+const TOWERS = [
+  [2612699, 1267652],
+  [2612727, 1267579],
+].map(fromLV95);
+const towers = new Set(
+  structures.within((x, z) => TOWERS.some((t) => Math.hypot(t.x - x, t.z - z) < 20)),
+);
+for (const number of structures.within((x, z) => inside(ROCHE, x, z)))
+  structures.paint(number, { roof: towers.has(number) ? 0xced7de : 0x6a7173, wall: 0xf4f4f2 });
 const KIT = {
   body: "player",
   top: 0x1d3fbf,
