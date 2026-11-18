@@ -83,6 +83,23 @@ const BODIES = {
     piece(box(0.2, 0.24, 0.22), "skin", [0, 1.65, 0]),
     ...heads(1.76),
   ]),
+  // A football kit: a shirt (top) with sleeves of the socks' colour (hat), shorts (bottom), socks
+  // and boots (shoes).
+  player: mergeGeometries([
+    ...[-1, 1].flatMap((s) => [
+      piece(box(0.12, 0.08, 0.26), "shoes", [s * 0.1, 0.04, 0.03], s),
+      piece(box(0.13, 0.42, 0.15), "hat", [s * 0.1, 0.29, 0], s),
+      piece(box(0.13, 0.12, 0.15), "skin", [s * 0.1, 0.56, 0], s),
+      piece(box(0.16, 0.3, 0.18), "bottom", [s * 0.1, 0.77, 0], s),
+      piece(box(0.13, 0.2, 0.15), "hat", [s * 0.28, 1.39, 0], 2 * s),
+      piece(box(0.1, 0.42, 0.12), "skin", [s * 0.28, 1.08, 0], 2 * s),
+    ]),
+    piece(box(0.44, 0.1, 0.26), "bottom", [0, 0.95, 0]),
+    piece(box(0.44, 0.62, 0.25), "top", [0, 1.21, 0]),
+    piece(box(0.1, 0.08, 0.1), "skin", [0, 1.56, 0]),
+    piece(box(0.22, 0.26, 0.24), "skin", [0, 1.72, 0]),
+    ...heads(1.85),
+  ]),
   // Barefoot in a bikini: its top (top) and bottom (bottom).
   swim: mergeGeometries([
     ...[-1, 1].flatMap((s) => [

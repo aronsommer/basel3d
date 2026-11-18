@@ -316,6 +316,32 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       }
       return found;
     },
+    // The number of the building (not a bridge) with the widest bounding box whose middle is within
+    // reach of x, z; -1 if none.
+    widest(x, z, reach) {
+      if (!boxes) measure();
+      let [best, wide] = [-1, 0];
+      for (let n = 0; n < count; n++) {
+        const b = 6 * n;
+        if (!meshesOf[n]?.length) continue;
+        const [mx, mz] = [(boxes[b] + boxes[b + 3]) / 2, (boxes[b + 2] + boxes[b + 5]) / 2];
+        const width = Math.max(boxes[b + 3] - boxes[b], boxes[b + 5] - boxes[b + 2]);
+        if (Math.hypot(mx - x, mz - z) <= reach && width > wide) [best, wide] = [n, width];
+      }
+      return best;
+    },
+    // Colours the one with this number: its roofs and walls (0xrrggbb each, by the materials'
+    // names); the walls keep their facade style (the alpha).
+    paint(number, { roof, wall }) {
+      const colour = new THREE.Color();
+      for (const mesh of meshesOf[number] ?? []) {
+        const { color, _building } = mesh.geometry.attributes;
+        colour.set(mesh.material.name === "roof" ? roof : wall);
+        for (let i = 0; i < color.count; i++)
+          if (_building.getX(i) === number) color.setXYZ(i, colour.r, colour.g, colour.b);
+        color.needsUpdate = true;
+      }
+    },
     // Hides those with these numbers for good, also from at(), hit(), wall() and raycasts: the
     // vertices of each collapse into one point. Each mesh is gone through once.
     hide(numbers) {

@@ -19,6 +19,7 @@ import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createDrones } from "./drone.js";
+import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
@@ -209,10 +210,12 @@ const water = {
 // The GLBs have no normals; flat shading derives them per pixel.
 const materials = {
   roof: new THREE.MeshLambertMaterial({
+    name: "roof", // as in the model, for structures.paint
     vertexColors: true, // each building's own (tools/buildings.mjs)
     flatShading: true,
   }),
   wall: new THREE.MeshLambertMaterial({
+    name: "wall",
     vertexColors: true,
     flatShading: true,
   }),
@@ -981,6 +984,60 @@ kindLines.walk = Object.assign(
   { visible: false },
 );
 overlay.add(kindLines.walk);
+// The St. Jakob-Park in FC Basel's colours, blue walls and a red roof: the widest building whose
+// middle is within STADIUM of its pitch's (the model joins the block behind its south stand to it).
+// On the pitch a training game (src/football.js) between goals at LV95 2613704.8, 1265649.7 and
+// 2613621.4, 1265686.0: goalkeepers in green, two teams in the club's kit, one in orange bibs,
+// their coach in a dark tracksuit at the side.
+const STADIUM = 60; // metres
+const ends = parked(
+  [
+    [2613704.8, 1265649.7],
+    [2613621.4, 1265686.0],
+  ].map(fromLV95),
+);
+const stadium = structures.widest(
+  (ends[0].x + ends[1].x) / 2,
+  (ends[0].z + ends[1].z) / 2,
+  STADIUM,
+);
+if (stadium >= 0) structures.paint(stadium, { roof: 0xd51f2a, wall: 0x1d3fbf });
+const KIT = {
+  body: "player",
+  top: 0x1d3fbf,
+  bottom: 0x1d3fbf,
+  hat: 0xd51f2a, // sleeves and socks
+};
+const KEEPER = { ...KIT, top: 0x2e7d32, bottom: 0x111111, hat: 0x2e7d32 };
+const STAFF = { body: "man", top: 0x222222, bottom: 0x222222, shoes: 0xffffff };
+// Eleven against eleven, then aside: the head coach and his assistant at the north touchline, the
+// third goalkeeper and the goalkeeping coach facing each other behind the first goal, throwing a
+// ball.
+const training = createTraining(
+  ends,
+  [
+    { ...KEEPER, skin: 0xe8b996, hair: 0x2a1d14 },
+    { ...KEEPER, skin: 0x8a5634, hair: 0x111111 },
+    ...mix(
+      {
+        ...Object.fromEntries(Object.entries(KIT).map(([key, value]) => [key, [value]])),
+        top: [0x1d3fbf, 0xff6f00], // teams 0 and 1, in bibs
+        skin: [0xe8b996, 0x6b4128, 0xd9a27a, 0xf1c7a5, 0x8a5634, 0xc58c5c, 0x4a2c1a],
+        hair: [0x2a1d14, 0x111111, 0xe2c46e, 0x3a2414, 0x7a3a1a],
+        shoes: [0x111111, 0x111111, 0xff6f00],
+      },
+      20,
+    ),
+  ],
+  [
+    { u: -6, v: -41, face: Math.PI / 2, look: { ...STAFF, skin: 0xe8b996, hair: 0x3a2414 } },
+    { u: 6, v: -41, face: Math.PI / 2, look: { ...STAFF, skin: 0xd9a27a, hair: 0x111111 } },
+    { u: -51, v: -20, face: Math.PI / 2, look: { ...KEEPER, skin: 0xf1c7a5, hair: 0xe2c46e } },
+    { u: -51, v: -14, face: -Math.PI / 2, look: { ...STAFF, skin: 0xc58c5c, hair: 0x8a8a8a } },
+  ],
+  [3, 2], // the goalkeeping coach throws, the third goalkeeper catches
+);
+scene.add(...training.objects);
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 const drones = createDrones(
   [
@@ -2805,6 +2862,7 @@ renderer.setAnimationLoop((time) => {
   pavilionTime.value = time / 1000;
   peopleTime.value = time / 1000;
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
+  training.update(dt);
   serpent.update(time / 1000);
   const flier = pilot();
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
