@@ -283,10 +283,28 @@
         font-variant-numeric: tabular-nums;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
       }
+      /* Where the helicopter's rockets would hit (shoot in src/main.js): a ring with a dot, white
+         in a dark halo, to be seen on any ground. */
+      #crosshair {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 28px;
+        height: 28px;
+        box-sizing: border-box;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.5),
+          inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+        background: radial-gradient(#fff 2px, rgba(0, 0, 0, 0.5) 3px, transparent 4px);
+        pointer-events: none;
+      }
       /* The helicopter's steering buttons, at the bottom in the middle, while riding it, laid out
-         like the arrow keys. The fire button is round, to their right but outside the grid, so
-         they stay in the middle; with a mouse it is a space bar below them, and each button also
-         shows its key (W, A, S, D, Space / Mouse). */
+         like the arrow keys. The fire and stop buttons are round, to their right and left but
+         outside the grid, so they stay in the middle; with a mouse fire is a space bar below
+         them, stop sits left of ↑ like Q, and each button also shows its key (W, A, S, D, Q,
+         Space / Mouse). */
       #steer {
         position: absolute;
         bottom: 24px;
@@ -310,14 +328,20 @@
       #steer [data-key="ArrowRight"] {
         grid-area: ArrowRight;
       }
-      #steer [data-key="Space"] {
+      #steer [data-key="Space"],
+      #steer #stop {
         position: absolute;
-        top: -16px; /* up and into the empty corner right of ↑, clear of → */
-        left: calc(100% - 16px);
+        top: -16px; /* up and into the empty corner beside ↑, clear of ← and → */
         width: 64px;
         height: 64px;
         font-size: 16px;
         border-radius: 50%;
+      }
+      #steer [data-key="Space"] {
+        left: calc(100% - 16px);
+      }
+      #steer #stop {
+        right: calc(100% - 16px);
       }
       #steer[hidden] {
         display: none;
@@ -348,7 +372,7 @@
       @media (pointer: fine) {
         #steer {
           grid-template-areas:
-            ". ArrowUp ."
+            "Stop ArrowUp ."
             "ArrowLeft ArrowDown ArrowRight"
             "Space Space Space";
           gap: 8px;
@@ -367,6 +391,14 @@
           height: 36px;
           padding: 0 12px;
           font-size: 14px;
+          border-radius: 8px;
+        }
+        #steer #stop {
+          position: static;
+          grid-area: Stop;
+          width: 36px;
+          height: 36px;
+          font-size: 12px;
           border-radius: 8px;
         }
         #steer kbd {
@@ -432,6 +464,7 @@
         <span id="Bridges"></span>
       </p>
     </div>
+    <div id="crosshair" hidden></div>
     <div id="steer" hidden>
       <button data-key="ArrowLeft" aria-label="Turn left">←<kbd>A</kbd></button>
       <button data-key="ArrowUp" aria-label="Up">↑<kbd>W</kbd></button>
@@ -440,6 +473,7 @@
       <button data-key="Space" aria-label="Fire" title="Hold Space or the left mouse button">
         Fire<kbd>Space / Mouse</kbd>
       </button>
+      <button id="stop">Stop<kbd>Q</kbd></button>
     </div>
     <details id="layers">
       <summary>Layers</summary>

@@ -1357,20 +1357,23 @@ function createHelicopter(cx, cz, radius, height, scale) {
   group.scale.setScalar(scale);
   group.rotation.order = "YXZ"; // heading first, then pitch and bank in the helicopter's frame
 
-  // Steered while ridden (input { climb, turn }, each -1, 0 or 1, from steering()): always
-  // SPEED straight on, at least LOW above the terrain, at most HIGH, over the terrain's area.
-  // Holding climb changes the climb rate (-1 to 1, times CLIMB) by TRIM per second, and it stays
-  // when let go; passing level, or at LOW or HIGH, it is level until pressed anew.
-  // Turning is eased in up to TURN radians per second and back out when let go. Nose and side tilt
-  // along. Without input it is back on its circle.
+  // Steered while ridden (input { climb, turn, stop }, climb and turn each -1, 0 or 1, from
+  // steering()), at least LOW above the terrain, at most HIGH, over the terrain's area. Flying,
+  // it goes SPEED straight on, climbs or sinks at CLIMB while climb is held and the nose tilts
+  // along by NOSE. Stopped, it hovers and climb tilts the nose instead, by TILT radians per
+  // second between level and AIM down, and it stays when let go. Speed, climb, nose and turning
+  // (up to TURN radians per second) are eased. Without input it is back on its circle.
   const SPEED = 60; // metres per second
-  const CLIMB = 25; // metres per second
-  const TRIM = 2.5; // climb rate per second
+  const CLIMB = 40; // metres per second
+  const LEVEL = 0.12; // the nose down when flying level (radians)
+  const NOSE = 0.4; // radians
+  const TILT = 1.2;
+  const AIM = 1.2; // radians, about 70°
   const TURN = 1.1;
   const LOW = 40; // metres
   const HIGH = 1000; // scene y
-  // { x, y, z, heading, climb, pitch (the climb eased, for the nose), turn, levelled (the climb
-  // input that last reached level, while still held) } while steered
+  // { x, y, z, heading, speed (0 to 1, times SPEED), climb (-1 to 1, times CLIMB), nose (radians
+  // down), aim (the nose while stopped), turn } while steered
   let flown = null;
   let last = 0;
   const update = (seconds, input) => {
@@ -1380,43 +1383,39 @@ function createHelicopter(cx, cz, radius, height, scale) {
       flown ??= {
         ...group.position,
         heading: group.rotation.y,
+        speed: 1,
         climb: 0,
-        pitch: 0,
+        nose: LEVEL,
+        aim: LEVEL,
         turn: 0,
-        levelled: 0,
       };
-      if (input.climb !== flown.levelled) flown.levelled = 0;
-      if (input.climb && !flown.levelled) {
-        const next = THREE.MathUtils.clamp(flown.climb + input.climb * TRIM * dt, -1, 1);
-        if (flown.climb && Math.sign(next) !== Math.sign(flown.climb)) {
-          flown.climb = 0;
-          flown.levelled = input.climb;
-        } else flown.climb = next;
-      }
-      const ease = Math.min(1, dt * 4);
-      flown.pitch += (flown.climb - flown.pitch) * ease;
-      flown.turn += (input.turn - flown.turn) * ease;
+      const ease = (value, to, rate) => value + (to - value) * Math.min(1, dt * rate);
+      if (input.stop)
+        flown.aim = THREE.MathUtils.clamp(flown.aim - input.climb * TILT * dt, 0, AIM);
+      else flown.aim = flown.nose; // so stopping starts from there
+      flown.speed = ease(flown.speed, input.stop ? 0 : 1, 6);
+      flown.climb = ease(flown.climb, input.stop ? 0 : input.climb, 7);
+      flown.nose = ease(flown.nose, input.stop ? flown.aim : LEVEL - NOSE * flown.climb, 8);
+      flown.turn = ease(flown.turn, input.turn, 4);
       flown.heading += flown.turn * TURN * dt;
       [flown.x, flown.z] = intoArea(
-        flown.x + Math.sin(flown.heading) * SPEED * dt,
-        flown.z + Math.cos(flown.heading) * SPEED * dt,
+        flown.x + Math.sin(flown.heading) * flown.speed * SPEED * dt,
+        flown.z + Math.cos(flown.heading) * flown.speed * SPEED * dt,
       );
-      const low = heightAt(flown.x, flown.z) + LOW;
-      flown.y += flown.climb * CLIMB * dt;
-      if ((flown.y <= low && flown.climb < 0) || (flown.y >= HIGH && flown.climb > 0)) {
-        flown.climb = 0;
-        flown.levelled = input.climb;
-      }
-      flown.y = THREE.MathUtils.clamp(flown.y, low, HIGH);
+      flown.y = THREE.MathUtils.clamp(
+        flown.y + flown.climb * CLIMB * dt,
+        heightAt(flown.x, flown.z) + LOW,
+        HIGH,
+      );
       group.position.set(flown.x, flown.y, flown.z);
-      group.rotation.set(0.12 - 0.15 * flown.pitch, flown.heading, -0.3 * flown.turn);
+      group.rotation.set(flown.nose, flown.heading, -0.3 * flown.turn * flown.speed);
     } else {
       flown = null;
       const angle = seconds * 0.5; // about 13 s per round
       const y = height + 25 * Math.sin(seconds * 0.35); // gently up and down, ±25 m
       group.position.set(cx + radius * Math.cos(angle), y, cz + radius * Math.sin(angle));
       group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle)); // along the circle
-      group.rotation.x = 0.12; // nose down, flying forward
+      group.rotation.x = LEVEL;
       group.rotation.z = 0.5; // banking towards the centre
     }
     main.rotation.y = seconds * 25;
@@ -1838,6 +1837,7 @@ function heightAt(x, z) {
 // Gets off: back to the view from before riding.
 function getOff() {
   riding = null;
+  stop(false);
   steerBox.hidden = true;
   camera.position.copy(before.position);
   orbit.target.copy(before.target);
@@ -1861,7 +1861,8 @@ addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
 });
 // Steering the helicopter while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
-// at the bottom hold the arrow keys while pressed.
+// at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on; stopped,
+// W/S tilt the nose instead.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
@@ -1875,23 +1876,35 @@ addEventListener("mousedown", (e) => {
   if (e.target.closest("button, summary, label")) e.preventDefault();
 });
 const steerBox = document.getElementById("steer");
-for (const button of steerBox.querySelectorAll("button")) {
+for (const button of steerBox.querySelectorAll("[data-key]")) {
   button.addEventListener("pointerdown", () => keys.add(button.dataset.key));
   for (const type of ["pointerup", "pointercancel", "pointerleave"])
     button.addEventListener(type, () => keys.delete(button.dataset.key));
   button.addEventListener("contextmenu", (e) => e.preventDefault()); // long press on phones
 }
+let stopped = false;
+const stopButton = document.getElementById("stop");
+function stop(on) {
+  stopped = on;
+  stopButton.firstChild.data = on ? "Go" : "Stop";
+}
+stopButton.addEventListener("click", () => stop(!stopped));
+addEventListener("keydown", (e) => {
+  if (e.code === "KeyQ" && flying() && !e.repeat) stop(!stopped);
+});
 function steering() {
   const held = (...codes) => (codes.some((code) => keys.has(code)) ? 1 : 0);
   return {
     climb: held("KeyW", "ArrowUp") - held("KeyS", "ArrowDown"),
     turn: held("KeyA", "ArrowLeft") - held("KeyD", "ArrowRight"),
+    stop: stopped,
   };
 }
 
 // Shooting from the helicopter while flying it: holding Space, the fire button or the left mouse
 // button on the scene ("Mouse" in keys) sends a rocket every FIRE_GAP seconds, from its launchers
-// in turn, to where the line along its nose first meets something (rockets.aim).
+// in turn, to where the line along its nose first meets something (rockets.aim), which the
+// crosshair shows.
 const FIRE_GAP = 0.1; // seconds
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (flying() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
@@ -1901,14 +1914,22 @@ addEventListener("pointerup", (e) => {
 });
 const nose = new THREE.Vector3();
 const launcher = new THREE.Vector3();
+const crosshair = document.getElementById("crosshair");
 let nextRocket = 0; // when the next may go (seconds)
 let side = 0; // the launcher it goes from
 function shoot(seconds) {
-  if (!flying() || !(keys.has("Space") || keys.has("Mouse")) || seconds < nextRocket) return;
-  nextRocket = seconds + FIRE_GAP;
-  side = 1 - side;
+  if (!flying()) {
+    crosshair.hidden = true;
+    return;
+  }
   const { group, launchers } = helicopter;
   const target = rockets.aim(group.position, group.getWorldDirection(nose));
+  const { x, y, front } = onScreen(target);
+  crosshair.hidden = !front;
+  crosshair.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+  if (!(keys.has("Space") || keys.has("Mouse")) || seconds < nextRocket) return;
+  nextRocket = seconds + FIRE_GAP;
+  side = 1 - side;
   rockets.fire(group.localToWorld(launcher.copy(launchers[side])), target);
 }
 
