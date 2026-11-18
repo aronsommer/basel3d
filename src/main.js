@@ -19,7 +19,7 @@ import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createDrones } from "./drone.js";
-import { BLACK_GUYS, createPeople, peopleTime, WORKERS } from "./people.js";
+import { createPeople, mix, peopleTime } from "./people.js";
 import { createDev } from "./dev.js";
 import { createRecorder } from "./record.js";
 import { part } from "./parts.js";
@@ -750,92 +750,33 @@ const motorcycles = createMotorcycles(
   boost,
   world,
 );
-// People (src/people.js) standing around a place, at [metres to its side, ahead], facing it or
-// toward, each turned up to spread radians away: Black guys (LV95 2611650.8, 1267914.0) and sex
-// workers in a lane in Kleinbasel (LV95 2611558.8, 1267979.2
-// down to 2611515.2, 1267957.1), facing up it (LV95 2611565.3, 1267979.1).
-const around = (centre, offsets, toward = centre, spread = 0) =>
-  parked(
-    offsets.map(([side, ahead], k) => {
-      const { x, z, heading: h = 0 } = centre;
-      const px = x + side * Math.cos(h) + ahead * Math.sin(h);
-      const pz = z - side * Math.sin(h) + ahead * Math.cos(h);
-      const heading = Math.atan2(toward.x - px, toward.z - pz) + spread * Math.sin(k * 2.7);
-      return { x: px, z: pz, heading };
+// People (src/people.js) at LV95 points (as Record clicks copies them), each facing toward
+// (turned up to SPREAD radians away, each a little otherwise) or else the others within NEAR
+// metres, or alone k radians from south.
+const SPREAD = 0.5;
+const NEAR = 10;
+const fromLV95 = ([e, n]) => ({ x: e - LV95[0], z: LV95[1] - n });
+function standing(points, toward) {
+  const at = points.map(fromLV95);
+  const target = toward && fromLV95(toward);
+  const facing = (p, { x, z }) => Math.atan2(x - p.x, z - p.z);
+  return parked(
+    at.map((p, k) => {
+      if (target) return { ...p, heading: facing(p, target) + SPREAD * Math.sin(k * 2.7) };
+      const near = at.filter((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) < NEAR);
+      if (!near.length) return { ...p, heading: k };
+      const x = near.reduce((sum, q) => sum + q.x, 0) / near.length;
+      const z = near.reduce((sum, q) => sum + q.z, 0) / near.length;
+      return { ...p, heading: facing(p, { x, z }) };
     }),
   );
-const UP_THE_LANE = { x: 565.3, z: -579.1 };
-scene.add(
-  createPeople(
-    around({ x: 650.8, z: -514 }, [
-      [1.2, 0.3],
-      [-0.8, 1],
-      [-1, -0.9],
-      [0.6, -1.3],
-    ]),
-    BLACK_GUYS,
-  ),
-  // In the lane, from the top down, each in other clothes.
-  createPeople(
-    around(
-      { x: 558.8, z: -579.2 },
-      [
-        [2.5, 0],
-        [-2, 1.5],
-        [1.6, -2.9],
-      ],
-      UP_THE_LANE,
-      0.5,
-    ),
-    WORKERS,
-  ),
-  createPeople(
-    around(
-      { x: 549.6, z: -571.7, heading: -1.05 },
-      [
-        [-1.2, -3],
-        [1.2, 0],
-        [-1.2, 3],
-        [1.2, 6],
-      ],
-      UP_THE_LANE,
-      0.5,
-    ),
-    WORKERS.slice(7, 11),
-  ),
-  createPeople(
-    around(
-      { x: 536.3, z: -566.2, heading: -1.05 },
-      [
-        [1.2, -4.5],
-        [-1.2, -1.5],
-        [1.2, 1.5],
-        [-1.2, 4.5],
-      ],
-      UP_THE_LANE,
-      0.5,
-    ),
-    WORKERS.slice(3, 7),
-  ),
-  createPeople(
-    around(
-      { x: 515.2, z: -557.1, heading: 1.98 },
-      [
-        [1.2, 0],
-        [-1.2, 3.7],
-        [1.2, 7.4],
-        [-1.2, 11.1],
-        [1.2, 14.8],
-      ],
-      UP_THE_LANE,
-      0.5,
-    ),
-    WORKERS.slice(11),
-  ),
-);
-// More Black guys in Kleinbasel, each facing the others within 10 m, or alone k radians from
-// south.
-const KLEINBASEL = [
+}
+// Black men in Kleinbasel, each in other clothes, some with a cap or beanie.
+const MEN = [
+  [2611652.0, 1267913.7],
+  [2611650.0, 1267913.0],
+  [2611649.8, 1267914.9],
+  [2611651.4, 1267915.3],
   [2611638.7, 1267929.8],
   [2611592.6, 1267974.9],
   [2611589.4, 1267977.4],
@@ -860,20 +801,61 @@ const KLEINBASEL = [
   [2611708.8, 1267932.1],
   [2611709.9, 1267942.5],
   [2611722.2, 1267940.4],
-].map(([e, n]) => ({ x: e - LV95[0], z: LV95[1] - n }));
+];
+const MEN_LOOKS = mix(
+  {
+    body: ["man"],
+    skin: [0x4a2c1a, 0x5a3520, 0x3d2416, 0x6b4128, 0x7a4a2a],
+    hair: [0x111111],
+    top: [0xffffff, 0x1e7d4a, 0x111111, 0xf2c94c, 0xc0392b, 0x1e88e5, 0x6b6b6b, 0xff6f00],
+    bottom: [0x3b4d6b, 0x222222, 0x6b6b6b, 0x1d1d1d, 0xc2a878, 0x2f4f2f, 0x4a5d7a],
+    shoes: [0xffffff, 0x111111, 0xeeeeee, 0x1d1d1d],
+    cap: [0xc0392b, null, null, 0x1b2333, null, null],
+    beanie: [null, null, 0x111111, null, null, 0x8b0000],
+  },
+  MEN.length,
+);
+// Sex workers in a lane in Kleinbasel, from the top down, facing up it, each in other clothes.
+const WOMEN = [
+  [2611561.3, 1267979.2],
+  [2611556.8, 1267977.7],
+  [2611560.4, 1267982.1],
+  [2611540.8, 1267967.4],
+  [2611537.0, 1267968.0],
+  [2611535.6, 1267964.4],
+  [2611531.8, 1267965.0],
+  [2611551.6, 1267974.2],
+  [2611550.2, 1267970.7],
+  [2611546.4, 1267971.2],
+  [2611545.0, 1267967.7],
+  [2611514.7, 1267958.2],
+  [2611519.1, 1267957.5],
+  [2611521.5, 1267961.1],
+  [2611525.9, 1267960.4],
+  [2611528.3, 1267964.1],
+];
+// Each [skin, hair, top, skirt, boots].
+const WOMEN_LOOKS = [
+  [0x8a5634, 0x111111, 0xff2d8a, 0x111111, 0xff2d8a], // pink and black
+  [0xf1c7a5, 0xe2c46e, 0xe8e8e8, 0xd81b60, 0xe8e8e8], // white and pink
+  [0xd9a27a, 0x7a2a1a, 0x8e24aa, 0x8e24aa, 0x111111], // purple
+  [0xc58c5c, 0x111111, 0xd32f2f, 0xd32f2f, 0xd32f2f], // red
+  [0xf1c7a5, 0x2a1d14, 0xffd600, 0x111111, 0x111111], // yellow and black
+  [0x6b4128, 0x111111, 0x00bcd4, 0xffffff, 0xffffff], // turquoise and white
+  [0xe8b996, 0xe2c46e, 0x111111, 0xd81b60, 0xd81b60], // black and pink
+  [0xd9a27a, 0x111111, 0xc0c0c0, 0x111111, 0x111111], // silver and black
+  [0x8a5634, 0x7a2a1a, 0x76ff03, 0x111111, 0x76ff03], // lime and black
+  [0xf1c7a5, 0x7a2a1a, 0xff6f00, 0xff6f00, 0x111111], // orange
+  [0xc58c5c, 0x2a1d14, 0x1e88e5, 0xe8e8e8, 0x1e88e5], // blue and white
+  [0xe8b996, 0x111111, 0xffffff, 0xffffff, 0xffffff], // white
+  [0x6b4128, 0xe2c46e, 0xffc107, 0xffc107, 0x111111], // gold
+  [0xf1c7a5, 0x7a2a1a, 0x111111, 0x111111, 0x111111], // black
+  [0xd9a27a, 0x2a1d14, 0x64ffda, 0x111111, 0x64ffda], // mint and black
+  [0x8a5634, 0x111111, 0xff4081, 0x311b92, 0x311b92], // pink and indigo
+].map(([skin, hair, top, bottom, shoes]) => ({ body: "woman", skin, hair, top, bottom, shoes }));
 scene.add(
-  createPeople(
-    parked(
-      KLEINBASEL.map((p, k) => {
-        const near = KLEINBASEL.filter((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) < 10);
-        if (!near.length) return { ...p, heading: k };
-        const x = near.reduce((sum, q) => sum + q.x, 0) / near.length;
-        const z = near.reduce((sum, q) => sum + q.z, 0) / near.length;
-        return { ...p, heading: Math.atan2(x - p.x, z - p.z) };
-      }),
-    ),
-    BLACK_GUYS.slice(4),
-  ),
+  createPeople(standing(MEN), MEN_LOOKS),
+  createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
 );
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 const drones = createDrones(
