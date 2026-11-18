@@ -1002,10 +1002,8 @@ const stadium = structures.widest(
   STADIUM,
 );
 if (stadium >= 0) structures.paint(stadium, { roof: 0xd51f2a, wall: 0x1d3fbf });
-// The buildings on Roche's site (its outline in OSM, landuse=industrial "Roche", in LV95) alike,
-// so they show as one company's: white walls as its towers and grey roofs, as on one of them on
-// the aerial photo (LV95 2612537.6, 1267604.0); the towers keep their light roofs (those whose
-// middle is within 20 m of TOWERS).
+// The buildings on Roche's site (its outline in OSM, landuse=industrial "Roche", in LV95) with
+// white walls as its towers, so they show as one company's; their roofs as on the aerial photo.
 const ROCHE = [
   [2612493.7, 1267596.1],
   [2612482.7, 1267693.6],
@@ -1041,15 +1039,16 @@ const inside = (outline, x, z) =>
     const b = outline.at(i - 1);
     return a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x ? !odd : odd;
   }, false);
-const TOWERS = [
-  [2612699, 1267652],
-  [2612727, 1267579],
-].map(fromLV95);
-const towers = new Set(
-  structures.within((x, z) => TOWERS.some((t) => Math.hypot(t.x - x, t.z - z) < 20)),
-);
 for (const number of structures.within((x, z) => inside(ROCHE, x, z)))
-  structures.paint(number, { roof: towers.has(number) ? 0xced7de : 0x6a7173, wall: 0xf4f4f2 });
+  structures.paint(number, { wall: 0xf4f4f2 });
+// Its green roof (LV95 2612593.3, 1267509.4) grey as another's (LV95 2612855.8, 1267667.0).
+{
+  const { x, z } = fromLV95([2612593.3, 1267509.4]);
+  fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
+  const hit = fromAbove.intersectObject(buildings.scene)[0];
+  if (hit)
+    structures.paint(hit.object.geometry.attributes._building.getX(hit.face.a), { roof: 0x655d5a });
+}
 const KIT = {
   body: "player",
   top: 0x1d3fbf,

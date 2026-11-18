@@ -345,12 +345,14 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       return found;
     },
     // Colours the one with this number: its roofs and walls (0xrrggbb each, by the materials'
-    // names); the walls keep their facade style (the alpha).
+    // names; one left out keeps its colours); the walls keep their facade style (the alpha).
     paint(number, { roof, wall }) {
       const colour = new THREE.Color();
       for (const mesh of meshesOf[number] ?? []) {
         const { color, _building } = mesh.geometry.attributes;
-        colour.set(mesh.material.name === "roof" ? roof : wall);
+        const wanted = mesh.material.name === "roof" ? roof : wall;
+        if (wanted === undefined) continue;
+        colour.set(wanted);
         for (let i = 0; i < color.count; i++)
           if (_building.getX(i) === number) color.setXYZ(i, colour.r, colour.g, colour.b);
         color.needsUpdate = true;
