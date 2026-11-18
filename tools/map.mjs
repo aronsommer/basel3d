@@ -2,31 +2,42 @@
 // with the patches of the aerial photo (SWISSIMAGE, downloaded by tools/terrain.mjs) in the green
 // areas and soft shadows around the buildings of public/basel.glb (tools/buildings.mjs, run it
 // first), and writes it to public/ground/map/ as one KTX2 per 1 km tile, like the aerial photo.
-// Also writes public/water.ktx2 for the water shader in src/main.js: red marks all visible water,
-// green and blue the downstream direction.
-import { readFileSync, writeFileSync } from "node:fs";
+// Also writes public/ground/deck/ for the bridge decks (see below) and public/water.ktx2 for the
+// water shader in src/main.js: red marks all visible water, green and blue the downstream
+// direction.
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { NodeIO } from "@gltf-transform/core";
 import { EXTMeshoptCompression, KHRMeshQuantization } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
-import { E_MIN, E_MAX, N_MIN, N_MAX, PUBLIC, toX, toZ } from "./area.mjs";
+import { E_MIN, E_MAX, N_MIN, N_MAX, CHUNK, PUBLIC, toX, toZ } from "./area.mjs";
 import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, onBridge } from "./osm.mjs";
 import { underBridges, BRIDGES_FILE } from "./bsbridges.mjs";
 import { writeTiles, encodeTexture } from "./tiles.mjs";
 import { photoMosaic } from "./swisstopo.mjs";
 
-const PX_PER_M = 1.024; // 1024 px per 1 km tile
+// Pixels per 1 km tile, a power of two (compressed mipmaps). Doubling it makes the map sharper up
+// close, with four times the pixels to draw, keep in memory, store and load.
+const TILE_PX = 1024;
+const PX_PER_M = TILE_PX / CHUNK;
 const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m per px)
 const BACKGROUND = "#9a968c"; // built-up land
 const FOOTPRINT = "#6b675e"; // under the buildings, seen where one is destroyed
 const elements = await osmElements();
 // Bridges built in 3D (tools/bridges.mjs, run it first): the OSM bridges whose middle lies under
-// one of them are drawn on the map, for their decks (src/main.js), but left out of the water
-// mask, so the water hides them on the river.
-const underBridge = underBridges(
-  new Float32Array(new Uint8Array(readFileSync(BRIDGES_FILE)).buffer),
-);
+// one of them are left out of the ground and drawn on their own, on sidewalk colour, into
+// public/ground/deck/ for the decks (src/main.js), only the tiles holding the middle of a 3D
+// bridge triangle, as the viewer sorts them.
+const bridgeTriangles = new Float32Array(new Uint8Array(readFileSync(BRIDGES_FILE)).buffer);
+const underBridge = underBridges(bridgeTriangles);
+const deckTiles = new Set();
+for (let i = 0; i < bridgeTriangles.length; i += 9) {
+  const [x, z] = [0, 2].map(
+    (d) => (bridgeTriangles[i + d] + bridgeTriangles[i + 3 + d] + bridgeTriangles[i + 6 + d]) / 3,
+  );
+  deckTiles.add(`${Math.floor((x - toX(E_MIN)) / CHUNK)}_${Math.floor((z - toZ(N_MAX)) / CHUNK)}`);
+}
 function coveredBridge(way) {
   if (!onBridge(way.tags ?? {})) return false;
   const points = way.geometry.filter(Boolean);
@@ -145,9 +156,10 @@ for (const el of elements) {
       shapes.push({ ...style, deck, d: [pathData(el.geometry, false)] });
 }
 shapes.sort((a, b) => a.order - b.order);
+const ground = shapes.filter((s) => !s.deck);
 
 // --- Render the whole area at once and cut it into tiles.
-const svg = (size, background, paint, list = shapes) => `<svg xmlns="http://www.w3.org/2000/svg"
+const svg = (size, background, paint, list = ground) => `<svg xmlns="http://www.w3.org/2000/svg"
   width="${size[0]}" height="${size[1]}" viewBox="0 0 ${E_MAX - E_MIN} ${N_MAX - N_MIN}">
   <rect width="100%" height="100%" fill="${background}"/>
   ${list
@@ -166,7 +178,12 @@ const raster = await render(svg([width, height], BACKGROUND, (c) => c))
   .raw()
   .toBuffer();
 const grey = (data) => sharp(data, { raw: { width, height, channels: 1 } });
-const blur = (data, sigma) => grey(data).blur(sigma).extractChannel(0).raw().toBuffer();
+const blur = (data, metres) =>
+  grey(data)
+    .blur(metres * PX_PER_M)
+    .extractChannel(0)
+    .raw()
+    .toBuffer();
 
 // The aerial photo at the map's size: its colours (rgb), their brightness (photo) and both
 // blurred a little against noise (soft).
@@ -177,7 +194,7 @@ const rgb = await sharp(await photoMosaic(), {
   .raw()
   .toBuffer();
 const soft = await sharp(rgb, { raw: { width, height, channels: 3 } })
-  .blur(1.5)
+  .blur(1.5 * PX_PER_M)
   .raw()
   .toBuffer();
 const brightness = (data, i) =>
@@ -241,16 +258,28 @@ for (let i = 0; i < width * height; i++) {
   }
   for (let c = 0; c < 3; c++) raster[i * 4 + c] = Math.min(255, raster[i * 4 + c] * factor);
 }
-await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"));
+await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"), TILE_PX);
 
-// Water white, everything else black, in the same order, so roads drawn over water stay dry; but
-// not the decks.
-const mask = svg(
-  [MASK_SIZE, MASK_SIZE],
-  "#000",
-  (c) => (c === WATER ? "#fff" : "#000"),
-  shapes.filter((s) => !s.deck),
+const deckDir = join(PUBLIC, "ground", "deck");
+rmSync(deckDir, { recursive: true, force: true });
+const decks = svg(
+  [width, height],
+  SIDEWALK,
+  (c) => c,
+  shapes.filter((s) => s.deck),
 );
+await writeTiles(
+  await render(decks).raw().toBuffer(),
+  width,
+  height,
+  4,
+  deckDir,
+  TILE_PX,
+  deckTiles,
+);
+
+// Water white, everything else black, in the same order, so roads drawn over water stay dry.
+const mask = svg([MASK_SIZE, MASK_SIZE], "#000", (c) => (c === WATER ? "#fff" : "#000"));
 const maskData = await render(mask).ensureAlpha().raw().toBuffer();
 
 // Flow: OSM rivers and streams point downstream. Each segment is drawn wide in a colour for its

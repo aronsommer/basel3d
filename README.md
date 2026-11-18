@@ -35,9 +35,10 @@ basel3d/
 │   ├── basel.glb      buildings (also for Unity/Blender)
 │   ├── bridges.glb    bridges in 3D (canton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
 │   ├── terrain/       terrain: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
-│   ├── ground/        ground images, 64 tiles each (KTX2, 1 km, named column_row)
+│   ├── ground/        ground images, 64 tiles each but deck/ (KTX2, 1 km, named column_row)
 │   │   ├── map/       map (OpenStreetMap, tools/map.mjs), shown at start unless the aerial photo was chosen
-│   │   └── photo/     aerial photo (SWISSIMAGE, tools/terrain.mjs), loads only when first shown
+│   │   ├── photo/     aerial photo (SWISSIMAGE, tools/terrain.mjs), loads only when first shown
+│   │   └── deck/      roads on the 3D bridges for the map (tools/map.mjs), only tiles with bridges
 │   ├── trees.bin      tree positions (x, z)
 │   ├── water.ktx2     water mask of the whole area for the water shader (tools/map.mjs)
 │   ├── trams.json     tram routes: lines with colour and start, operator (tools/paths.mjs)
@@ -54,7 +55,7 @@ basel3d/
 │   ├── buildings.mjs  swissBUILDINGS3D + SWISSIMAGE → basel.glb
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
 │   ├── osm.mjs        OpenStreetMap download, WGS84 → LV95, road widths
-│   ├── map.mjs        OpenStreetMap → ground/map/
+│   ├── map.mjs        OpenStreetMap + SWISSIMAGE + basel.glb + bridges → ground/map/, water.ktx2
 │   ├── bsbridges.mjs  loads and converts the bridge models of Basel-Stadt
 │   ├── bridges.mjs    bridges of Basel-Stadt → bridges.glb
 │   ├── tiles.mjs      cuts an image of the area into KTX2 tiles (for ground/)
@@ -69,9 +70,27 @@ basel3d/
 
 ## Regenerating the data
 
-`public/` is already generated. You only need to rebuild the data if you change the area or the converters. Each script downloads missing raw data to `data/` by itself. Whatever is already there is not downloaded again. `data/` can be deleted at any time.
+`public/` is already generated. You only need to rebuild the data if you change the area or the converters. Each script writes its part of `public/` and then `size.json`. Raw data goes to `data/`, which is not in the repo and can be deleted at any time.
 
-1. **Buildings:** `npm run buildings` takes swissBUILDINGS3D 3.0 as CityGML from the STAC catalogue `data.geo.admin.ch`, the newest version per map sheet (about 480 MB). The script:
+**Order.** Some scripts read what others wrote and do not fetch it themselves, so run them in this order (each is described below or under "What moves"):
+
+```sh
+npm run terrain     # terrain + aerial photo; needed by buildings, map, trams, trains, cars, ships
+npm run buildings   # roof colours from the aerial photo
+npm run bridges     # needs nothing else
+npm run map         # needs the aerial photo, basel.glb and data/bridges.bin
+npm run trams && npm run trains && npm run cars && npm run ships   # need terrain and bridges
+npm run trees && npm run names                                     # need nothing else
+```
+
+Run out of order, a script stops with an error where a file it reads is missing (`public/terrain/`, `basel.glb`, `data/bridges.bin`), but not without the aerial photo: then the buildings get a default roof colour, and the map loses the patches in its green areas and turns the built-up land slightly green. So check that `data/swissimage/` is filled before `npm run buildings` and `npm run map`.
+
+**Which data.** OpenStreetMap (cached in `data/osm.json`, `osm-churches.json`, `osm-trams.json`, `osm-trains.json`, `osm-names.json`), the aerial photo, the swissTLM3D layers and the canton's bridge models are downloaded once into `data/` and then reused, so they stay as they are until deleted. swissALTI3D and swissBUILDINGS3D are looked up in the STAC catalogue on every run: when swisstopo publishes a newer version of a tile, it is downloaded and used. Downloaded anew, everything comes in its current state, so the result can differ a little from the one in the repo. `data/reference/buildings.json` is not shared; without it the buildings take their roof colours from the aerial photo and guessed wall colours (see 2.).
+
+1. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
+   - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (Int16 in cm),
+   - SWISSIMAGE from the WMTS service `wmts.geo.admin.ch` at 1 m per pixel, cut into 1 km tiles and stored as GPU-compressed KTX2 textures (ETC1S, 1024 px). This takes about 6 minutes.
+2. **Buildings:** `npm run buildings` takes swissBUILDINGS3D 3.0 as CityGML from the STAC catalogue `data.geo.admin.ch`, the newest version per map sheet (about 480 MB). The script:
    - takes only roof and wall surfaces,
    - cuts out an 8 × 8 km area around the city,
    - shifts the Swiss coordinates (LV95) to an origin in the city,
@@ -79,13 +98,10 @@ basel3d/
    - colours each roof like the aerial photo (median of the pixels on it; flat roofs greyed), so run `npm run terrain` first,
    - gives each building a wall colour and a facade style (old town, modern, offices, glass, church, town hall, hall) from its size and roof shape, which `src/facade.js` draws as windows, shopfronts and balconies; buildings in the optional, not shared `data/reference/buildings.json` take its colours and names instead,
    - compresses with Meshopt (about 19 MB, 2.4 million triangles).
-2. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
-   - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (Int16 in cm),
-   - SWISSIMAGE from the WMTS service `wmts.geo.admin.ch` at 1 m per pixel, cut into 1 km tiles and stored as GPU-compressed KTX2 textures (ETC1S, 1024 px). This takes about 6 minutes.
-3. **Map:** `npm run map` fetches roads, rail, water and green areas from OpenStreetMap (Overpass API, about 30 MB) and draws a map from them without text and trees, in the same tiles as the aerial photo: muted colours about as bright as the photo, one grey for all roads with light sidewalks and dark kerbs, a darker strip for tram tracks. In green areas the photo's brightness pattern (relative to its surroundings) gives lawns, fields and woods their real patches; on the built-up land the photo's green pixels become lawn, so gardens and courtyards show. Around the buildings of `basel.glb` the ground is darkened softly (contact shadows) and their footprints are filled, so run `npm run buildings` and `npm run terrain` first. Colours and road widths are at the top of `tools/map.mjs`. It also writes `water.ktx2` (2048 px, about 4 m per pixel): a mask of all visible water and the flow direction from the OSM river lines. There the ground shader in the viewer draws water whose pattern drifts downstream with light patches, on both the map and the aerial photo. Tunnels are missing. Bridges built in 3D (see below) are drawn on the map too, for their decks, but left out of the water mask, so on the river the water hides them; all others are drawn flat. This takes about 7 minutes.
-4. **Bridges:** `npm run bridges` takes the modelled bridges of the canton Basel-Stadt (official cadastral survey, service 3D-Tiles BS, `https://3d.geo.bs.ch/cesium/tiles/av-bruecken/tileset.json`, about 10 MB in `data/bs-bruecken/`), with piers, arches and railings. The script converts them from Earth coordinates (ECEF) into the scene. Structures such as the Käppelijoch on the Mittlere Brücke come from the swisstopo buildings and stand exactly on the deck.
+3. **Bridges:** `npm run bridges` takes the modelled bridges of the canton Basel-Stadt (official cadastral survey, service 3D-Tiles BS, `https://3d.geo.bs.ch/cesium/tiles/av-bruecken/tileset.json`, about 10 MB in `data/bs-bruecken/`), with piers, arches and railings. The script converts them from Earth coordinates (ECEF) into the scene. Structures such as the Käppelijoch on the Mittlere Brücke come from the swisstopo buildings and stand exactly on the deck.
    - Crossings of the Rhine and the Birs that the canton modelled only partly (at the canton border) or not at all are built entirely from swissTLM3D: a simple deck with side walls on the measured line, instead of the canton's model. This covers the Birsfelden power station, the Dreiländerbrücke and the Birs bridges at the border and in Baselland. The swissTLM3D layers `TLM_STRASSE` and `TLM_EISENBAHN` come from the ZIP via HTTP range requests, like the trees (about 530 MB download, 3 GB in `data/`).
-   - Together about 114,000 triangles and 300 KB in `bridges.glb`. All built triangles also end up in `data/bridges.bin`. `npm run map` uses it to keep the OSM bridges underneath out of the water mask, so run `npm run bridges` first. In the viewer the faces looking up show the ground texture below them (map or aerial photo), so a deck continues the road; where the map shows water there (a deck wider than its road) in the sidewalk colour. Sides and undersides stay stone.
+   - Together about 114,000 triangles and 300 KB in `bridges.glb`. All built triangles also end up in `data/bridges.bin`, which `npm run map` (to draw the OSM bridges underneath on their own), `trams`, `trains`, `cars` and `ships` read, so run `npm run bridges` before them. In the viewer the faces looking up show the texture of their place, so a deck continues the road: in the map view the deck tiles (see 4.), in the aerial view the photo, which shows the decks itself. Sides and undersides stay stone.
+4. **Map:** `npm run map` fetches roads, rail, water and green areas from OpenStreetMap (Overpass API, about 30 MB) and draws a map from them without text and trees, in the same tiles as the aerial photo: muted colours about as bright as the photo, one grey for all roads with light sidewalks and dark kerbs, a darker strip for tram tracks. In green areas the photo's brightness pattern (relative to its surroundings) gives lawns, fields and woods their real patches; on the built-up land the photo's green pixels become lawn, so gardens and courtyards show. Around the buildings of `basel.glb` the ground is darkened softly (contact shadows) and their footprints are filled, so run `npm run buildings` and `npm run terrain` first. Colours and road widths are at the top of `tools/map.mjs`. It also writes `water.ktx2` (2048 px, about 4 m per pixel): a mask of all visible water and the flow direction from the OSM river lines. There the ground shader in the viewer draws water whose pattern drifts downstream with light patches, on both the map and the aerial photo. Tunnels are missing. Bridges built in 3D (see 3.) are left out of the map, so it shows what lies below them; their OSM roads are drawn on their own on sidewalk colour into `ground/deck/` (only the tiles with 3D bridges), for the decks. All other bridges are drawn flat. The sharpness is one number, `TILE_PX` (pixels per 1 km tile, now 1024, about 1 m per pixel) at the top of `tools/map.mjs`; all blurs there are in metres, so the look stays the same at another size. 2048 is twice as sharp up close but has four times the pixels to draw, keep in memory, store (the tiles now take about 14 MB) and load; it has not been tried yet. This takes about 9 minutes.
 5. **Trees:** `npm run trees` takes only the layer `TLM_EINZELBAUM` from the landscape model swissTLM3D. The whole file would be 3.6 GB, so the script downloads only the needed parts of the ZIP via HTTP range requests. The area holds about 86,500 trees. The viewer draws them instanced, with one mesh per 1 km tile. Up close the trees have a trunk, from afar only a simple crown.
 
 ## What moves

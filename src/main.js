@@ -93,7 +93,8 @@ function load(paths, show) {
 }
 
 // Ground textures in public/ground/<kind>/, one per 1 km tile named column_row: "map" from
-// OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs).
+// OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs); "deck", the roads
+// on the 3D bridges for the map (tools/map.mjs), only where there are bridges.
 const GROUND_LABELS = { map: "Map", photo: "Aerial" };
 const groundPaths = (kind) =>
   Object.keys(sizes).filter((path) => path.startsWith(`ground/${kind}/`));
@@ -145,20 +146,24 @@ const [
     "names.json",
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
     ...groundPaths(groundKind),
+    ...groundPaths("deck"),
   ],
   (percent) => (progress.textContent = `${percent}%`),
 );
 const moverFiles = rest.slice(0, MOVER_KINDS.length * 2);
-const groundBuffers = rest.slice(MOVER_KINDS.length * 2);
+const groundEnd = MOVER_KINDS.length * 2 + groundPaths(groundKind).length;
+const groundBuffers = rest.slice(MOVER_KINDS.length * 2, groundEnd);
+const deckBuffers = rest.slice(groundEnd);
 const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
 const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 100);
 const treePositions = new Float32Array(treesBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-const [buildings, bridges, waterMask, firstGround] = await Promise.all([
+const [buildings, bridges, waterMask, firstGround, decks] = await Promise.all([
   gltfLoader.parseAsync(glb, ""),
   gltfLoader.parseAsync(bridgesGlb, ""),
   new Promise((resolve, reject) => ktx2.parse(waterBuffer, resolve, reject)),
   groundTextures(groundPaths(groundKind), groundBuffers),
+  groundTextures(groundPaths("deck"), deckBuffers),
 ]);
 const ground = { [groundKind]: firstGround }; // textures by tile name, per kind once loaded
 
@@ -335,7 +340,7 @@ groundButton.addEventListener("click", async () => {
   for (const texture of ground[groundKind].values()) texture.dispose();
   groundKind = kind;
   for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
-  for (const [name, map] of deckMaps) map.value = ground[kind].get(name);
+  for (const [name, map] of deckMaps) map.value = deckTexture(kind, name);
   groundButton.textContent = GROUND_LABELS[otherGround()];
   try {
     localStorage.setItem(GROUND_KEY, kind);
@@ -1694,14 +1699,18 @@ function addWater(shader) {
     );
 }
 
-// One mesh per chunk, named column_row like its ground texture.
-// The bridges' tops show the ground texture of their place, as if the map or photo ran across
+// The texture for the decks on a tile with this ground kind: the map's own deck tile (the map
+// leaves the bridges' roads out), else the ground's, as the aerial photo shows the decks.
+function deckTexture(kind, name) {
+  return (kind === "map" && decks.get(name)) || ground[kind].get(name);
+}
+
+// The bridges' tops show their place's texture (deckTexture), as if the map or photo ran across
 // them (deckShader): their triangles sorted by the ground tile under their middle, one copy of
 // base per tile. Returns the uniforms holding each tile's texture, by tile name.
 function createDecks(model, base) {
   const { x0, z0, chunk } = terrainInfo;
   const maps = new Map();
-  const deckEdge = { value: new THREE.Color(0xafaa9e) }; // SIDEWALK in tools/map.mjs
   const vertex = new THREE.Vector3();
   model.traverse((mesh) => {
     if (!mesh.isMesh) return;
@@ -1726,7 +1735,7 @@ function createDecks(model, base) {
     for (const [name, triangles] of byTile) {
       geometry.addGroup(order.length, triangles.length * 3, materials.length);
       for (const t of triangles) order.push(at(t), at(t + 1), at(t + 2));
-      const texture = ground[groundKind].get(name);
+      const texture = deckTexture(groundKind, name);
       if (!texture) {
         materials.push(base); // outside the ground
         continue;
@@ -1737,7 +1746,7 @@ function createDecks(model, base) {
       const tile = new THREE.Vector3(x0 + ix * chunk, z0 + iz * chunk, chunk);
       const material = base.clone();
       material.onBeforeCompile = (shader, renderer) => {
-        Object.assign(shader.uniforms, { deckMap: map, deckTile: { value: tile }, deckEdge });
+        Object.assign(shader.uniforms, { deckMap: map, deckTile: { value: tile } });
         deckShader(shader);
         base.onBeforeCompile(shader, renderer);
       };
@@ -1750,9 +1759,8 @@ function createDecks(model, base) {
   return maps;
 }
 
-// Where a face looks up, seen from above, its colour from deckMap, the ground tile at deckTile
-// (west x, north z, size); where that shows the map's water (a deck wider than its road), the
-// sidewalk colour deckEdge. Before the colours, so the highlight still wins.
+// Where a face looks up, seen from above, its colour from deckMap, the texture of the tile at
+// deckTile (west x, north z, size). Before the colours, so the highlight still wins.
 function deckShader(shader) {
   shader.vertexShader = shader.vertexShader
     .replace("void main() {", "varying vec3 vDeck;\nvoid main() {")
@@ -1763,20 +1771,19 @@ function deckShader(shader) {
   shader.fragmentShader = shader.fragmentShader
     .replace(
       "void main() {",
-      "uniform sampler2D deckMap;\nuniform vec3 deckTile, deckEdge;\nvarying vec3 vDeck;\nvoid main() {",
+      "uniform sampler2D deckMap;\nuniform vec3 deckTile;\nvarying vec3 vDeck;\nvoid main() {",
     )
     .replace(
       "#include <color_fragment>",
       `vec3 deckNormal = normalize(cross(dFdx(vDeck), dFdy(vDeck))); // towards the camera
       vec3 deckGround = texture2D(deckMap,
         vec2(vDeck.x - deckTile.x, deckTile.y + deckTile.z - vDeck.z) / deckTile.z).rgb;
-      float deckWater = smoothstep(0.15, 0.3, deckGround.b - deckGround.r);
-      diffuseColor.rgb = mix(diffuseColor.rgb, mix(deckGround, deckEdge, deckWater),
-        smoothstep(0.75, 0.9, deckNormal.y));
+      diffuseColor.rgb = mix(diffuseColor.rgb, deckGround, smoothstep(0.75, 0.9, deckNormal.y));
       #include <color_fragment>`,
     );
 }
 
+// One mesh per chunk, named column_row like its ground texture.
 function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   water.waterArea.value.set(x0, z0, (nx - 1) * cell, (nz - 1) * cell);
   const group = new THREE.Group();

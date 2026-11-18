@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { encodeToKTX2 } from "ktx2-encoder";
 import { E_MIN, E_MAX, CHUNK } from "./area.mjs";
 
-const TEXTURE = 1024; // px per tile: compressed mipmaps need sizes divisible by 4
+const TEXTURE = 1024; // px per tile unless given: compressed mipmaps need sizes divisible by 4
 
 // Encodes a square RGBA raster whose size is a power of two.
 export const encodeTexture = (data, size) =>
@@ -17,19 +17,20 @@ export const encodeTexture = (data, size) =>
     imageDecoder: async () => ({ width: size, height: size, data }),
   });
 
-// Cuts a raster of the whole area (north-west corner first) into one texture per 1 km tile:
-// <dir>/<column>_<row>.ktx2.
-export async function writeTiles(raster, width, height, channels, dir) {
+// Cuts a raster of the whole area (north-west corner first) into one texture of texture px per
+// 1 km tile: <dir>/<column>_<row>.ktx2; only those named in only if given.
+export async function writeTiles(raster, width, height, channels, dir, texture = TEXTURE, only) {
   mkdirSync(dir, { recursive: true });
   const size = (width * CHUNK) / (E_MAX - E_MIN); // raster px per tile
   for (let iz = 0; iz < height / size; iz++)
     for (let ix = 0; ix < width / size; ix++) {
+      if (only && !only.has(`${ix}_${iz}`)) continue;
       const data = await sharp(raster, { raw: { width, height, channels } })
         .extract({ left: ix * size, top: iz * size, width: size, height: size })
-        .resize(TEXTURE, TEXTURE)
+        .resize(texture, texture)
         .ensureAlpha()
         .raw()
         .toBuffer();
-      writeFileSync(join(dir, `${ix}_${iz}.ktx2`), await encodeTexture(data, TEXTURE));
+      writeFileSync(join(dir, `${ix}_${iz}.ktx2`), await encodeTexture(data, texture));
     }
 }

@@ -2,7 +2,7 @@
 // public/bridges.glb, compressed like the buildings and without normals. Crossings of the Rhine or
 // the Birs that the canton models only in part or not at all (the Birsfelden weir on the cantonal
 // border, the Dreiländerbrücke abroad) become one simple deck along their swissTLM3D line instead.
-// Also writes all triangles to data/bridges.bin, so tools/map.mjs can hide the OSM bridges below.
+// Also writes all triangles to data/bridges.bin for tools/map.mjs, paths.mjs and ships.mjs.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Document, NodeIO } from "@gltf-transform/core";
@@ -162,7 +162,7 @@ for (const [n, { points, width }] of simple.entries()) {
   for (let t = start; t < triangles.length; t += 9) bridges.push(count + n);
 }
 console.log(`${simple.length} crossings from swissTLM3D, ${triangles.length / 9} triangles in all`);
-// All triangles for tools/map.mjs, which leaves out the OSM bridges below them.
+// All triangles for tools/map.mjs, paths.mjs and ships.mjs.
 writeFileSync(BRIDGES_FILE, new Float32Array(triangles));
 
 // Each vertex's bridge number as _BUILDING, as in public/basel.glb, so the viewer treats both
