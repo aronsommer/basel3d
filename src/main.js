@@ -19,6 +19,7 @@ import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createDrones } from "./drone.js";
+import { createBoats } from "./boats.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
@@ -921,7 +922,24 @@ const drones = createDrones(
   },
   camera,
 );
-scene.add(...[...police, ...motorcycles, ...tanks, ...drones].map((vehicle) => vehicle.group));
+// Boats (src/boats.js) on the Rhine, along the river: the fireboat between the Mittlere Brücke and
+// the Johanniterbrücke (LV95 2611109.0, 1267968.1), the police speedboat below the Mittlere Brücke
+// (LV95 2611324.4, 1267926.5), 7 m off the bank, so it can turn. They float on the water, where the
+// terrain lies flat at the water's surface, at most WATER; banks and bridge piers stop them.
+const WATER = -4.9; // scene y
+const onWater = {
+  ground: (x, z) => heightAt(x, z),
+  blocked: (from, to) => heightAt(to.x, to.z) > WATER || structures.wall(from, to, true),
+  intoArea,
+};
+const boat = (x, z, heading) => [{ x, y: heightAt(x, z), z, heading }];
+const fireboats = createBoats("fire", boat(109, -568.1, 0.62), boost, onWater);
+const policeBoats = createBoats("police", boat(324.4, -526.5, -2.53), boost, onWater);
+scene.add(
+  ...[...police, ...motorcycles, ...tanks, ...drones, ...fireboats, ...policeBoats].map(
+    (vehicle) => vehicle.group,
+  ),
+);
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;
@@ -2148,8 +2166,8 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster, the
-// UFO, a police car, a motorcycle, the tank or the drone to ride along; while riding, but not
-// steering, a click or tap on another one changes to it.
+// UFO, a police car, a motorcycle, the tank, a boat or the drone to ride along; while
+// riding, but not steering, a click or tap on another one changes to it.
 // A finger also finds one up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
 // The UFO from behind and above, looking down on it.
@@ -2157,11 +2175,14 @@ const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
 // What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the
-// motorcycles and the tanks, from behind and above; the drones through their own camera (look).
+// motorcycles, the tanks and the boats, from behind and above; the drones through their own
+// camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
   [tanks, [0, 7, -16], [0, 2, 14]],
+  [fireboats, [0, 9, -24], [0, 3, 20]],
+  [policeBoats, [0, 4, -14], [0, 1.5, 11]],
   [drones],
 ].map(([vehicles, eye, ahead]) => {
   const ride = riders(

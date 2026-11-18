@@ -215,16 +215,17 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           }
       return best;
     },
-    // Whether a wall of a building (not a bridge) crosses the level segment from → to (short
-    // against GRID) at the height of from; hidden ones are left out.
-    wall(from, to) {
+    // Whether a wall of a building (or with bridges, of a bridge too) crosses the level segment
+    // from → to (short against GRID) at the height of from; hidden ones are left out.
+    wall(from, to, bridges = false) {
       if (!boxes) measure();
       const [x0, x1] = cellRange(Math.min(from.x, to.x), Math.max(from.x, to.x));
       const [z0, z1] = cellRange(Math.min(from.z, to.z), Math.max(from.z, to.z));
       for (let x = x0; x <= x1; x++)
         for (let z = z0; z <= z1; z++)
           for (const n of cells.get(`${x},${z}`) ?? []) {
-            if (n >= count || !meshesOf[n].length || enter(from, to, n) === Infinity) continue;
+            if ((n >= count && !bridges) || !meshesOf[n].length || enter(from, to, n) === Infinity)
+              continue;
             for (const mesh of meshesOf[n]) {
               const list = surfacesOf(mesh).get(n)?.walls ?? [];
               for (let i = 0; i < list.length; i += 6) {
