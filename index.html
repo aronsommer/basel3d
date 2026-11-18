@@ -47,7 +47,8 @@
       #off,
       #reset,
       #layers,
-      #counter {
+      #counter,
+      #dev {
         box-sizing: border-box;
         padding: 8px 14px;
         font: inherit;
@@ -69,7 +70,8 @@
       #off,
       #reset,
       #layers,
-      #counter {
+      #counter,
+      #dev {
         position: absolute;
         width: 96px;
       }
@@ -79,7 +81,8 @@
         right: 12px;
       }
       #reset,
-      #counter {
+      #counter,
+      #dev {
         left: 12px;
       }
       #ground,
@@ -94,6 +97,17 @@
       #off,
       #reset {
         cursor: pointer;
+      }
+      /* Frame times while "Dev info" is ticked (src/dev.js), below the reset button. */
+      #dev {
+        top: 148px;
+        width: auto; /* as wide as its lines */
+        text-align: left;
+        white-space: pre;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+        -webkit-user-select: text; /* Safari; to copy by hand where the click cannot */
+        user-select: text;
       }
       /* The key to get off, only where there is a keyboard; less padding then, to fit in the same
          width. */
@@ -200,15 +214,17 @@
         accent-color: #ff00ff;
         cursor: pointer;
       }
-      /* The names apart from the lines below them. */
+      /* The names apart from the lines below them, the dev info from those above it. */
       #layers hr {
         margin: 4px 0;
         border: 0;
         border-top: 1px solid rgba(0, 0, 0, 0.12);
       }
-      /* "All" neutral, as it stands for lines of all colours; "Names" neutral, as it shows none. */
+      /* "All" neutral, as it stands for lines of all colours; "Names" and "Dev info" neutral, as
+         they show none. */
       #layers #trams,
-      #layers #names-box {
+      #layers #names-box,
+      #layers #dev-box {
         accent-color: #1d242b;
       }
       /* The tram lines one by one below the heading, five in a row, each pair of box and number
@@ -502,6 +518,8 @@
       <label><input type="checkbox" data-kind="train" /> Trains</label>
       <label><input type="checkbox" data-kind="car" /> Cars</label>
       <label><input type="checkbox" data-kind="ship" /> Ships</label>
+      <hr />
+      <label><input type="checkbox" id="dev-box" /> Dev info</label>
     </details>
     <div id="credit">
       <span

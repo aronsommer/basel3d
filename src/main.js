@@ -19,13 +19,20 @@ import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createDrones } from "./drone.js";
+import { createDev } from "./dev.js";
 import { part } from "./parts.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const LV95 = [2611000, 1267400]; // E, N of the scene's origin
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
 const CENTRE = 2; // metres the view's centre (turned round, zoomed to) is above the terrain
+const FOLLOW = 4; // per second: how fast the view's centre follows the terrain's height
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
+// Metres from a chunk beyond which its trees are only a three-sided cone, and fewer further away.
+const TREE_FAR = 1500;
+// Metres from a terrain chunk beyond which it has only every TERRAIN_STEP-th height each way.
+const TERRAIN_DETAIL = 2000;
+const TERRAIN_STEP = 4;
 const SKY = 0xbfd8ea;
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
 // Far from the camera, moving things grow so they can be seen from above: from BOOST_FROM metres
@@ -197,12 +204,10 @@ const materials = {
   roof: new THREE.MeshLambertMaterial({
     vertexColors: true, // each building's own (tools/buildings.mjs)
     flatShading: true,
-    side: THREE.DoubleSide,
   }),
   wall: new THREE.MeshLambertMaterial({
     vertexColors: true,
     flatShading: true,
-    side: THREE.DoubleSide,
   }),
   bridge: new THREE.MeshLambertMaterial({
     color: 0xc8c3ba,
@@ -669,14 +674,14 @@ function updateBadges() {
 // than LANDMARK_RANGE from the camera are hidden, so the centre stays readable from afar.
 const LANDMARK_RANGE = 3000; // metres
 // Shown as last chosen in this browser, else not.
-const NAMES_KEY = "basel3d.names"; // "on" or "off"
+const NAMES_KEY = "basel3d.names"; // "1" (on) or "0"
 const namesBox = document.getElementById("names-box");
 try {
-  namesBox.checked = localStorage.getItem(NAMES_KEY) === "on";
+  namesBox.checked = localStorage.getItem(NAMES_KEY) === "1";
 } catch {} // storage blocked
 namesBox.addEventListener("change", () => {
   try {
-    localStorage.setItem(NAMES_KEY, namesBox.checked ? "on" : "off");
+    localStorage.setItem(NAMES_KEY, namesBox.checked ? "1" : "0");
   } catch {} // storage blocked
 });
 const nameLayer = document.getElementById("names");
@@ -1642,7 +1647,8 @@ function createSerpent(x, z, scale, lookX, lookZ) {
 
 // Trees as instanced low-poly models (1 unit tall) with varied size and colour, one mesh per
 // terrain chunk so they are frustum-culled. Near the camera a chunk gets a trunk and an
-// icosahedron crown, further away only an octahedron crown.
+// icosahedron crown, further away only an octahedron crown, far away a three-sided cone and
+// fewer of them.
 // The single trees (positions: east, south) and those on the photo's crowns (canopy: east, south,
 // height in dm; tools/trees.mjs, map.mjs), positions in 1/8 m (TREE_GRID in tools/area.mjs) from
 // the area's north-west corner; each a little different in size, shape and green.
@@ -1663,7 +1669,10 @@ function createTrees(positions, canopy) {
   const simpleCrown = new THREE.OctahedronGeometry(0.33);
   simpleCrown.translate(0, 0.67, 0);
   const near = mergeGeometries([colored(trunk, 0x6b5a45), colored(crown, 0x5d7f3e)]);
-  const far = colored(simpleCrown, 0x5d7f3e);
+  const middle = colored(simpleCrown, 0x5d7f3e);
+  const cone = new THREE.ConeGeometry(0.33, 0.66, 3, 1, true); // 3 triangles
+  cone.translate(0, 0.67, 0);
+  const far = colored(cone, 0x5d7f3e);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 
   // Per tree x, z and height in m (0: chosen below); tree indices per chunk.
@@ -1690,6 +1699,11 @@ function createTrees(positions, canopy) {
   const tint = new THREE.Color();
   const up = new THREE.Vector3(0, 1, 0);
   const meshes = [...chunks.values()].map((indices) => {
+    // In random order, so drawing only the first ones (updateTrees) thins them out evenly.
+    for (let k = indices.length - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      [indices[k], indices[j]] = [indices[j], indices[k]];
+    }
     // Bounds are computed once, from the larger near model.
     const mesh = new THREE.InstancedMesh(near, material, indices.length);
     indices.forEach((i, n) => {
@@ -1710,14 +1724,19 @@ function createTrees(positions, canopy) {
     mesh.computeBoundingBox();
     return mesh;
   });
-  return { meshes, near, far };
+  return { meshes, near, middle, far };
 }
 
-// Detailed trees only near the camera.
+// Detailed trees only near the camera, fewer far away.
 function updateTrees() {
-  for (const mesh of tree.meshes)
+  for (const mesh of tree.meshes) {
+    const distance = mesh.boundingBox.distanceToPoint(camera.position);
     mesh.geometry =
-      mesh.boundingBox.distanceToPoint(camera.position) < TREE_DETAIL ? tree.near : tree.far;
+      distance < TREE_DETAIL ? tree.near : distance < TREE_FAR ? tree.middle : tree.far;
+    // Beyond TREE_FAR about as many per screen area as there.
+    const share = Math.min(1, (TREE_FAR / distance) ** 2);
+    mesh.count = Math.ceil(mesh.instanceMatrix.count * share);
+  }
 }
 
 function addWater(shader) {
@@ -1869,26 +1888,70 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   water.waterArea.value.set(x0, z0, (nx - 1) * cell, (nz - 1) * cell);
   const group = new THREE.Group();
   const segments = chunk / cell;
+  // A chunk with every step-th height. A coarse one gets a skirt hanging SKIRT metres down from
+  // its edges, both ways round, so no gaps show where it meets a finer one.
+  const SKIRT = 50;
+  function chunkGeometry(ix, iz, step) {
+    const n = segments / step;
+    const geometry = new THREE.PlaneGeometry(chunk, chunk, n, n);
+    geometry.rotateX(-Math.PI / 2); // rows now run north → south, like heights
+    geometry.translate(x0 + (ix + 0.5) * chunk, 0, z0 + (iz + 0.5) * chunk);
+    const position = geometry.attributes.position;
+    for (let row = 0, i = 0; row <= n; row++)
+      for (let col = 0; col <= n; col++, i++)
+        position.setY(i, heights[(iz * segments + row * step) * nx + ix * segments + col * step]);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    if (step === 1) return geometry;
+    const ring = []; // the edge's vertices, once round
+    for (let col = 0; col < n; col++) ring.push(col);
+    for (let row = 0; row < n; row++) ring.push(row * (n + 1) + n);
+    for (let col = n; col > 0; col--) ring.push(n * (n + 1) + col);
+    for (let row = n; row > 0; row--) ring.push(row * (n + 1));
+    const count = position.count;
+    for (const name of ["position", "normal", "uv"]) {
+      const { array, itemSize } = geometry.attributes[name];
+      const grown = new Float32Array(array.length + ring.length * itemSize);
+      grown.set(array);
+      ring.forEach((v, k) => {
+        for (let j = 0; j < itemSize; j++)
+          grown[(count + k) * itemSize + j] =
+            array[v * itemSize + j] - (name === "position" && j === 1 ? SKIRT : 0);
+      });
+      geometry.setAttribute(name, new THREE.BufferAttribute(grown, itemSize));
+    }
+    const index = [...geometry.index.array];
+    ring.forEach((a, k) => {
+      const b = ring[(k + 1) % ring.length];
+      const [c, d] = [count + k, count + ((k + 1) % ring.length)];
+      index.push(a, b, c, b, d, c, a, c, b, b, c, d);
+    });
+    geometry.setIndex(index);
+    return geometry;
+  }
   for (let iz = 0; iz < (nz - 1) / segments; iz++)
     for (let ix = 0; ix < (nx - 1) / segments; ix++) {
-      const geometry = new THREE.PlaneGeometry(chunk, chunk, segments, segments);
-      geometry.rotateX(-Math.PI / 2); // rows now run north → south, like heights
-      geometry.translate(x0 + (ix + 0.5) * chunk, 0, z0 + (iz + 0.5) * chunk);
-      const position = geometry.attributes.position;
-      for (let row = 0, i = 0; row <= segments; row++)
-        for (let col = 0; col <= segments; col++, i++)
-          position.setY(i, heights[(iz * segments + row) * nx + ix * segments + col]);
-      geometry.computeVertexNormals();
+      const fine = chunkGeometry(ix, iz, 1);
       const material = new THREE.MeshLambertMaterial({
         map: ground[groundKind].get(`${ix}_${iz}`),
       });
       material.onBeforeCompile = addWater;
       material.customProgramCacheKey = () => "water"; // all chunks share one program
-      const mesh = new THREE.Mesh(geometry, material);
+      const mesh = new THREE.Mesh(fine, material);
       mesh.name = `${ix}_${iz}`;
+      mesh.userData.levels = [fine, chunkGeometry(ix, iz, TERRAIN_STEP)]; // for updateTerrain
       group.add(mesh);
     }
   return group;
+}
+
+// The coarse terrain for the chunks TERRAIN_DETAIL metres or more from the camera.
+function updateTerrain() {
+  for (const mesh of terrain.children) {
+    const [fine, coarse] = mesh.userData.levels;
+    mesh.geometry =
+      fine.boundingBox.distanceToPoint(camera.position) < TERRAIN_DETAIL ? fine : coarse;
+  }
 }
 
 // A scene position moved into the terrain's area, as [x, z].
@@ -2278,9 +2341,11 @@ function updateOrbit(dt) {
   orbit.update();
   // The view's centre stays over the terrain's area, CENTRE above it, so a drag moves the ground
   // under the pointer and zooming goes towards it; the camera moves along, the gliding stops at
-  // the area's edge.
+  // the area's edge. It follows the terrain's height smoothly (FOLLOW), so the view does not bob
+  // over every slope when dragged fast.
   const [x, z] = intoArea(orbit.target.x, orbit.target.z);
-  const y = heightAt(x, z) + CENTRE;
+  const above = heightAt(x, z) + CENTRE;
+  const y = orbit.target.y + (above - orbit.target.y) * (1 - Math.exp(-FOLLOW * dt));
   camera.position.add(shift.set(x, y, z).sub(orbit.target));
   if (x !== orbit.target.x) fling.x = 0;
   if (z !== orbit.target.z) fling.z = 0;
@@ -2443,10 +2508,24 @@ function render(grey = tramLinesShown()) {
   renderer.autoClear = true;
 }
 // Once before the first frame, so the first switch to grey does not stutter: allocates greyTarget
-// and compiles the shaders the scene in view needs to be drawn into it, and the grey one. Then
-// the normal view over it, so the grey one is never seen.
+// and compiles the shaders the scene needs to be drawn into it, and the grey one. Then the normal
+// view over it, so the grey one is never seen. Both with all in the scene drawn, also what is out
+// of view, so its geometry and textures are on the GPU before it first comes into view.
+const culled = [];
+scene.traverse((object) => {
+  if (object.frustumCulled) culled.push(object);
+});
+for (const object of culled) object.frustumCulled = false;
 render(true);
 render(false);
+for (const object of culled) object.frustumCulled = true;
+
+// Draws a frame, with the "Dev info" (src/dev.js) while it is ticked.
+const drawFrame = createDev(renderer, render, [
+  ["Buildings", [buildings.scene, bridges.scene]],
+  ["Terrain", [terrain]],
+  ["Trees", tree.meshes],
+]);
 
 let last = performance.now();
 renderer.setAnimationLoop((time) => {
@@ -2457,6 +2536,7 @@ renderer.setAnimationLoop((time) => {
   writeView(time);
   updateHover();
   updateTrees();
+  updateTerrain();
   water.waterTime.value = time / 1000;
   pavilionTime.value = time / 1000;
   serpent.update(time / 1000);
@@ -2487,5 +2567,5 @@ renderer.setAnimationLoop((time) => {
   shoot(time / 1000);
   updateBadges();
   updateNames();
-  render();
+  drawFrame();
 });
