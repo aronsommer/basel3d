@@ -707,15 +707,20 @@ const ufo = createUfo(boost, (x, z) => {
   return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
 });
 scene.add(...ufo.meshes);
-// The decks of all standing bridges (deckOf), made when the police car first needs them.
+// The decks of all standing bridges (deckOf), made when a police car first needs them.
 let roads = null;
-// The police car (src/police.js), parked in St. Johann facing south. It stands on the terrain or
-// on the highest bridge deck at most STEP above its wheels.
+// The police cars (src/police.js), parked in St. Johann and on the Rhine in Klybeck by the
+// Dreirosenbrücke, both facing south (heading: radians from south towards east). Each stands on
+// the terrain or on the highest bridge deck at most STEP above its wheels.
 const STEP = 1; // metres
-const PARKED = { x: -1002.3, z: -765.7, heading: 0 };
-fromAbove.set(new THREE.Vector3(PARKED.x, 2000, PARKED.z), DOWN);
-PARKED.y = fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y;
-const police = createPolice(PARKED, boost, {
+const parked = [
+  { x: -1002.3, z: -765.7, heading: 0 },
+  { x: 132.7, z: -1427.2, heading: -0.05 },
+].map((place) => {
+  fromAbove.set(new THREE.Vector3(place.x, 2000, place.z), DOWN);
+  return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
+});
+const police = createPolice(parked, boost, {
   ground(x, z, y) {
     roads ??= deckOf(
       [...structures.triangles(structures.bridgeNumbers).values()].flatMap((parts) =>
@@ -727,7 +732,7 @@ const police = createPolice(PARKED, boost, {
   blocked: (from, to) => structures.wall(from, to),
   intoArea,
 });
-scene.add(police.group);
+scene.add(...police.map((car) => car.group));
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;
@@ -888,7 +893,7 @@ function createShips(course) {
 }
 
 // Riding along on single objects (ships, planes, the helicopter, the sea monster, the UFO, the
-// police car), each { object, materials, eye, ahead } (points in the object's own frame): the
+// police cars), each { object, materials, eye, ahead } (points in the object's own frame): the
 // camera at eye, looking at ahead with the horizon level; under the mouse the materials show
 // HIGHLIGHT.
 function riders(list) {
@@ -1910,17 +1915,22 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster, the
-// UFO or the police car to ride along; while riding, a click or tap on another one changes to it.
+// UFO or a police car to ride along; while riding, a click or tap on another one changes to it.
 // A finger also finds one up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
 // The UFO from behind and above, looking down on it.
 const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
-// The police car from behind and above.
-const policeRide = riders([
-  { object: police.group, materials: [police.material], eye: [0, 3, -8.5], ahead: [0, 1.2, 8] },
-]);
+// The police cars from behind and above.
+const policeRide = riders(
+  police.map(({ group, material }) => ({
+    object: group,
+    materials: [material],
+    eye: [0, 3, -8.5],
+    ahead: [0, 1.2, 8],
+  })),
+);
 // What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
 const rides = [
   ...movers,
@@ -1948,7 +1958,7 @@ addEventListener("keydown", (e) => {
 });
 // Steering the helicopter or the UFO while riding it: W/S or ↑/↓ up and down, A/D or ←/→ turn; the buttons
 // at the bottom hold the arrow keys while pressed. Q or the stop button stops or goes on. The
-// police car is driven with the same keys and buttons, without fire and stop.
+// police cars are driven with the same keys and buttons, without fire and stop.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
@@ -2384,7 +2394,13 @@ renderer.setAnimationLoop((time) => {
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
   helicopter.update(time / 1000, flier === helicopter ? flown : null);
   ufo.update(time / 1000, dt, flier === ufo ? flown : null);
-  police.update(time / 1000, dt, riding?.ride === policeRide ? steering() : null);
+  police.forEach((car, v) =>
+    car.update(
+      time / 1000,
+      dt,
+      riding?.ride === policeRide && riding.vehicle === v ? steering() : null,
+    ),
+  );
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);
