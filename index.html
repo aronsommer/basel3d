@@ -95,14 +95,16 @@
       #reset {
         cursor: pointer;
       }
-      /* The key to get off, only where there is a keyboard; the button then as wide as it needs. */
+      /* The key to get off, only where there is a keyboard; less padding then, to fit in the same
+         width. */
       #off kbd {
         display: none;
         font: inherit;
       }
       @media (pointer: fine) {
         #off {
-          width: auto;
+          padding-inline: 4px;
+          white-space: nowrap;
         }
         #off kbd {
           display: inline;
