@@ -1913,26 +1913,16 @@ const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
 // What is driven, each [vehicles, ride]: the police cars and the motorcycles, from behind and
-// above. The camera turns with the vehicle's look (src/drive.js), not its heading, so it swings
-// round smoothly after it.
+// above.
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [motorcycles, [0, 2.2, -4.5], [0, 1, 6]],
-].map(([vehicles, eye, ahead]) => {
-  const ride = riders(
+].map(([vehicles, eye, ahead]) => [
+  vehicles,
+  riders(
     vehicles.map(({ group, material }) => ({ object: group, materials: [material], eye, ahead })),
-  );
-  const at = new THREE.Vector3();
-  ride.cab = (v, view) => {
-    const { group, state } = vehicles[v];
-    view.position.fromArray(eye).applyAxisAngle(THREE.Object3D.DEFAULT_UP, state.look);
-    view.position.add(group.position);
-    view.lookAt(
-      at.fromArray(ahead).applyAxisAngle(THREE.Object3D.DEFAULT_UP, state.look).add(group.position),
-    );
-  };
-  return [vehicles, ride];
-});
+  ),
+]);
 // What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
 const rides = [
   ...movers,

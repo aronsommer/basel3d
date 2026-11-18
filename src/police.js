@@ -169,6 +169,6 @@ export function createPolice(places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update, state: s };
+    return { group, material, update };
   }
 }

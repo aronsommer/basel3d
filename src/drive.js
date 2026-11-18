@@ -4,28 +4,18 @@
 import * as THREE from "three";
 
 const GRAVITY = 9.81;
-const LOOK = 6; // how fast (per second) look follows the heading
-const LAG = 0.17; // radians look is behind the heading at most, about 10°
 
 // A vehicle parked at place ({ x, y, z, heading }), driven by spec ({ max and back: metres per
 // second forward and in reverse, accelerate, brake and roll (slowing down by itself): metres per
 // second², steer: radians the front wheel turns at most at a standstill, grip: the squared speed
-// (m²/s²) at which that halves, react: how fast (per second) the wheel follows the input, axles:
+// (m²/s²) at which that halves, react: how fast (per second) turn follows the input, axles:
 // metres between them, half: from the middle to the nose and tail, width }) in world
 // ({ ground(x, z, y): the scene y of the top under a point at y, blocked(from, to): whether a
 // building is in the way, intoArea(x, z): [x, z] moved into the terrain's area }). Its state:
-// { x, y, z, heading, look (the heading, lagging, for a camera to follow), speed, steer, pitch,
-// rolled (metres, for the wheels), fall }.
+// { x, y, z, heading, speed, turn (the input eased, -1 to 1), steer (the front wheel's angle),
+// pitch, rolled (metres, for the wheels), fall }.
 export function createDriving(place, spec, { ground, blocked, intoArea }) {
-  const parked = {
-    ...place,
-    look: place.heading,
-    speed: 0,
-    fall: 0,
-    steer: 0,
-    pitch: 0,
-    rolled: 0,
-  };
+  const parked = { ...place, speed: 0, fall: 0, turn: 0, steer: 0, pitch: 0, rolled: 0 };
   const state = { ...parked };
   const from = new THREE.Vector3();
   const to = new THREE.Vector3();
@@ -58,11 +48,9 @@ export function createDriving(place, spec, { ground, blocked, intoArea }) {
     else s.speed -= Math.sign(s.speed) * Math.min(Math.abs(s.speed), spec.roll * dt);
     s.speed = THREE.MathUtils.clamp(s.speed, -spec.back, spec.max);
     // Less steering the faster it goes, so it stays easy to hold on the road.
-    const steer = (input.turn * spec.steer) / (1 + s.speed ** 2 / spec.grip);
-    s.steer += (steer - s.steer) * Math.min(1, dt * spec.react);
+    s.turn += (input.turn - s.turn) * Math.min(1, dt * spec.react);
+    s.steer = (s.turn * spec.steer) / (1 + s.speed ** 2 / spec.grip);
     s.heading += ((s.speed * Math.tan(s.steer)) / spec.axles) * dt;
-    const behind = (s.heading - s.look) * (1 - Math.min(1, dt * LOOK));
-    s.look = s.heading - THREE.MathUtils.clamp(behind, -LAG, LAG);
 
     const [fx, fz] = [Math.sin(s.heading), Math.cos(s.heading)];
     const travel = s.speed * dt;

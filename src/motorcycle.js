@@ -8,7 +8,8 @@ import { createDriving } from "./drive.js";
 
 const AXLES = 1.4; // metres between them
 const WHEEL = 0.31; // radius in metres
-const LEAN = 0.35; // radians it leans at most
+const LEAN = 0.3; // radians it leans at most, steering fully at speed
+const UPRIGHT = 8; // metres per second below which it leans less, the slower the less
 // Radians the front rises while speeding up: from WHEELIE at a standstill down to LIFT at
 // WHEELIE_UNTIL metres per second and beyond.
 const WHEELIE = 0.15;
@@ -22,7 +23,7 @@ const SPEC = {
   roll: 8,
   steer: 0.4,
   grip: 300,
-  react: 20,
+  react: 7,
   axles: AXLES,
   half: 1.05,
   width: 0.8,
@@ -158,14 +159,8 @@ export function createMotorcycles(places, boost, world) {
     // Driven by input (createDriving), else in its place, upright and without its rider.
     function update(seconds, dt, input) {
       driving.step(dt, input);
-      // Leaning so that gravity balances the turn: tan(lean) = speed² × curvature / g; positive
-      // to the right.
-      const turn = (s.speed ** 2 * Math.tan(s.steer)) / AXLES / 9.81;
-      const to = THREE.MathUtils.clamp(-Math.atan(turn), -LEAN, LEAN);
-      const lean = model.rotation.z;
-      // Back upright at once, into the turn a little slower.
-      const rate = Math.abs(to) < Math.abs(lean) ? 20 : 8;
-      model.rotation.z = input ? lean + (to - lean) * Math.min(1, dt * rate) : 0;
+      // Leaning into the turn as far as it steers, so both go together; positive to the right.
+      model.rotation.z = -s.turn * LEAN * Math.min(1, Math.max(0, s.speed) / UPRIGHT);
       // Speeding up, the front rises about where the back wheel stands, most from a standstill.
       const rising = input?.climb > 0 && s.speed >= 0 && s.speed < SPEC.max;
       const rise = THREE.MathUtils.lerp(WHEELIE, LIFT, Math.min(1, s.speed / WHEELIE_UNTIL));
@@ -181,6 +176,6 @@ export function createMotorcycles(places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update, state: s };
+    return { group, material, update };
   }
 }
