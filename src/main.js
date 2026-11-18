@@ -20,6 +20,7 @@ import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createDrones } from "./drone.js";
 import { createPeople, mix, peopleTime } from "./people.js";
+import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
 import { createRecorder } from "./record.js";
 import { part } from "./parts.js";
@@ -153,6 +154,7 @@ const [
   waterBuffer,
   shipsBuffer,
   namesJson,
+  walksBuffer,
   ...rest
 ] = await load(
   [
@@ -165,6 +167,7 @@ const [
     "water.ktx2",
     "ships.bin",
     "names.json",
+    "walks.bin",
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
     ...groundPaths(groundKind),
     ...groundPaths("deck"),
@@ -593,7 +596,8 @@ function createBirds() {
   return { mesh, update };
 }
 // The menu "Layers" shows the names (see updateNames) and the loops of the trams (each line on its
-// own), trains and cars and the course of the ships as lines above them; at first none. "All"
+// own), trains and cars, the course of the ships and the pedestrians' loops (kindLines.walk, set
+// with them below) as lines above them; at first none. "All"
 // shows or hides all tram lines (ticked when all are shown).
 const trams = movers[MOVER_KINDS.indexOf("tram")];
 const tramGroup = trams.routes;
@@ -810,8 +814,8 @@ const MEN_LOOKS = mix(
     top: [0xffffff, 0x1e7d4a, 0x111111, 0xf2c94c, 0xc0392b, 0x1e88e5, 0x6b6b6b, 0xff6f00],
     bottom: [0x3b4d6b, 0x222222, 0x6b6b6b, 0x1d1d1d, 0xc2a878, 0x2f4f2f, 0x4a5d7a],
     shoes: [0xffffff, 0x111111, 0xeeeeee, 0x1d1d1d],
-    cap: [0xc0392b, null, null, 0x1b2333, null, null],
-    beanie: [null, null, 0x111111, null, null, 0x8b0000],
+    head: ["cap", "hair", "beanie", "cap", "hair", "beanie"],
+    hat: [0xc0392b, 0, 0x111111, 0x1b2333, 0, 0x8b0000],
   },
   MEN.length,
 );
@@ -852,11 +856,53 @@ const WOMEN_LOOKS = [
   [0xf1c7a5, 0x7a2a1a, 0x111111, 0x111111, 0x111111], // black
   [0xd9a27a, 0x2a1d14, 0x64ffda, 0x111111, 0x64ffda], // mint and black
   [0x8a5634, 0x111111, 0xff4081, 0x311b92, 0x311b92], // pink and indigo
-].map(([skin, hair, top, bottom, shoes]) => ({ body: "woman", skin, hair, top, bottom, shoes }));
+].map(([skin, hair, top, bottom, shoes]) => ({ body: "night", skin, hair, top, bottom, shoes }));
 scene.add(
-  createPeople(standing(MEN), MEN_LOOKS),
-  createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
+  ...createPeople(standing(MEN), MEN_LOOKS),
+  ...createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
 );
+// Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs.
+const walkers = createWalkers(
+  walksBuffer,
+  terrainInfo.x0,
+  terrainInfo.z0,
+  {
+    people: mix(
+      {
+        body: ["man", "woman"],
+        skin: [0xf1c7a5, 0xe8b996, 0xd9a27a, 0xc58c5c, 0x8a5634, 0x6b4128, 0x4a2c1a],
+        hair: [0x2a1d14, 0x111111, 0xe2c46e, 0x7a3a1a, 0x8a8a8a],
+        top: [
+          0xffffff, 0x1e88e5, 0x111111, 0xc0392b, 0x6b6b6b, 0xf2c94c, 0x1e7d4a, 0xff6f00, 0x8e24aa,
+          0xe8b0c8, 0x2f3a4a,
+        ],
+        bottom: [0x3b4d6b, 0x222222, 0xc2a878, 0x6b6b6b, 0x4a5d7a, 0x2f4f2f],
+        shoes: [0xffffff, 0x111111, 0x6b4a2a, 0x1d1d1d],
+        // Men (even) and women (odd) in turn, as the bodies.
+        head: ["hair", "long", "cap", "long", "hair", "long", "beanie", "hair"],
+        dress: [false, false, false, true],
+        hat: [0x1b2333, 0xc0392b, 0x111111],
+      },
+      100,
+    ),
+    dogs: mix(
+      {
+        skin: [0x8b5a2b, 0xf0e0c0, 0x2a2a2a, 0xc8a165, 0xffffff],
+        hair: [0x3a2414, 0x111111],
+        top: [0xc0392b, 0x1e88e5, 0x2e7d32],
+      },
+      15,
+    ),
+  },
+  world.ground,
+);
+scene.add(...walkers.meshes);
+// Their loops in the layer "Walks", on the bridge or ground.
+kindLines.walk = Object.assign(
+  checkLines(walkers.stretches.flatMap(([x, z]) => [x, world.ground(x, z, Infinity) + 0.3, z])),
+  { visible: false },
+);
+overlay.add(kindLines.walk);
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 const drones = createDrones(
   [
@@ -2653,6 +2699,7 @@ renderer.setAnimationLoop((time) => {
   water.waterTime.value = time / 1000;
   pavilionTime.value = time / 1000;
   peopleTime.value = time / 1000;
+  walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
   serpent.update(time / 1000);
   const flier = pilot();
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);

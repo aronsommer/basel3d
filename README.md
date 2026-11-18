@@ -48,6 +48,7 @@ basel3d/
 │   ├── trains.bin     rail routes as loops, 3D points about every 4 m (tools/paths.mjs)
 │   ├── cars.json/.bin circuits of the cars (tools/paths.mjs)
 │   ├── ships.bin      circuit of the ships on the Rhine as 3D points (tools/ships.mjs)
+│   ├── walks.bin      loops on the sidewalks around the inner city's blocks, for the pedestrians (tools/walks.mjs)
 │   ├── names.json     quarters, towns and landmarks with their place (tools/names.mjs)
 │   └── size.json      size of each file, for the loading percentage
 ├── tools/             converters that generate public/
@@ -63,6 +64,7 @@ basel3d/
 │   ├── trees.mjs      swissTLM3D single trees → trees.bin
 │   ├── paths.mjs      OSM lines and roads + terrain + bridges → trams.*, trains.*, cars.*
 │   ├── ships.mjs      Rhine centre line + bridge piers → ships.bin
+│   ├── walks.mjs      OSM street network → loops around its blocks in the inner city → walks.bin
 │   ├── names.mjs      OSM places + landmarks chosen by OSM id → names.json
 │   ├── heights.mjs    terrain height at a point, for the converters
 │   └── size.mjs       → size.json, runs after every converter

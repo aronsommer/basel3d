@@ -12,6 +12,7 @@
     "trains": "node tools/paths.mjs train && node tools/size.mjs",
     "cars": "node tools/paths.mjs car && node tools/size.mjs",
     "ships": "node tools/ships.mjs && node tools/size.mjs",
+    "walks": "node tools/walks.mjs && node tools/size.mjs",
     "names": "node tools/names.mjs && node tools/size.mjs",
     "format": "prettier --write ."
   },
