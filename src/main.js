@@ -130,6 +130,7 @@ const [
   glb,
   bridgesGlb,
   treesBuffer,
+  canopyBuffer,
   waterBuffer,
   shipsBuffer,
   namesJson,
@@ -141,6 +142,7 @@ const [
     "basel.glb",
     "bridges.glb",
     "trees.bin",
+    "canopy.bin",
     "water.ktx2",
     "ships.bin",
     "names.json",
@@ -156,7 +158,8 @@ const groundBuffers = rest.slice(MOVER_KINDS.length * 2, groundEnd);
 const deckBuffers = rest.slice(groundEnd);
 const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
 const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 100);
-const treePositions = new Float32Array(treesBuffer);
+const treePositions = new Uint16Array(treesBuffer);
+const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const [buildings, bridges, waterMask, firstGround, decks] = await Promise.all([
   gltfLoader.parseAsync(glb, ""),
@@ -350,7 +353,7 @@ groundButton.textContent = GROUND_LABELS[otherGround()];
 function otherGround() {
   return groundKind === "map" ? "photo" : "map";
 }
-const tree = createTrees(treePositions);
+const tree = createTrees(treePositions, canopyTrees);
 scene.add(...tree.meshes);
 // In the Rhine in front of the Roche towers, its head as high as the taller one (205 m), looking
 // at the middle between the two towers.
@@ -1576,7 +1579,10 @@ function createSerpent(x, z, scale, lookX, lookZ) {
 // Trees as instanced low-poly models (1 unit tall) with varied size and colour, one mesh per
 // terrain chunk so they are frustum-culled. Near the camera a chunk gets a trunk and an
 // icosahedron crown, further away only an octahedron crown.
-function createTrees(positions) {
+// The single trees (positions: east, south) and those on the photo's crowns (canopy: east, south,
+// height in dm; tools/trees.mjs, map.mjs), positions in 1/8 m (TREE_GRID in tools/area.mjs) from
+// the area's north-west corner; each a little different in size, shape and green.
+function createTrees(positions, canopy) {
   const colored = (geometry, color) => {
     const g = geometry.index ? geometry.toNonIndexed() : geometry;
     const c = new THREE.Color(color);
@@ -1596,12 +1602,18 @@ function createTrees(positions) {
   const far = colored(simpleCrown, 0x5d7f3e);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 
-  // Tree indices per chunk.
+  // Per tree x, z and height in m (0: chosen below); tree indices per chunk.
   const { x0, z0, chunk } = terrainInfo;
+  const single = positions.length / 2;
+  const trees = new Float32Array(single * 3 + canopy.length);
+  for (let i = 0; i < single; i++)
+    trees.set([x0 + positions[2 * i] / 8, z0 + positions[2 * i + 1] / 8], 3 * i);
+  for (let i = 0; i < canopy.length; i += 3)
+    trees.set([x0 + canopy[i] / 8, z0 + canopy[i + 1] / 8, canopy[i + 2] / 10], single * 3 + i);
   const chunks = new Map();
-  for (let i = 0; i < positions.length / 2; i++) {
-    const ix = Math.floor((positions[2 * i] - x0) / chunk);
-    const iz = Math.floor((positions[2 * i + 1] - z0) / chunk);
+  for (let i = 0; i < trees.length / 3; i++) {
+    const ix = Math.floor((trees[3 * i] - x0) / chunk);
+    const iz = Math.floor((trees[3 * i + 1] - z0) / chunk);
     const key = `${ix}_${iz}`;
     if (!chunks.has(key)) chunks.set(key, []);
     chunks.get(key).push(i);
@@ -1617,13 +1629,18 @@ function createTrees(positions) {
     // Bounds are computed once, from the larger near model.
     const mesh = new THREE.InstancedMesh(near, material, indices.length);
     indices.forEach((i, n) => {
-      const [x, z] = [positions[2 * i], positions[2 * i + 1]];
-      const random = (Math.abs(Math.sin(x * 12.9898 + z * 78.233)) * 43758.5453) % 1; // stable per tree
-      const height = 8 + random * 10;
-      rotation.setFromAxisAngle(up, random * 2 * Math.PI);
-      matrix.compose(position.set(x, heightAt(x, z), z), rotation, scale.setScalar(height));
+      const [x, z] = [trees[3 * i], trees[3 * i + 1]];
+      // Stable per tree: brightness, hue (yellow to blue green), width against height.
+      const random = (k) =>
+        (Math.abs(Math.sin(x * 12.9898 + z * 78.233 + k * 3.7)) * 43758.5453) % 1;
+      const height = trees[3 * i + 2] || 8 + random(0) * 10;
+      const width = height * (0.8 + 0.45 * random(1));
+      const hue = random(2) * 2 - 1;
+      const light = 0.75 + random(0) * 0.25;
+      rotation.setFromAxisAngle(up, random(0) * 2 * Math.PI);
+      matrix.compose(position.set(x, heightAt(x, z), z), rotation, scale.set(width, height, width));
       mesh.setMatrixAt(n, matrix);
-      mesh.setColorAt(n, tint.setScalar(0.75 + random * 0.25));
+      mesh.setColorAt(n, tint.setRGB(light * (1 + 0.14 * hue), light, light * (1 - 0.22 * hue)));
     });
     mesh.computeBoundingSphere();
     mesh.computeBoundingBox();

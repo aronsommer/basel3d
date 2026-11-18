@@ -11,7 +11,7 @@ import sharp from "sharp";
 import { NodeIO } from "@gltf-transform/core";
 import { EXTMeshoptCompression, KHRMeshQuantization } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
-import { E_MIN, E_MAX, N_MIN, N_MAX, CHUNK, PUBLIC, toX, toZ } from "./area.mjs";
+import { E_MIN, E_MAX, N_MIN, N_MAX, CHUNK, PUBLIC, TREE_GRID, toX, toZ } from "./area.mjs";
 import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, onBridge } from "./osm.mjs";
 import { underBridges, BRIDGES_FILE } from "./bsbridges.mjs";
 import { writeTiles, encodeTexture } from "./tiles.mjs";
@@ -20,6 +20,7 @@ import { photoMosaic } from "./swisstopo.mjs";
 // Pixels per 1 km tile, a power of two (compressed mipmaps). Doubling it makes the map sharper up
 // close, with four times the pixels to draw, keep in memory, store and load.
 const TILE_PX = 1024;
+const QUALITY = 128; // of the compressed tiles, 1 to 255: lower is smaller and coarser
 const PX_PER_M = TILE_PX / CHUNK;
 const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m per px)
 const BACKGROUND = "#9a968c"; // built-up land
@@ -53,7 +54,7 @@ const SIDEWALK = "#afaa9e"; // drawn on both sides of every road at least 4 m wi
 const KERB = "#666564"; // a thin dark edge between sidewalk and road
 const FOOTWAY = "#ada590";
 const PAVED = "#a19b8d"; // squares and pedestrian areas
-const BALLAST = "#5e5852"; // under railway tracks
+const BALLAST = "#5e5852"; // under railway tracks, narrow, so parallel ones stay apart
 const TRAM_BED = "#5a5c5f"; // the strip of a tram track in the road, the only darker one
 const ROAD = "#7a7b7a";
 const GRASS = "#6a7f47";
@@ -70,8 +71,9 @@ function areaStyle(t) {
   if (t.amenity === "parking") return { order: 4, fill: "#7c7c79" };
   if (has(t.natural, "beach", "sand")) return { order: 4, fill: "#c9b98c" };
   if (t.leisure === "pitch") return { order: 4, fill: green("#5b8a3c") };
-  if (t.landuse === "forest" || t.natural === "wood") return { order: 3, fill: green("#3f5631") };
-  if (has(t.natural, "scrub", "heath", "wetland")) return { order: 3, fill: green("#56693c") };
+  // Woods and scrub like lawn: their 3D trees stand on the photo's crowns (canopy.bin).
+  if (t.landuse === "forest" || t.natural === "wood" || has(t.natural, "scrub", "heath", "wetland"))
+    return { order: 3, fill: GRASS, wood: true };
   if (has(t.landuse, "allotments", "flowerbed", "orchard", "vineyard", "plant_nursery"))
     return { order: 3, fill: green("#717c4a") };
   if (has(t.leisure, "park", "garden", "playground")) return { order: 3, fill: green("#62783f") };
@@ -83,7 +85,7 @@ function areaStyle(t) {
   )
     return { order: 3, fill: GRASS };
   if (t.landuse === "farmland") return { order: 2, fill: green("#8a8957") };
-  if (t.landuse === "railway") return { order: 1, fill: "#7a756b" };
+  if (t.landuse === "railway") return { order: 1, fill: "#8a857c" }; // gravel
   if (has(t.landuse, "industrial", "commercial", "retail")) return { order: 0, fill: "#8a877f" };
   return null;
 }
@@ -94,7 +96,7 @@ function lineStyle(t) {
   if (has(t.waterway, "river", "canal")) return { order: 7, stroke: WATER, width: 20 };
   if (has(t.waterway, "stream", "ditch", "drain")) return { order: 7, stroke: WATER, width: 3 };
   if (has(t.railway, "rail", "light_rail", "narrow_gauge"))
-    return { order: 8, stroke: BALLAST, width: 5 };
+    return { order: 8, stroke: BALLAST, width: 3 };
   if (t.railway === "tram") return { order: 12, stroke: TRAM_BED, width: 2.2 }; // on the road
   const width = roadWidth(t.highway);
   if (!width || t.area === "yes") return null;
@@ -165,8 +167,8 @@ const svg = (size, background, paint, list = ground) => `<svg xmlns="http://www.
   ${list
     .map((s) =>
       s.fill
-        ? `<path fill="${paint(s.fill)}" fill-rule="evenodd" d="${s.d.join("")}"/>`
-        : `<path fill="none" stroke="${paint(s.stroke)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" d="${s.d.join("")}"/>`,
+        ? `<path fill="${paint(s.fill, s)}" fill-rule="evenodd" d="${s.d.join("")}"/>`
+        : `<path fill="none" stroke="${paint(s.stroke, s)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" d="${s.d.join("")}"/>`,
     )
     .join("\n")}
 </svg>`;
@@ -236,6 +238,39 @@ const smoothstep = (a, b, x) => {
 const inside = await footprints();
 const [shadowNear, shadowFar] = await Promise.all([blur(inside, 1.5), blur(inside, 5)]);
 
+// Tree crowns in the photo, only in woods (canopy, 0 to 255): green and either dark or rough (sun
+// and shade change within metres, lawn is smooth), over a 5 x 5 px tent; then closed (holes
+// filled) and opened (thin lines, as along paths, dropped). There the photo's patches are weakened
+// to CROWN_PATCHES, so the photographed crowns do not double the 3D trees standing on them (below). Parks and courtyards
+// keep the photo's patches; their trees are in trees.bin.
+const CROWN_PATCHES = 0.4; // share of the photo's patches kept under crowns
+const woods = await render(svg([width, height], "#000", (c, s) => (s.wood ? "#fff" : "#000")))
+  .extractChannel(0)
+  .raw()
+  .toBuffer();
+const TENT = [1, 2, 3, 2, 1];
+const rough = new Uint8Array(width * height);
+for (let y = 2; y < height - 2; y++)
+  for (let x = 2; x < width - 2; x++) {
+    if (!woods[y * width + x]) continue;
+    let [sum, squares, green] = [0, 0, 0];
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const k = (y + dy) * width + x + dx;
+        const weight = TENT[dy + 2] * TENT[dx + 2];
+        sum += weight * photo[k];
+        squares += weight * photo[k] * photo[k];
+        green += weight * (2 * rgb[k * 3 + 1] - rgb[k * 3] - rgb[k * 3 + 2]);
+      }
+    const [mean, spread] = [sum / 81, Math.sqrt(Math.max(squares / 81 - (sum / 81) ** 2, 0))];
+    rough[y * width + x] =
+      255 *
+      Math.max(smoothstep(84, 70, mean), smoothstep(9, 16, spread)) *
+      smoothstep(4, 12, green / 81);
+  }
+const closed = (await blur(rough, 1.6)).map((v) => 255 * smoothstep(0.3, 0.55, v / 255));
+const opened = await blur(closed, 2.4);
+const canopy = opened.map((v, i) => smoothstep(0.5, 0.7, v / 255) * woods[i]);
 const footprintColour = [1, 3, 5].map((i) => parseInt(FOOTPRINT.slice(i, i + 2), 16));
 for (let i = 0; i < width * height; i++) {
   if (inside[i]) {
@@ -254,11 +289,51 @@ for (let i = 0; i < width * height; i++) {
   if (vegetation[i] && nearGreen[i] > 8 && aroundGreen[i] > 8 && around[i]) {
     const patch = (near[i] / nearGreen[i]) * (aroundGreen[i] / around[i]);
     const strength = Math.min(Math.max(patch ** 0.8, 0.6), 1.35);
-    factor *= 1 + ((strength - 1) * vegetation[i]) / 255;
+    const kept = 1 + (strength - 1) * (1 - ((1 - CROWN_PATCHES) * canopy[i]) / 255);
+    factor *= 1 + ((kept - 1) * vegetation[i]) / 255;
   }
   for (let c = 0; c < 3; c++) raster[i * 4 + c] = Math.min(255, raster[i * 4 + c] * factor);
 }
-await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"), TILE_PX);
+
+// 3D trees on the crowns, written to public/canopy.bin (Uint16 east, south as in trees.bin, height
+// in dm):
+// one per TREE_SPACING cell, moved randomly within it, where at least half of the ground around
+// is crown and no tree of public/trees.bin (tools/trees.mjs, run it first) stands that close.
+const TREE_SPACING = 13; // metres
+const crowns = await blur(canopy, 3);
+const single = new Uint16Array(new Uint8Array(readFileSync(join(PUBLIC, "trees.bin"))).buffer);
+const cellOf = (x, z) => `${Math.floor(x / TREE_SPACING)},${Math.floor(z / TREE_SPACING)}`;
+const taken = new Set();
+for (let i = 0; i < single.length; i += 2)
+  taken.add(cellOf(toX(E_MIN) + single[i] / TREE_GRID, toZ(N_MAX) + single[i + 1] / TREE_GRID));
+const random = (a, b) => {
+  const h = Math.imul((a * 73856093) ^ (b * 19349663), 2654435761) >>> 0;
+  return (Math.imul(h ^ (h >>> 15), 2246822519) >>> 0) / 2 ** 32;
+};
+const [x0, z0] = [toX(E_MIN), toZ(N_MAX)];
+const planted = [];
+for (let row = 0; row < (N_MAX - N_MIN) / TREE_SPACING; row++)
+  for (let col = 0; col < (E_MAX - E_MIN) / TREE_SPACING; col++) {
+    const x = x0 + (col + 0.1 + 0.8 * random(col, row)) * TREE_SPACING;
+    const z = z0 + (row + 0.1 + 0.8 * random(row, col + 7)) * TREE_SPACING;
+    let close = false;
+    for (let dx = -1; dx <= 1 && !close; dx++)
+      for (let dz = -1; dz <= 1 && !close; dz++)
+        close = taken.has(cellOf(x + dx * TREE_SPACING, z + dz * TREE_SPACING));
+    const p = Math.floor((z - z0) * PX_PER_M) * width + Math.floor((x - x0) * PX_PER_M);
+    if (!close && crowns[p] > 128 && !inside[p])
+      planted.push(
+        Math.round((x - x0) * TREE_GRID),
+        Math.round((z - z0) * TREE_GRID),
+        Math.round(140 + 100 * random(col + 3, row)),
+      );
+  }
+writeFileSync(join(PUBLIC, "canopy.bin"), new Uint16Array(planted));
+console.log(`${planted.length / 3} trees on crowns`);
+await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"), {
+  texture: TILE_PX,
+  quality: QUALITY,
+});
 
 const deckDir = join(PUBLIC, "ground", "deck");
 rmSync(deckDir, { recursive: true, force: true });
@@ -268,15 +343,11 @@ const decks = svg(
   (c) => c,
   shapes.filter((s) => s.deck),
 );
-await writeTiles(
-  await render(decks).raw().toBuffer(),
-  width,
-  height,
-  4,
-  deckDir,
-  TILE_PX,
-  deckTiles,
-);
+await writeTiles(await render(decks).raw().toBuffer(), width, height, 4, deckDir, {
+  texture: TILE_PX,
+  only: deckTiles,
+  quality: QUALITY,
+});
 
 // Water white, everything else black, in the same order, so roads drawn over water stay dry.
 const mask = svg([MASK_SIZE, MASK_SIZE], "#000", (c) => (c === WATER ? "#fff" : "#000"));

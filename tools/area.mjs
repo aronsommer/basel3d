@@ -8,6 +8,9 @@ export const N_MAX = 1271400;
 export const BBOX_WGS84 = "7.53,47.52,7.64,47.60"; // contains the area, for STAC queries
 export const Y0 = 250; // metres above sea level at scene y = 0
 export const CHUNK = 1000; // metres per mesh tile, so three.js can frustum-cull
+// Steps per metre of the tree files (trees.bin, canopy.bin): positions as Uint16 from the
+// north-west corner, so 8 km fit.
+export const TREE_GRID = 8;
 
 // Scene axes: x = east, y = up, z = south; origin at the centre of the area.
 export const toX = (e) => e - (E_MIN + E_MAX) / 2;
