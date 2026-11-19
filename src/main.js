@@ -23,6 +23,7 @@ import { createDrones } from "./drone.js";
 import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createZoo } from "./zoo.js";
+import { createRega } from "./rega.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
@@ -1113,6 +1114,37 @@ function roofAt(lv95) {
 // Its green roof (LV95 2612593.3, 1267509.4) grey as another's (LV95 2612855.8, 1267667.0).
 const green = roofAt([2612593.3, 1267509.4]);
 if (green) structures.paint(green.number, { roof: 0x655d5a });
+// The heading nearest to near along the walls of the building with this number: its level edges'
+// headings folded onto a quarter turn (times 4) and averaged, weighted by their lengths.
+function alongBuilding(number, near) {
+  let [c, s] = [0, 0];
+  for (const { positions: p } of structures.triangles([number]).get(number) ?? [])
+    for (let t = 0; t < p.length; t += 9)
+      for (let k = 0; k < 3; k++) {
+        const [a, b] = [t + 3 * k, t + 3 * ((k + 1) % 3)];
+        const [dx, dy, dz] = [p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]];
+        const flat = Math.hypot(dx, dz);
+        if (flat < 1 || Math.abs(dy) > 0.1 * flat) continue; // short or sloping
+        c += flat * Math.cos(4 * Math.atan2(dx, dz));
+        s += flat * Math.sin(4 * Math.atan2(dx, dz));
+      }
+  const [base, quarter] = [Math.atan2(s, c) / 4, Math.PI / 2];
+  return base + Math.round((near - base) / quarter) * quarter;
+}
+// The Rega's helicopters (src/rega.js), an H145 and the AW109 "Da Vinci", each on a helipad on
+// the roof of the Universitätsspital at an LV95 point, along its walls, else on the ground there.
+// The H's upright about from LV95 2610964.8, 1267835.8 towards 2610973.9, 1267829.9.
+const HELIPADS_FACE = Math.atan2(2610973.9 - 2610964.8, 1267835.8 - 1267829.9);
+const regas = [
+  [[2610981.2, 1267851.6], "h145"], // midway along LV95 2610963.7, 1267836.3 to 2610979.6, 1267828.4
+  [[2610963.1, 1267820.5], "aw109"], // midway along LV95 2610949.3, 1267815.5 to 2610964.4, 1267805.8
+].map(([point, model]) => {
+  const at = fromLV95(point);
+  const roof = roofAt(point);
+  const heading = roof ? alongBuilding(roof.number, HELIPADS_FACE) : HELIPADS_FACE;
+  return createRega({ ...at, y: heightAt(at.x, at.z), ...roof, heading }, model, boost);
+});
+scene.add(...regas.flatMap(({ pad, group }) => [pad, group]));
 // On each Roche tower's roof, four women dressed as the friends dancing 2 m around its middle,
 // each looking out another way (north-east, south-east, south-west, north-west). destroy()
 // removes them with their tower.
@@ -2650,12 +2682,16 @@ function getOff() {
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: click or tap a tram, train, car, ship, plane, the helicopter, the sea monster, the
+// --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the sea monster, the
 // UFO, a police car, a motorcycle, the tank, a boat or the drone to ride along; while
 // riding, but not steering, a click or tap on another one changes to it.
 // A finger also finds one up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
 // The UFO from behind and above, looking down on it.
+// The Rega's helicopters from behind and above, each its own ride.
+const regaRides = regas.map(({ group, material }) =>
+  riders([{ object: group, materials: [material], eye: [0, 5, -20], ahead: [0, -1, 14] }]),
+);
 const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
@@ -2685,14 +2721,17 @@ const rides = [
   helicopter.ride,
   serpent.ride,
   ufoRide,
+  ...regaRides,
   ...drives.map(([, ride]) => ride),
 ];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
-// The helicopter or the UFO, each { group, speed, turn, lift? }, while riding and so steering it.
+// The helicopter, the UFO or a Rega helicopter, each { group, speed, turn, lift?, unarmed? },
+// while riding and so steering it.
 const pilots = new Map([
   [helicopter.ride, helicopter],
   [ufoRide, ufo],
+  ...regaRides.map((ride, k) => [ride, regas[k]]),
 ]);
 const pilot = () => pilots.get(riding?.ride);
 const flying = () => pilot() !== undefined;
@@ -2701,7 +2740,7 @@ const tankRide = drives.find(([vehicles]) => vehicles === tanks)[1];
 const gunner = () => (riding?.ride === tankRide ? tanks[riding.vehicle] : null);
 // Whether what is ridden fires (flying or in a tank); then clicks fire instead of riding or
 // looking around.
-const armed = () => flying() || gunner() !== null;
+const armed = () => (flying() && !pilot().unarmed) || gunner() !== null;
 const droneRide = drives.find(([vehicles]) => vehicles === drones)[1];
 // Whether what is ridden is steered; then clicks do not change to another.
 const steered = () => flying() || drives.some(([, ride]) => ride === riding?.ride);
@@ -2710,7 +2749,7 @@ document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
   if (e.code === "Escape" && riding) getOff();
 });
-// Steering the helicopter, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
+// Steering the helicopters, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
 // ←/→ turn; the buttons at the bottom hold the arrow keys while pressed. Q or the stop button
 // stops or goes on. The police cars, motorcycles and the tank are driven with the same keys and
 // buttons, without stop (the tank with fire).
@@ -2779,7 +2818,7 @@ const crosshair = document.getElementById("crosshair");
 let nextShot = 0; // when the next may go (seconds)
 let side = 0; // the launcher the next rocket goes from
 function shoot(seconds) {
-  const flier = pilot();
+  const flier = pilot()?.unarmed ? undefined : pilot();
   const tank = gunner();
   if (!flier && !tank) {
     crosshair.hidden = true;
@@ -2855,7 +2894,7 @@ function ride(found, clientX, clientY) {
   const driving = drives.some(([, ride]) => ride === found.ride);
   steerBox.hidden = !pilots.has(found.ride) && !driving;
   stopButton.hidden = driving && found.ride !== droneRide;
-  fireButton.hidden = driving && found.ride !== tankRide;
+  fireButton.hidden = driving ? found.ride !== tankRide : !!pilots.get(found.ride)?.unarmed;
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
   head.yaw = head.pitch = 0;
@@ -3221,6 +3260,7 @@ renderer.setAnimationLoop((time) => {
   const flier = pilot();
   if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
   helicopter.update(time / 1000, flier === helicopter ? flown : null);
+  for (const rega of regas) rega.update(time / 1000, flier === rega ? flown : null);
   ufo.update(time / 1000, dt, flier === ufo ? flown : null);
   for (const [vehicles, ride] of drives)
     vehicles.forEach((vehicle, v) =>
