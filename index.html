@@ -45,14 +45,14 @@
         border-radius: 10px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
-      /* The buttons, the menu of the layers and the counter look alike: 36px tall (8px + 20px + 8px)
-         like the steering buttons on desktop. */
-      #ground,
+      /* The buttons, the menu and the counter look alike: 36px tall (8px + 20px + 8px) like the
+         steering buttons on desktop. */
       #off,
       #reset,
-      #layers,
+      #menu,
       #counter,
-      #dev {
+      #dev,
+      #points {
         box-sizing: border-box;
         padding: 8px 14px;
         font: inherit;
@@ -66,47 +66,53 @@
         -webkit-user-select: none; /* Safari */
         user-select: none;
       }
-      /* Two columns as wide, 8px apart. Right: the ground button, the closed menu of the layers and
-         the button to get off, one below the other; the open menu covers the button to get off.
-         Left: the counter, as tall as the two above, and the reset button beside the one to get
-         off. */
-      #ground,
+      /* Two columns as wide, 8px apart. Right: the closed menu and the button to get off below it;
+         the open menu covers the button to get off. Left: the counter, as tall as the two on the
+         right, and the reset button below it. */
       #off,
       #reset,
-      #layers,
+      #menu,
       #counter,
-      #dev {
+      #panels {
         position: absolute;
         width: 96px;
       }
-      #ground,
       #off,
-      #layers {
+      #menu {
         right: 12px;
       }
       #reset,
       #counter,
-      #dev {
+      #panels {
         left: 12px;
       }
-      #ground,
+      #menu,
       #counter {
         top: 12px;
       }
-      #off,
+      #off {
+        top: 56px;
+      }
       #reset {
         top: 100px;
       }
-      #ground,
       #off,
       #reset {
         cursor: pointer;
       }
-      /* Frame times while "Dev panel" is ticked (src/dev.js), below the reset button; the numbers,
-         then a box per part and the buttons, one below the other; smaller and tighter, to fit the
-         column's width and hide little of the scene. */
-      #dev {
+      /* Below the reset button, the panels ticked in the menu, 8px apart: "Dev panel"
+         (src/dev.js) above "Points panel" (src/points.js). */
+      #panels {
         top: 148px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      /* In each, one below the other: the frame times' numbers, then a box per part and the
+         buttons; the points' buttons. Smaller and tighter, to fit the column's width and hide
+         little of the scene. */
+      #dev,
+      #points {
         padding: 6px;
         display: flex;
         flex-direction: column;
@@ -116,7 +122,8 @@
         line-height: 16px;
         text-align: left;
       }
-      #dev[hidden] {
+      #dev[hidden],
+      #points[hidden] {
         display: none;
       }
       /* Names left, values right, so the units and decimal points line up. */
@@ -147,7 +154,8 @@
         accent-color: #1d242b;
         cursor: pointer;
       }
-      #dev button {
+      #dev button,
+      #points button {
         align-self: stretch;
         min-height: 22px;
         padding: 0;
@@ -157,6 +165,10 @@
         border: 1px solid rgba(0, 0, 0, 0.2);
         border-radius: 6px;
         cursor: pointer;
+      }
+      #points button:disabled {
+        opacity: 0.4;
+        cursor: default;
       }
       /* The key to get off, only where there is a keyboard; less padding then, to fit in the same
          width. */
@@ -201,13 +213,9 @@
         color: inherit;
         text-decoration: none;
       }
-      /* The menu of the layers, below the ground button. */
-      #layers {
-        top: 56px;
-      }
-      /* Open: a panel of the layers as wide as they need, left-aligned; above all else (nothing
+      /* Open: as wide as its entries need, left-aligned; above all else (nothing
          else has a z-index). */
-      #layers[open] {
+      #menu[open] {
         z-index: 1;
         width: auto;
         min-width: 96px;
@@ -215,7 +223,7 @@
       }
       /* The title fills the closed menu, so all of it can be tapped; open, it stays as it was, in
          the top right corner, so the title and the chevron do not move. */
-      #layers summary {
+      #menu summary {
         display: block;
         box-sizing: border-box;
         margin: -8px -14px;
@@ -223,16 +231,16 @@
         text-align: center;
         cursor: pointer;
       }
-      #layers[open] summary {
+      #menu[open] summary {
         width: 96px;
         margin-left: auto;
         margin-bottom: 0;
       }
-      #layers summary::-webkit-details-marker {
+      #menu summary::-webkit-details-marker {
         display: none;
       }
       /* A chevron: down when closed, up when open. */
-      #layers summary::after {
+      #menu summary::after {
         content: "";
         display: inline-block;
         width: 5px;
@@ -242,12 +250,12 @@
         border-bottom: 2px solid;
         transform: translateY(-3px) rotate(45deg);
       }
-      #layers[open] summary::after {
+      #menu[open] summary::after {
         transform: translateY(2px) rotate(-135deg);
       }
       /* A box close to its text. Each label only as wide as its box and text, so a tap beside it
          does not tick it. */
-      #layers label {
+      #menu label {
         display: flex;
         align-items: center;
         gap: 6px;
@@ -255,24 +263,26 @@
         width: fit-content;
         cursor: pointer;
       }
-      #layers input {
+      #menu input {
         width: 16px;
         height: 16px;
         margin: 0;
         accent-color: #ff00ff;
         cursor: pointer;
       }
-      /* The names apart from the lines below them, the dev info from those above it. */
-      #layers hr {
+      /* The ground, the names, the lines and the panels apart from each other. */
+      #menu hr {
         margin: 4px 0;
         border: 0;
         border-top: 1px solid rgba(0, 0, 0, 0.12);
       }
-      /* "All" neutral, as it stands for lines of all colours; "Names" and "Dev panel" neutral, as
-         they show none. */
-      #layers #trams,
-      #layers #names-box,
-      #layers #dev-box {
+      /* "All" neutral, as it stands for lines of all colours; the ground, "Names" and the panels
+         neutral, as they show none. */
+      #menu input[name="ground"],
+      #menu #trams,
+      #menu #names-box,
+      #menu #points-box,
+      #menu #dev-box {
         accent-color: #1d242b;
       }
       /* "Trams", "All", then the tram lines one by one, five in a row, each pair of box and number
@@ -350,7 +360,7 @@
         font-variant-numeric: tabular-nums;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
       }
-      /* The points recorded in the Dev panel (src/record.js), numbered. */
+      /* The points marked in the Points panel (src/points.js), numbered. */
       #badges .mark {
         color: #fff;
         background: #1d242b;
@@ -493,7 +503,7 @@
       /* How many buildings and bridges are still standing (showCount in src/main.js), a line each:
          an icon, then the number with all digits equally wide, so they stay in place. */
       #counter {
-        height: 80px; /* as tall as the two buttons on the right and the 8px between */
+        height: 80px; /* as tall as the menu and the button to get off, and the 8px between */
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -514,8 +524,7 @@
         fill: currentColor;
       }
       body:not([data-mode="loading"]) #loading,
-      body[data-mode="loading"] #ground,
-      body[data-mode="loading"] #layers,
+      body[data-mode="loading"] #menu,
       body:not([data-mode="ride"]) #off,
       body[data-mode="loading"] #reset,
       body[data-mode="loading"] #counter {
@@ -527,7 +536,6 @@
     <div id="names"></div>
     <div id="badges"></div>
     <div id="loading">Loading <span id="progress">0%</span></div>
-    <button id="ground"></button>
     <button id="off">Get off<kbd> (Esc)</kbd></button>
     <button id="reset" title="Rebuild all that was blown up" hidden>Rebuild</button>
     <div id="counter">
@@ -548,6 +556,7 @@
         <span id="Bridges"></span>
       </p>
     </div>
+    <div id="panels"></div>
     <div id="crosshair" hidden></div>
     <div id="copied" hidden>Coordinates<br />copied</div>
     <div id="steer" hidden>
@@ -560,8 +569,11 @@
       </button>
       <button id="stop">Stop<kbd>Q</kbd></button>
     </div>
-    <details id="layers">
-      <summary>Layers</summary>
+    <details id="menu">
+      <summary>Menu</summary>
+      <label><input type="radio" name="ground" value="map" /> <span>Map</span></label>
+      <label><input type="radio" name="ground" value="photo" /> <span>Aerial</span></label>
+      <hr />
       <label><input type="checkbox" id="names-box" /> Names</label>
       <hr />
       <div id="tram-lines">
@@ -573,6 +585,7 @@
       <label><input type="checkbox" data-kind="ship" /> Ships</label>
       <label><input type="checkbox" data-kind="walk" /> Walks</label>
       <hr />
+      <label><input type="checkbox" id="points-box" /> Points panel</label>
       <label><input type="checkbox" id="dev-box" /> Dev panel</label>
     </details>
     <div id="credit">

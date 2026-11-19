@@ -27,7 +27,7 @@ import { createRega } from "./rega.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
-import { createRecorder } from "./record.js";
+import { createPoints } from "./points.js";
 import { copy } from "./copy.js";
 import { glow, part } from "./parts.js";
 
@@ -121,7 +121,6 @@ function load(paths, show) {
 // Ground textures in public/ground/<kind>/, one per 1 km tile named column_row: "map" from
 // OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs); "deck", the roads
 // on the 3D bridges for the map (tools/map.mjs), only where there are bridges.
-const GROUND_LABELS = { map: "Map", photo: "Aerial" };
 const groundPaths = (kind) =>
   Object.keys(sizes).filter((path) => path.startsWith(`ground/${kind}/`));
 const ktx2 = new KTX2Loader()
@@ -361,30 +360,32 @@ function destroy(number) {
 }
 const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy);
 
-// The button switches the ground between map and aerial photo, loading each on first use. Only
-// the shown textures stay in GPU memory; the others are re-uploaded when shown again.
-const groundButton = document.getElementById("ground");
-groundButton.addEventListener("click", async () => {
-  const kind = otherGround();
-  if (!ground[kind]) {
-    groundButton.disabled = true;
-    const paths = groundPaths(kind);
-    const buffers = await load(paths, (percent) => (groundButton.textContent = `${percent}%`));
-    ground[kind] = await groundTextures(paths, buffers);
-    groundButton.disabled = false;
-  }
-  for (const texture of ground[groundKind].values()) texture.dispose();
-  groundKind = kind;
-  for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
-  for (const [name, map] of deckMaps) map.value = deckTexture(kind, name);
-  groundButton.textContent = GROUND_LABELS[otherGround()];
-  try {
-    localStorage.setItem(GROUND_KEY, kind);
-  } catch {} // storage blocked
-});
-groundButton.textContent = GROUND_LABELS[otherGround()];
-function otherGround() {
-  return groundKind === "map" ? "photo" : "map";
+// At the top of the menu the ground, map or aerial photo, each loaded on first use (meanwhile its
+// percentage beside its name, and neither can be chosen). Only the shown textures stay in GPU
+// memory; the others are re-uploaded when shown again.
+const groundBoxes = [...document.querySelectorAll('#menu input[name="ground"]')];
+for (const box of groundBoxes) {
+  box.checked = box.value === groundKind;
+  box.addEventListener("change", async () => {
+    const kind = box.value;
+    if (!ground[kind]) {
+      const name = box.nextElementSibling;
+      const text = name.textContent;
+      for (const other of groundBoxes) other.disabled = true;
+      const paths = groundPaths(kind);
+      const buffers = await load(paths, (percent) => (name.textContent = `${text} ${percent}%`));
+      ground[kind] = await groundTextures(paths, buffers);
+      name.textContent = text;
+      for (const other of groundBoxes) other.disabled = false;
+    }
+    for (const texture of ground[groundKind].values()) texture.dispose();
+    groundKind = kind;
+    for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
+    for (const [name, map] of deckMaps) map.value = deckTexture(kind, name);
+    try {
+      localStorage.setItem(GROUND_KEY, kind);
+    } catch {} // storage blocked
+  });
 }
 const tree = createTrees(treePositions, canopyTrees);
 scene.add(...tree.meshes);
@@ -398,7 +399,7 @@ scene.add(serpent.group);
 const flight = createFlight();
 const helicopter = createHelicopter(1728, -64, 150, 300, 6);
 scene.add(helicopter.group);
-// Lines to check the ways of what moves (the menu "Layers"): strong magenta unless given a colour,
+// Lines to check the ways of what moves (ticked in the menu): strong magenta unless given a colour,
 // shown exactly (no tone mapping, as the trams' badges), 4 px wide, drawn over everything.
 // vertices: flat x, y, z of each segment's two ends.
 function checkLines(vertices, color = 0xff00ff) {
@@ -604,7 +605,7 @@ function createBirds() {
   };
   return { mesh, update };
 }
-// The menu "Layers" shows the names (see updateNames) and the loops of the trams (each line on its
+// The menu shows the names (see updateNames) and the loops of the trams (each line on its
 // own), trains and cars, the course of the ships and the pedestrians' loops (kindLines.walk, set
 // with them below) as lines above them; at first none. "All"
 // shows or hides all tram lines (ticked when all are shown).
@@ -619,7 +620,7 @@ const kindLines = {
   ...Object.fromEntries(MOVER_KINDS.map((kind, i) => [kind, movers[i].routes])),
   ship: ships.route,
 };
-const kindBoxes = [...document.querySelectorAll("#layers input[data-kind]")];
+const kindBoxes = [...document.querySelectorAll("#menu input[data-kind]")];
 const tramBoxes = tramLines.map((line) => {
   const box = Object.assign(document.createElement("input"), { type: "checkbox" });
   box.style.accentColor = `#${line.material.color.getHexString()}`; // the line's colour
@@ -772,7 +773,7 @@ const motorcycles = createMotorcycles(
   boost,
   world,
 );
-// People (src/people.js) at LV95 points (as Record clicks copies them), each facing toward
+// People (src/people.js) at LV95 points, each facing toward
 // (turned up to SPREAD radians away, each a little otherwise) or else the others within NEAR
 // metres, or alone k radians from south.
 const SPREAD = 0.5;
@@ -2864,7 +2865,7 @@ function shoot(seconds) {
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
 // only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
-// as browsers allow copying only then), else is recorded while recording (src/record.js), else
+// as browsers allow copying only then), else is recorded while recording (src/points.js), else
 // rides what is there; nothing while steering.
 let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
 renderer.domElement.addEventListener(
@@ -2876,7 +2877,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
-  if (recorder.click(e.clientX, e.clientY)) return;
+  if (pointsPanel.click(e.clientX, e.clientY)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
 });
@@ -3004,7 +3005,7 @@ function updateHover() {
   renderer.domElement.style.cursor = found ? "pointer" : "";
 }
 
-// The roof, bridge or ground at a screen point (px), or null; its "LV95 east, north, altitude".
+// The roof, bridge or ground at a screen point (px), or null.
 function pointAt(x, y) {
   raycaster.setFromCamera(
     new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1),
@@ -3012,10 +3013,23 @@ function pointAt(x, y) {
   );
   return raycaster.intersectObjects([buildings.scene, bridges.scene, terrain])[0]?.point ?? null;
 }
-const lv95 = (point) =>
-  `LV95 ${[LV95[0] + point.x, LV95[1] - point.z, point.y + 250].map((v) => v.toFixed(1)).join(", ")}`;
-// C copies the LV95 of what is under the mouse, as holding a finger still for HOLD does of what is
-// under it (the tap handler above), and shows "Coordinates copied" there for a moment.
+// A scene point <-> "latitude, longitude, altitude" (WGS84 degrees, 6 decimals; metres above sea,
+// 1 decimal), as copied, recorded and pasted; fromText gives null for any other text.
+function toText(point) {
+  const [lat, lon] = toWGS84(point.x, point.z);
+  return `${lat.toFixed(6)}, ${lon.toFixed(6)}, ${(point.y + 250).toFixed(1)}`;
+}
+function fromText(text) {
+  const values = text.split(",").map((v) => v.trim() && Number(v));
+  if (values.length !== 3 || !values.every(Number.isFinite)) return null;
+  const [lat, lon, altitude] = values;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const [x, z] = fromWGS84(lat, lon);
+  return new THREE.Vector3(x, altitude - 250, z);
+}
+// C copies the coordinates (toText) of what is under the mouse, as holding a finger still for HOLD
+// does of what is under it (the tap handler above), and shows "Coordinates copied" there for a
+// moment.
 const HOLD = 2000; // ms
 let mouseAt = null; // { x, y } of the mouse while over the scene
 renderer.domElement.addEventListener("pointermove", (e) => {
@@ -3031,7 +3045,7 @@ addEventListener("keydown", (e) => {
 function copyAt(x, y) {
   const point = pointAt(x, y);
   if (!point) return;
-  copy(lv95(point)).then((done) => {
+  copy(toText(point)).then((done) => {
     if (!done) return; // not allowed: nothing to show
     copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
     copied.hidden = false;
@@ -3086,19 +3100,30 @@ addEventListener("resize", () => {
 // to date while the view changes (at most every VIEW_DELAY ms; not when it did not move, so it
 // does not creep by rounding), read at the start and when the URL changes.
 const VIEW_DELAY = 300;
-// WGS84 <-> scene x, z with swisstopo's approximate formulas for LV95 (about 1 m).
+// WGS84 <-> scene x, z with swisstopo's approximate formulas for LV95 (about 1 m). The two are not
+// each other's inverse (about 1 m apart), so fromWGS84 corrects its result twice to undo toWGS84
+// (to a few cm), so a copied point comes back where it was.
 function fromWGS84(lat, lon) {
-  const p = (lat * 3600 - 169028.66) / 10000;
-  const l = (lon * 3600 - 26782.5) / 10000;
-  const e = 2600072.37 + 211455.93 * l - 10938.51 * l * p - 0.36 * l * p * p - 44.54 * l ** 3;
-  const n =
-    1200147.07 +
-    308807.95 * p +
-    3745.25 * l * l +
-    76.63 * p * p -
-    194.56 * l * l * p +
-    119.79 * p ** 3;
-  return [e - LV95[0], LV95[1] - n];
+  const formula = (lat, lon) => {
+    const p = (lat * 3600 - 169028.66) / 10000;
+    const l = (lon * 3600 - 26782.5) / 10000;
+    const e = 2600072.37 + 211455.93 * l - 10938.51 * l * p - 0.36 * l * p * p - 44.54 * l ** 3;
+    const n =
+      1200147.07 +
+      308807.95 * p +
+      3745.25 * l * l +
+      76.63 * p * p -
+      194.56 * l * l * p +
+      119.79 * p ** 3;
+    return [e - LV95[0], LV95[1] - n];
+  };
+  const [x0, z0] = formula(lat, lon);
+  let [x, z] = [x0, z0];
+  for (let k = 0; k < 2; k++) {
+    const [x1, z1] = formula(...toWGS84(x, z));
+    [x, z] = [x + x0 - x1, z + z0 - z1];
+  }
+  return [x, z];
 }
 function toWGS84(x, z) {
   const y = (x + LV95[0] - 2600000) / 1e6;
@@ -3236,10 +3261,28 @@ for (const object of culled) object.frustumCulled = true;
 // Draws a frame, with the "Dev panel" (src/dev.js) while it is ticked.
 const drawFrame = createDev(renderer, render, [
   ["Buildings", [buildings.scene, bridges.scene]],
-  ["Terrain", [terrain]],
   ["Trees", tree.meshes],
+  ["Terrain", [terrain]],
 ]);
-const recorder = createRecorder(pointAt, lv95, onScreen);
+// Moves the view over the middle of scene points, looking the same way, out as far as shows them
+// all with FIT around them (as seen from above), but not nearer.
+const FIT = 1.2;
+function showPoints(points) {
+  const middle = points
+    .reduce((sum, p) => sum.add(p), new THREE.Vector3())
+    .divideScalar(points.length);
+  const [x, z] = intoArea(middle.x, middle.z);
+  const reach = Math.max(...points.map((p) => Math.hypot(p.x - middle.x, p.z - middle.z)));
+  const offset = camera.position.clone().sub(orbit.target);
+  const fit =
+    (FIT * reach) /
+    (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(1, camera.aspect));
+  offset.setLength(Math.min(Math.max(fit, offset.length()), orbit.maxDistance));
+  orbit.target.set(x, heightAt(x, z) + CENTRE, z);
+  camera.position.copy(orbit.target).add(offset);
+  fling.set(0, 0, 0);
+}
+const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints);
 
 let last = performance.now();
 renderer.setAnimationLoop((time) => {
@@ -3285,7 +3328,7 @@ renderer.setAnimationLoop((time) => {
   camera.updateMatrixWorld(); // this frame's view for onScreen, not the last one rendered
   shoot(time / 1000);
   updateBadges();
-  recorder.update();
+  pointsPanel.update();
   updateNames();
   drawFrame();
 });

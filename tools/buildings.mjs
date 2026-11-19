@@ -284,7 +284,7 @@ const WALLS = [
 const HIGH = [0xc9ced2, 0xb8c4cc, 0xd6d3cc];
 const CHURCH = [0xc4826b]; // red sandstone
 // The buildings on the Kaserne's grounds take its walls' colour: those with a roof or wall at a
-// point here (LV95 east, north, altitude, as Record clicks copies them).
+// point here (LV95 east, north, altitude).
 const KASERNE_WALL = 0xc68e6b;
 const KASERNE = [
   [2611500.2, 1268039.2, 263.7],

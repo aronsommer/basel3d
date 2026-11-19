@@ -1,14 +1,14 @@
-// "Dev panel" in the menu of the layers, remembered in this browser: while ticked, a panel at the
+// "Dev panel" in the menu, remembered in this browser: while ticked, a panel at the
 // left shows, below Copy stats, which copies it all, over a second (but at once after ticking it),
 // the frames per second; the ms to draw a frame (so it shows the cost even where the screen's
 // refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
-// and the triangles drawn. Below, a box per part hides and shows it, to see what it costs; a button
-// steps through the SCALES of the resolution. All of it lives here, the menu entry and the styles
+// and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
+// part hides and shows it, to see what it costs. All of it lives here, the menu entry and the styles
 // in index.html (#dev-box, #dev), so it can be taken out whole.
 import { copy } from "./copy.js";
 
-const KEY = "basel3d.dev"; // "1" (on) or "0"
+const KEY = "basel3d.devPanel"; // "1" (on) or "0"
 const SAMPLE = 5;
 const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 
@@ -21,19 +21,11 @@ export function createDev(renderer, render, parts) {
   // Counted by hand while ticked, over all passes of render().
   renderer.info.autoReset = !box.checked;
   const element = (tag, properties) => Object.assign(document.createElement(tag), properties);
-  const panel = document.body.appendChild(element("div", { id: "dev", hidden: !box.checked }));
+  const panel = element("div", { id: "dev", hidden: !box.checked });
+  document.getElementById("panels").prepend(panel); // above the Points panel (src/points.js)
   const add = (tag, properties) => panel.appendChild(element(tag, properties));
   const stats = add("div", { className: "stats" }); // a name and a value per row
   let shown = []; // the rows' text, for Copy
-  const boxes = parts.map(([name, objects]) => {
-    const label = add("label");
-    const input = label.appendChild(element("input", { type: "checkbox", checked: true }));
-    label.append(name);
-    input.addEventListener("change", () => {
-      for (const object of objects) object.visible = input.checked;
-    });
-    return input;
-  });
   const ratio = renderer.getPixelRatio();
   let scale = 0; // index in SCALES
   const resolution = add("button");
@@ -43,6 +35,15 @@ export function createDev(renderer, render, parts) {
   };
   rescale(0);
   resolution.addEventListener("click", () => rescale((scale + 1) % SCALES.length));
+  const boxes = parts.map(([name, objects]) => {
+    const label = add("label");
+    const input = label.appendChild(element("input", { type: "checkbox", checked: true }));
+    label.append(name);
+    input.addEventListener("change", () => {
+      for (const object of objects) object.visible = input.checked;
+    });
+    return input;
+  });
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.
   const button = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
