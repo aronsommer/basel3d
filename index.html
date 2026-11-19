@@ -18,7 +18,7 @@
         overflow: hidden;
         background: #bfd8ea;
         font:
-          13px/1.4 "Inter",
+          12px/1.4 "Inter",
           sans-serif;
         color: #f1f5f9;
         -webkit-tap-highlight-color: transparent; /* no blue flash on tap on mobile */
@@ -121,7 +121,7 @@
         gap: 8px;
       }
       /* In each, one below the other: the frame times' numbers, then a box per part and the
-         buttons; the points' buttons. Smaller and tighter, to fit the column's width and hide
+         buttons; the points' buttons. Tighter, to fit the column's width and hide
          little of the scene. */
       #dev,
       #points {
@@ -130,7 +130,6 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 2px;
-        font-size: 12px;
         line-height: 16px;
         text-align: left;
       }
@@ -296,7 +295,7 @@
         display: flex;
         justify-content: space-between;
         gap: 16px;
-        font-size: 11px;
+        font-size: 10px;
         opacity: 0.6;
       }
       #credits {
@@ -344,14 +343,12 @@
           1px 1px 0 #fff;
       }
       #names .place {
-        font-size: 12px;
         letter-spacing: 1px;
         text-transform: uppercase;
         color: #56616b;
       }
       #names .landmark {
         padding-bottom: 9px;
-        font-size: 12px;
         color: #1d242b;
       }
       #names .landmark::after {
@@ -380,7 +377,6 @@
         width: 22px;
         height: 22px;
         border-radius: 50%;
-        font-size: 12px;
         font-weight: 600;
         line-height: 22px;
         text-align: center;
@@ -398,7 +394,6 @@
         top: 0;
         left: 0;
         padding: 4px 10px;
-        font-size: 13px;
         line-height: 20px;
         text-align: center;
         border-radius: 8px;
@@ -467,7 +462,7 @@
         height: 56px;
         padding: 0;
         font: inherit;
-        font-size: 22px;
+        font-size: 18px;
         color: inherit;
         border: 0;
         border-radius: 10px;
@@ -480,13 +475,12 @@
       }
       #steer [data-key="Space"],
       #steer #stop {
-        font-size: 14px;
+        font-size: 12px;
         border-radius: 50%;
       }
       #steer kbd {
         display: none;
         font: inherit;
-        font-size: 15px;
         line-height: 1;
       }
       @media (pointer: fine) {
@@ -504,23 +498,20 @@
         #steer button {
           width: 36px;
           height: 36px;
-          font-size: 16px;
+          font-size: 12px;
           border-radius: 8px;
           pointer-events: none;
         }
         #steer [data-key="Space"] {
           width: auto; /* as wide as the three above */
           padding: 0 12px;
-          font-size: 14px;
           border-radius: 8px;
         }
         #steer #stop {
-          font-size: 12px;
           border-radius: 8px;
         }
         #steer kbd {
           display: block;
-          font-size: 12px;
         }
       }
       /* How many buildings and bridges are still standing (showCount in src/main.js), a line each:
