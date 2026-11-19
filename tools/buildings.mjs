@@ -126,24 +126,18 @@ function addBuilding() {
 // Buildings whose RoofSurfaces miss parts their lod2Solid has (swissBUILDINGS3D gml:id).
 const FIX = new Set([
   "ID_102DE3C6-0A90-4C34-ADF8-CD0B292C690F", // Klingentalkirche, its east end
+  "ID_8E6A6292-1206-44F6-80A7-EF8EFFA01DD1", // LV95 2612556, 1268752
+  "ID_4620D3C0-E2C7-41A8-9ACF-209F87839DD6", // LV95 2611637, 1267011
+  "ID_38F556E0-5CBD-4896-9CC9-1FC4A9742FD4", // LV95 2609570, 1267229
 ]);
 
-// The upward triangles of the building b's solid (LV95) above its lowest roof that are not on or
-// under one of its roof triangles.
+// The upward triangles of the building b's solid (LV95) with their middle above its lowest roof,
+// unless their middle and corners all lie on or under one of its roof triangles.
 function missingRoofs(b) {
   const r = b.roof;
   let low = Infinity;
   for (let i = 1; i < r.length; i += 3) low = Math.min(low, r[i]);
-  return b.solid.filter((v) => {
-    const [ux, uy, uz, wx, wy, wz] = [3, 4, 5, 6, 7, 8].map((i) => v[i] - v[i % 3]);
-    const [nx, ny, nz] = [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
-    if (nz < 0.17 * Math.hypot(nx, ny, nz)) return false;
-    const [x, y, z] = [
-      toX((v[0] + v[3] + v[6]) / 3),
-      (v[2] + v[5] + v[8]) / 3 - Y0,
-      toZ((v[1] + v[4] + v[7]) / 3),
-    ];
-    if (y <= low) return false;
+  const covered = ([x, y, z]) => {
     for (let i = 0; i < r.length; i += 9) {
       const [ax, az, bx, bz, cx, cz] = [r[i], r[i + 2], r[i + 3], r[i + 5], r[i + 6], r[i + 8]];
       const d = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
@@ -151,9 +145,20 @@ function missingRoofs(b) {
       const s = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / d;
       const t = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / d;
       if (s < -1e-3 || t < -1e-3 || s + t > 1 + 1e-3) continue;
-      if (r[i + 1] + s * (r[i + 4] - r[i + 1]) + t * (r[i + 7] - r[i + 1]) > y - 0.3) return false;
+      if (r[i + 1] + s * (r[i + 4] - r[i + 1]) + t * (r[i + 7] - r[i + 1]) > y - 0.3) return true;
     }
-    return true;
+    return false;
+  };
+  return b.solid.filter((v) => {
+    const [ux, uy, uz, wx, wy, wz] = [3, 4, 5, 6, 7, 8].map((i) => v[i] - v[i % 3]);
+    const [nx, ny, nz] = [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
+    if (nz < 0.17 * Math.hypot(nx, ny, nz)) return false;
+    const middle = [0, 1, 2].map((k) => (v[k] + v[k + 3] + v[k + 6]) / 3);
+    const scene = ([e, n, h]) => [toX(e), h - Y0, toZ(n)];
+    if (middle[2] - Y0 <= low) return false;
+    // The corners moved a tenth towards the middle, off the edges they share.
+    const corners = [0, 3, 6].map((i) => middle.map((m, k) => v[i + k] + (m - v[i + k]) / 10));
+    return ![middle, ...corners].every((p) => covered(scene(p)));
   });
 }
 
