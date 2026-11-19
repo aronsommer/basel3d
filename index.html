@@ -221,7 +221,8 @@
       #credit span {
         white-space: nowrap;
       }
-      #credit a {
+      #credit a,
+      #about a {
         color: inherit;
         text-decoration: none;
       }
@@ -308,8 +309,17 @@
         column-gap: 16px;
       }
       #entries > hr,
-      #entries > label {
+      #entries > label,
+      #about {
         grid-column: 1 / -1;
+      }
+      /* Last row, small: the link left, the version right. */
+      #about {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 11px;
+        opacity: 0.6;
       }
       #tram-lines,
       #menu .pairs {
@@ -620,6 +630,12 @@
         <div class="pairs">
           <label><input type="checkbox" id="points-box" /> Points</label>
           <label><input type="checkbox" id="dev-box" /> Dev</label>
+        </div>
+        <hr />
+        <!-- The deploy workflow replaces this with the UTC time of the deploy. -->
+        <div id="about">
+          <a href="https://github.com/aronsommer/basel3d" target="_blank" rel="noopener">GitHub</a>
+          <span>Version __BUILD_TIMESTAMP__</span>
         </div>
       </div>
     </details>
