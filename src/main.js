@@ -746,13 +746,14 @@ const parked = (places) =>
     return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
   });
 // Police cars (src/police.js) in St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke,
-// both facing south; a motorcycle (src/motorcycle.js) on the Mittlere Brücke facing Kleinbasel; a
+// both facing south, and in Kleinbasel by the men there (LV95 2611656.5, 1267907.4), facing southwest; a motorcycle (src/motorcycle.js) on the Mittlere Brücke facing Kleinbasel; a
 // tank (src/tank.js) in the yard of the Kaserne facing east; a drone (src/drone.js) 2 m over the
 // Münster's roof (LV95 2611577.4, 1267321.0, 301.3), facing north over the Rhine. It flies down to roofs (structures.top) as well.
 const police = createPolice(
   parked([
     { x: -1002.3, z: -765.7, heading: 0 },
     { x: 132.7, z: -1427.2, heading: -0.05 },
+    { x: 656.5, z: -507.4, heading: -0.93 },
   ]),
   boost,
   world,
