@@ -189,6 +189,21 @@ const SHOP = 8; // shop windows on the ground floor
 const BALCONY = 16;
 
 const ROOF = [158, 84, 69]; // sRGB, where the photo has nothing
+// Roofs brighter than this (luminance, sRGB) are darkened to DARK, as white ones look out of
+// place; those of the buildings whose middle is within 20 m of one in RED (LV95) get ROOF's clay
+// red instead, those of Roche's in KEEP stay light.
+const BRIGHT = 140;
+const DARK = 110;
+const RED = [
+  [2612214, 1267843],
+  [2612241, 1267825],
+  [2612236, 1267873],
+];
+const KEEP = [
+  [2612699, 1267652],
+  [2612727, 1267579],
+  [2612738, 1267660],
+];
 // Walls without a match: old-town tones (sandstone, ochre, salmon, pale green and blue,
 // off-white), concrete and glass from 42 m.
 const WALLS = [
@@ -294,9 +309,17 @@ async function colours() {
   const put = (array, i, [r, g, b], alpha = 255) =>
     array.set([linear(r), linear(g), linear(b), alpha], i * 4);
   const rgb = (hex) => [hex >> 16, (hex >> 8) & 255, hex & 255];
+  const luma = ([r, g, b]) => 0.3 * r + 0.59 * g + 0.11 * b;
   const grey = (colour) => {
-    const v = 0.3 * colour[0] + 0.59 * colour[1] + 0.11 * colour[2];
+    const v = luma(colour);
     return colour.map((c, i) => Math.round(v * [0.75, 0.82, 0.86][i] + c * [0.25, 0.18, 0.14][i]));
+  };
+  const near = (list, e, n) => list.some(([a, b]) => Math.hypot(a - e, b - n) < 20);
+  // A roof's colour, toned as BRIGHT says.
+  const tone = (colour, e, n) => {
+    const v = luma(colour);
+    if (v <= BRIGHT || near(KEEP, e, n)) return colour;
+    return near(RED, e, n) ? ROOF : colour.map((c) => Math.round((c * DARK) / v));
   };
 
   // The median per channel of the photo's pixels on a roof.
@@ -357,7 +380,7 @@ async function colours() {
         },
         seed,
       );
-      put(roof, number, pitched || !clay ? rgb(match.r) : grey(rgb(match.r)));
+      put(roof, number, tone(pitched || !clay ? rgb(match.r) : grey(rgb(match.r)), e, n));
       put(wall, number, rgb(match.w), style | ((seed >>> 29) << 5));
     } else {
       style = facadeStyle(
@@ -373,7 +396,7 @@ async function colours() {
         seed,
       );
       const colour = await photo(spots);
-      put(roof, number, pitched ? colour : grey(colour));
+      put(roof, number, tone(pitched ? colour : grey(colour), e, n));
       const palette = church ? CHURCH : height > 42 ? HIGH : WALLS;
       put(wall, number, rgb(palette[seed % palette.length]), style | ((seed >>> 29) << 5));
     }
