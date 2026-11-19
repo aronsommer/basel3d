@@ -75,6 +75,7 @@ function addTriangle(kind, v) {
 // Adds the building read into the chunk of its middle, so it stays in one mesh.
 function addBuilding() {
   const b = building;
+  if (b) for (const v of missingRoofs(b)) addTriangle("roof", v);
   building = null;
   if (!b || !(b.roof.length || b.wall.length)) return;
   let [x0, z0, x1, z1] = [Infinity, Infinity, -Infinity, -Infinity];
@@ -109,11 +110,73 @@ function addBuilding() {
     e: (x0 + x1) / 2 + (E_MIN + E_MAX) / 2,
     n: (N_MIN + N_MAX) / 2 - (z0 + z1) / 2,
   };
+  if (
+    KASERNE.some(
+      ([x, y, z]) => x > x0 - 1 && x < x1 + 1 && z > z0 - 1 && z < z1 + 1 && touches(b, x, y, z),
+    )
+  )
+    kaserne.add(number);
   for (const kind of ["roof", "wall"]) {
     for (const value of b[kind]) c[kind].position.push(value);
     for (let i = 0; i < b[kind].length; i += 3) c[kind].building.push(number);
   }
   for (const value of wallRanges(b.wall, y0)) c.wall.range.push(value);
+}
+
+// Buildings whose RoofSurfaces miss parts their lod2Solid has (swissBUILDINGS3D gml:id).
+const FIX = new Set([
+  "ID_102DE3C6-0A90-4C34-ADF8-CD0B292C690F", // Klingentalkirche, its east end
+]);
+
+// The upward triangles of the building b's solid (LV95) above its lowest roof that are not on or
+// under one of its roof triangles.
+function missingRoofs(b) {
+  const r = b.roof;
+  let low = Infinity;
+  for (let i = 1; i < r.length; i += 3) low = Math.min(low, r[i]);
+  return b.solid.filter((v) => {
+    const [ux, uy, uz, wx, wy, wz] = [3, 4, 5, 6, 7, 8].map((i) => v[i] - v[i % 3]);
+    const [nx, ny, nz] = [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
+    if (nz < 0.17 * Math.hypot(nx, ny, nz)) return false;
+    const [x, y, z] = [
+      toX((v[0] + v[3] + v[6]) / 3),
+      (v[2] + v[5] + v[8]) / 3 - Y0,
+      toZ((v[1] + v[4] + v[7]) / 3),
+    ];
+    if (y <= low) return false;
+    for (let i = 0; i < r.length; i += 9) {
+      const [ax, az, bx, bz, cx, cz] = [r[i], r[i + 2], r[i + 3], r[i + 5], r[i + 6], r[i + 8]];
+      const d = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
+      if (!d) continue;
+      const s = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / d;
+      const t = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / d;
+      if (s < -1e-3 || t < -1e-3 || s + t > 1 + 1e-3) continue;
+      if (r[i + 1] + s * (r[i + 4] - r[i + 1]) + t * (r[i + 7] - r[i + 1]) > y - 0.3) return false;
+    }
+    return true;
+  });
+}
+
+// Whether the point (x, y, z) lies on a roof or wall triangle of the building b, to 30 cm.
+function touches(b, px, py, pz) {
+  for (const t of [b.roof, b.wall])
+    for (let i = 0; i < t.length; i += 9) {
+      const [ax, ay, az] = [t[i], t[i + 1], t[i + 2]];
+      const [ux, uy, uz] = [t[i + 3] - ax, t[i + 4] - ay, t[i + 5] - az];
+      const [vx, vy, vz] = [t[i + 6] - ax, t[i + 7] - ay, t[i + 8] - az];
+      const [wx, wy, wz] = [px - ax, py - ay, pz - az];
+      const [nx, ny, nz] = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+      const n2 = nx * nx + ny * ny + nz * nz;
+      const d = wx * nx + wy * ny + wz * nz;
+      if (!n2 || d * d > 0.09 * n2) continue;
+      // The point's share along u and v, from (w × v) · n and (u × w) · n.
+      const s =
+        ((wy * vz - wz * vy) * nx + (wz * vx - wx * vz) * ny + (wx * vy - wy * vx) * nz) / n2;
+      const r =
+        ((uy * wz - uz * wy) * nx + (uz * wx - ux * wz) * ny + (ux * wy - uy * wx) * nz) / n2;
+      if (s > -0.01 && r > -0.01 && s + r < 1.01) return true;
+    }
+  return false;
 }
 
 // Per wall vertex the heights of its wall's bottom and top and of its building's foot (y0), in
@@ -157,15 +220,19 @@ async function readTile(file) {
         .split(" ")
         .map(Number);
       if (v[0] < E_MIN || v[0] >= E_MAX || v[1] < N_MIN || v[1] >= N_MAX) continue;
-      addTriangle(kind, v);
+      if (kind === "solid") building.solid.push(v);
+      else addTriangle(kind, v);
     } else if (t.startsWith("<bldg:Building ")) {
       addBuilding();
       const id = t.match(/gml:id="([^"]+)"/)[1];
       if (seen.has(id))
         stats.dupes++; // already read from another tile
-      else building = { roof: [], wall: [], spots: [], area: 0, flat: 0 };
+      else
+        building = { roof: [], wall: [], solid: [], spots: [], area: 0, flat: 0, fix: FIX.has(id) };
       seen.add(id);
-    } else if (t.startsWith("<bldg:RoofSurface")) kind = "roof";
+    } else if (t.startsWith("<bldg:lod2Solid")) kind = building?.fix ? "solid" : null;
+    else if (t.startsWith("</bldg:lod2Solid")) kind = null;
+    else if (t.startsWith("<bldg:RoofSurface")) kind = "roof";
     else if (t.startsWith("<bldg:WallSurface")) kind = "wall";
     else if (/^<bldg:\w+Surface /.test(t)) {
       kind = null;
@@ -211,6 +278,24 @@ const WALLS = [
 ];
 const HIGH = [0xc9ced2, 0xb8c4cc, 0xd6d3cc];
 const CHURCH = [0xc4826b]; // red sandstone
+// The buildings on the Kaserne's grounds take its walls' colour: those with a roof or wall at a
+// point here (LV95 east, north, altitude, as Record clicks copies them).
+const KASERNE_WALL = 0xc68e6b;
+const KASERNE = [
+  [2611500.2, 1268039.2, 263.7],
+  [2611453.6, 1268019.7, 256.2],
+  [2611426.2, 1268000.2, 263.3],
+  [2611407.3, 1267994.0, 262.0],
+  [2611391.3, 1267983.0, 267.3],
+  [2611340.8, 1268055.7, 257.8],
+  [2611372.1, 1268073.4, 259.3],
+  [2611408.3, 1268089.4, 261.3],
+  [2611442.3, 1268108.1, 259.3],
+  [2611462.8, 1268119.9, 258.4],
+  [2611455.6, 1268132.2, 258.8],
+  [2611481.8, 1268136.9, 263.3],
+].map(([e, n, altitude]) => [toX(e), altitude - Y0, toZ(n)]);
+const kaserne = new Set(); // their building numbers
 
 // Footprints of the OSM buildings tagged as churches, as { p: [[e, n], …] }, downloaded once.
 async function churches() {
@@ -381,7 +466,8 @@ async function colours() {
         seed,
       );
       put(roof, number, tone(pitched || !clay ? rgb(match.r) : grey(rgb(match.r)), e, n));
-      put(wall, number, rgb(match.w), style | ((seed >>> 29) << 5));
+      const colour = kaserne.has(number) ? KASERNE_WALL : match.w;
+      put(wall, number, rgb(colour), style | ((seed >>> 29) << 5));
     } else {
       style = facadeStyle(
         {
@@ -397,7 +483,13 @@ async function colours() {
       );
       const colour = await photo(spots);
       put(roof, number, tone(pitched ? colour : grey(colour), e, n));
-      const palette = church ? CHURCH : height > 42 ? HIGH : WALLS;
+      const palette = kaserne.has(number)
+        ? [KASERNE_WALL]
+        : church
+          ? CHURCH
+          : height > 42
+            ? HIGH
+            : WALLS;
       put(wall, number, rgb(palette[seed % palette.length]), style | ((seed >>> 29) << 5));
     }
   }
