@@ -18,15 +18,17 @@ import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
+import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
+import { createZoo } from "./zoo.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
 import { createRecorder } from "./record.js";
 import { copy } from "./copy.js";
-import { part } from "./parts.js";
+import { glow, part } from "./parts.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const LV95 = [2611000, 1267400]; // E, N of the scene's origin
@@ -720,8 +722,14 @@ const ufo = createUfo(boost, (x, z) => {
   return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
 });
 scene.add(...ufo.meshes);
-// The decks of all standing bridges (deckOf), made when a vehicle on the ground first needs them.
+// The decks of all standing bridges (deckOf), made when first needed.
 let roads = null;
+const bridgeDecks = () =>
+  (roads ??= deckOf(
+    [...structures.triangles(structures.bridgeNumbers).values()].flatMap((parts) =>
+      parts.flatMap(({ positions }) => positions),
+    ),
+  ));
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y
 // Where the vehicles on the ground (src/drive.js) drive: each stands on the terrain or on the
@@ -729,12 +737,12 @@ const WATER = -4.9; // scene y
 const STEP = 1; // metres
 const world = {
   ground(x, z, y) {
-    roads ??= deckOf(
-      [...structures.triangles(structures.bridgeNumbers).values()].flatMap((parts) =>
-        parts.flatMap(({ positions }) => positions),
-      ),
+    return Math.max(
+      heightAt(x, z),
+      ...bridgeDecks()
+        .heights(x, z)
+        .filter((h) => h <= y + STEP),
     );
-    return Math.max(heightAt(x, z), ...roads.heights(x, z).filter((h) => h <= y + STEP));
   },
   blocked: (from, to) => structures.wall(from, to),
   intoArea,
@@ -946,6 +954,23 @@ scene.add(
   ...createPeople(standing(MEN), MEN_LOOKS),
   ...createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
 );
+// The Zoo Basel's animals and a crocodile in the Merian Gärten (src/zoo.js) at LV95 points, each
+// group with its heading.
+const zoo = createZoo(
+  [
+    ["giraffes", 2610723.6, 1266483.0, 0.5],
+    ["elephants", 2610681.3, 1266433.3, -1],
+    ["zebras", 2610415.1, 1266286.4, 2],
+    ["hippos", 2610590.8, 1266337.9, 1],
+    ["seals", 2610402.7, 1266201.5, 0],
+    ["rhinos", 2610587.7, 1266255.8, 0.8],
+    ["penguins", 2610437.5, 1266003.1, 0],
+    ["crocodiles", 2613500.5, 1264409.6, 0],
+  ].map(([group, e, n, heading]) => ({ group, ...fromLV95([e, n]), heading })),
+  heightAt,
+  tree.clear,
+);
+scene.add(...zoo.meshes);
 // Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
 // as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
 // bridge whose sidewalk runs along its edge; never on the water: there on the highest deck at or
@@ -1159,6 +1184,12 @@ const training = createTraining(
 );
 scene.add(...training.objects);
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
+// The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west.
+const dinos = createDinos(
+  parked([{ ...fromLV95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }]),
+  boost,
+  world,
+);
 const drones = createDrones(
   [
     {
@@ -1188,7 +1219,7 @@ const boat = (x, z, heading) => [{ x, y: heightAt(x, z), z, heading }];
 const fireboats = createBoats("fire", boat(109, -568.1, 0.62), boost, onWater);
 const policeBoats = createBoats("police", boat(324.4, -526.5, -2.53), boost, onWater);
 scene.add(
-  ...[...police, ...motorcycles, ...tanks, ...drones, ...fireboats, ...policeBoats].map(
+  ...[...police, ...motorcycles, ...tanks, ...dinos, ...drones, ...fireboats, ...policeBoats].map(
     (vehicle) => vehicle.group,
   ),
 );
@@ -1209,7 +1240,8 @@ function updateNames() {
 // Ships on their round course on the Rhine (tools/ships.mjs), which keeps clear of the bridge
 // piers and the sea monster: SHIPS tankers, container ships, passenger ships and speedboats in
 // turn, evenly spaced and all at the same speed, so they never meet. Each is at most 11 m wide (the
-// course keeps 10 m clear around its middle) and 6 m high, to pass under the bridges.
+// course keeps 10 m clear around its middle) and 6 m high, to pass under the bridges. Whale
+// families swim among them.
 function createShips(course) {
   const SPEED = 5; // metres per second
   const SHIPS = 20; // about one every 650 m of the course
@@ -1298,6 +1330,64 @@ function createShips(course) {
     box([3.55, 0.4, 7.5], 0xc8282d, [0, 1.3, -1.5]), // red stripe
     box([2.6, 1.0, 2.0], WINDOWS, [0, 2.5, 0.5]), // windscreen and cockpit
   ];
+  // A whale, 32 m long and 10.5 m wide across its flukes, its head along +z; its flukes apart.
+  const WHALE = 0x46566a;
+  const whale = mergeGeometries([
+    part(
+      new THREE.LatheGeometry(
+        [
+          [0, -16],
+          [0.75, -13.75],
+          [1.6, -10],
+          [2.9, -5],
+          [3.75, 0],
+          [4.1, 5],
+          [3.9, 10],
+          [3, 13.75],
+          [1.6, 15.75],
+          [0, 16],
+        ].map(([r, z]) => new THREE.Vector2(r, z)),
+        12,
+      )
+        .rotateX(Math.PI / 2)
+        .scale(1, 0.8, 1),
+      WHALE,
+      [0, 1.2, 0],
+    ),
+    ...[-1, 1].map((side) =>
+      part(new THREE.BoxGeometry(3.2, 0.3, 1.75).rotateZ(-side * 0.35), WHALE, [
+        side * 3.9,
+        0.2,
+        6,
+      ]),
+    ), // flippers
+    part(new THREE.ConeGeometry(0.6, 1.1, 4).scale(0.5, 1, 2), WHALE, [0, 3.3, -7.5]), // dorsal fin
+    ...[-1, 1].map((side) =>
+      part(new THREE.BoxGeometry(0.4, 0.4, 0.4), 0x111111, [side * 3.25, 1.5, 12.5]),
+    ), // eyes
+  ]);
+  // Its flukes, turning up and down about where they meet its tail (their origin).
+  const flukes = part(
+    new THREE.ExtrudeGeometry(
+      new THREE.Shape(
+        [
+          [0, 0.6],
+          [1.9, -0.6],
+          [5.25, -2.75],
+          [4.5, -3.75],
+          [1.5, -2.75],
+          [0, -3.25],
+          [-1.5, -2.75],
+          [-4.5, -3.75],
+          [-5.25, -2.75],
+          [-1.9, -0.6],
+        ].map(([x, z]) => new THREE.Vector2(x, z)),
+      ),
+      { depth: 0.4, bevelEnabled: false },
+    ).rotateX(Math.PI / 2),
+    WHALE,
+    [0, 0.2, 0],
+  );
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   // eye: where one rides along, above the wheelhouse, the upper deck or the cockpit.
   const types = [
@@ -1316,6 +1406,93 @@ function createShips(course) {
     mesh.matrixAutoUpdate = false; // placed by update()
     return { mesh, length, eye, start: (total * i) / SHIPS }; // evenly spaced on the course
   });
+  // Whale families among the ships, each halfway between two: a large one ahead, a smaller one and
+  // a calf behind, FOLLOW metres apart, so each leaps where the one ahead did. A whale swims at the
+  // surface, dives DEEP metres, comes up and leaps out at LEAP metres per second, falls back and
+  // dips in, then blows a spout (its rise above its course: height, c seconds after it fell back).
+  const [FAMILIES, FOLLOW, DEEP, LEAP, GRAVITY] = [2, 60, 12, 12, 9.8];
+  const RISE = (DEEP * Math.PI) / 2 / LEAP; // seconds up from the depth
+  const CYCLE = 12 + RISE + (2 * LEAP) / GRAVITY; // seconds
+  const height = (c) => {
+    if (c < 2) return -2 * Math.sin((Math.PI * c) / 2); // dipping in
+    if (c < 8) return 0;
+    if (c < 12) return -DEEP * Math.sin((Math.PI * (c - 8)) / 8); // diving
+    if (c < 12 + RISE) return -DEEP * Math.cos((Math.PI * (c - 12)) / 2 / RISE); // coming up
+    c -= 12 + RISE;
+    return LEAP * c - (GRAVITY / 2) * c * c; // leaping
+  };
+  // Whether a whale leaps in its cycle n (from falling back): not if a bridge spans the course
+  // from FREE metres before its dive to FREE metres past its spout. bridged: by 5 m of the course.
+  const FREE = 20;
+  const bridged = [];
+  const spot = new THREE.Vector3();
+  const spans = (i) => {
+    const { x, z } = at(i * 5, spot);
+    return bridgeDecks().heights(x, z).length > 0;
+  };
+  const leaps = (w, n) => {
+    if (n in w.leaps) return w.leaps[n];
+    const from = w.start + (n * CYCLE + 8 + w.delay) * SPEED - FREE;
+    for (let d = from; d < from + (CYCLE - 1) * SPEED + 2 * FREE; d += 5) {
+      const i = Math.floor((((d % total) + total) % total) / 5);
+      if ((bridged[i] ??= spans(i))) return (w.leaps[n] = false);
+    }
+    return (w.leaps[n] = true);
+  };
+  // A whale's rise above its course t seconds after its start, if it leaps then.
+  const rise = (w, t) => {
+    const n = Math.floor(t / CYCLE);
+    const c = t - n * CYCLE;
+    return leaps(w, c < 8 ? n - 1 : n) ? w.size * height(c) : 0;
+  };
+  // Its spout: DROPS droplets thrown up from its blowhole (HOLE), one after another for BURST
+  // seconds once it has dipped in; each is shown until it falls below its back, else hidden
+  // inside it.
+  const [BURST, DROPS] = [2, 400];
+  const HOLE = new THREE.Vector3(0, 4.3, 9);
+  const throws = [...Array(DROPS)].map(
+    () =>
+      new THREE.Vector3(
+        Math.random() * 2.4 - 1.2,
+        9 + Math.random() * 3,
+        Math.random() * 2.4 - 2.7, // a little backwards, as it swims on
+      ),
+  );
+  const spray = new THREE.PointsMaterial({
+    map: glow(0xffffff).map, // a soft round dot
+    size: 0.6,
+    transparent: true,
+    depthWrite: false,
+  });
+  const whales = [...Array(FAMILIES)].flatMap((_, f) =>
+    [1, 0.8, 0.5].map((size, k) => {
+      const mesh = new THREE.Mesh(whale, material.clone());
+      mesh.matrixAutoUpdate = false;
+      const tail = new THREE.Mesh(flukes, mesh.material);
+      tail.position.set(0, 1.2, -15.6);
+      const drops = new THREE.BufferAttribute(new Float32Array(DROPS * 3), 3);
+      const spout = new THREE.Points(
+        new THREE.BufferGeometry().setAttribute("position", drops),
+        spray,
+      );
+      spout.frustumCulled = false; // its bounds are never computed
+      spout.raycast = () => {}; // not clicked
+      mesh.add(tail, spout);
+      const start = (total * (f * (SHIPS / FAMILIES) + 0.5)) / SHIPS - k * FOLLOW;
+      const delay = (k * FOLLOW) / SPEED;
+      return { mesh, tail, drops, size, delay, blowing: false, start, leaps: {} };
+    }),
+  );
+  fleet.push(
+    ...whales.map(({ mesh, size, start }) => ({
+      mesh,
+      length: 32 * size,
+      eye: [0, 6.5, 3],
+      start,
+    })),
+  );
+  const [drop, scale] = [new THREE.Vector3(), new THREE.Vector3()];
+  const tilt = new THREE.Matrix4();
 
   const [front, back, forward, right, up] = [...Array(5)].map(() => new THREE.Vector3());
   const yAxis = new THREE.Vector3(0, 1, 0);
@@ -1331,6 +1508,28 @@ function createShips(course) {
       ship.mesh.matrix
         .makeBasis(right.multiplyScalar(b), up.multiplyScalar(b), forward)
         .setPosition(front);
+    }
+    // The whales, raised or lowered by height, nose up while rising, flukes beating.
+    for (const w of whales) {
+      const t = seconds - w.delay;
+      const climb = rise(w, t + 0.5) - rise(w, t - 0.5); // metres in the second around t
+      w.mesh.matrix.multiply(
+        tilt.makeRotationX(-Math.atan2(climb, SPEED)).scale(scale.setScalar(w.size)),
+      );
+      w.mesh.matrix.elements[13] += rise(w, t);
+      w.tail.rotation.x = 0.35 * Math.sin(1.6 * seconds + w.delay);
+      const n = Math.floor(t / CYCLE);
+      const blow = t - n * CYCLE - 2;
+      const on = blow >= 0 && blow < BURST + 3 && leaps(w, n - 1);
+      if (!on && !w.blowing) continue; // all hidden already
+      w.blowing = on;
+      throws.forEach((velocity, i) => {
+        const age = blow - (i / DROPS) * BURST;
+        drop.copy(HOLE).addScaledVector(velocity, age).y -= (GRAVITY / 2) * age * age;
+        if (!on || age < 0 || drop.y < HOLE.y - 1) drop.set(0, 0, 0);
+        w.drops.setXYZ(i, drop.x, drop.y, drop.z);
+      });
+      w.drops.needsUpdate = true;
     }
   };
   // The course 3 m above the water, one line segment per pair of points.
@@ -2090,13 +2289,14 @@ function createTrees(positions, canopy) {
   };
   const trunk = new THREE.CylinderGeometry(0.04, 0.06, 0.5, 5, 1, true);
   trunk.translate(0, 0.25, 0);
-  const crown = new THREE.IcosahedronGeometry(0.33);
+  const CROWN = 0.33; // radius of a crown 1 unit wide
+  const crown = new THREE.IcosahedronGeometry(CROWN);
   crown.translate(0, 0.67, 0);
-  const simpleCrown = new THREE.OctahedronGeometry(0.33);
+  const simpleCrown = new THREE.OctahedronGeometry(CROWN);
   simpleCrown.translate(0, 0.67, 0);
   const near = mergeGeometries([colored(trunk, 0x6b5a45), colored(crown, 0x5d7f3e)]);
   const middle = colored(simpleCrown, 0x5d7f3e);
-  const cone = new THREE.ConeGeometry(0.33, 0.66, 3, 1, true); // 3 triangles
+  const cone = new THREE.ConeGeometry(CROWN, 0.66, 3, 1, true); // 3 triangles
   cone.translate(0, 0.67, 0);
   const far = colored(cone, 0x5d7f3e);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
@@ -2117,6 +2317,26 @@ function createTrees(positions, canopy) {
     if (!chunks.has(key)) chunks.set(key, []);
     chunks.get(key).push(i);
   }
+  // A tree: where it stands, its height and width (metres) and random(k), all stable per tree.
+  const treeAt = (i) => {
+    const [x, z] = [trees[3 * i], trees[3 * i + 1]];
+    const random = (k) => (Math.abs(Math.sin(x * 12.9898 + z * 78.233 + k * 3.7)) * 43758.5453) % 1;
+    const height = trees[3 * i + 2] || 8 + random(0) * 10;
+    return { x, z, random, height, width: height * (0.8 + 0.45 * random(1)) };
+  };
+  // Whether no tree's crown reaches within r metres of x, z.
+  const clear = (x, z, r) => {
+    const keys = new Set();
+    for (const dx of [-r, r])
+      for (const dz of [-r, r])
+        keys.add(`${Math.floor((x + dx - x0) / chunk)}_${Math.floor((z + dz - z0) / chunk)}`);
+    return [...keys].every((key) =>
+      (chunks.get(key) ?? []).every((i) => {
+        const tree = treeAt(i);
+        return Math.hypot(tree.x - x, tree.z - z) >= r + CROWN * tree.width;
+      }),
+    );
+  };
 
   const matrix = new THREE.Matrix4();
   const rotation = new THREE.Quaternion();
@@ -2133,12 +2353,8 @@ function createTrees(positions, canopy) {
     // Bounds are computed once, from the larger near model.
     const mesh = new THREE.InstancedMesh(near, material, indices.length);
     indices.forEach((i, n) => {
-      const [x, z] = [trees[3 * i], trees[3 * i + 1]];
       // Stable per tree: brightness, hue (yellow to blue green), width against height.
-      const random = (k) =>
-        (Math.abs(Math.sin(x * 12.9898 + z * 78.233 + k * 3.7)) * 43758.5453) % 1;
-      const height = trees[3 * i + 2] || 8 + random(0) * 10;
-      const width = height * (0.8 + 0.45 * random(1));
+      const { x, z, random, height, width } = treeAt(i);
       const hue = random(2) * 2 - 1;
       const light = 0.75 + random(0) * 0.25;
       rotation.setFromAxisAngle(up, random(0) * 2 * Math.PI);
@@ -2150,7 +2366,7 @@ function createTrees(positions, canopy) {
     mesh.computeBoundingBox();
     return mesh;
   });
-  return { meshes, near, middle, far };
+  return { meshes, near, middle, far, clear };
 }
 
 // Detailed trees only near the camera, fewer far away.
@@ -2427,12 +2643,13 @@ const ufoRide = riders([
   { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
 ]);
 // What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the
-// motorcycles, the tanks and the boats, from behind and above; the drones through their own
+// motorcycles, the tanks, the dinosaur and the boats, from behind and above; the drones through their own
 // camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
   [tanks, [0, 7, -16], [0, 2, 14]],
+  [dinos, [0, 30, -55], [0, 8, 20]],
   [fireboats, [0, 9, -24], [0, 3, 20]],
   [policeBoats, [0, 4, -14], [0, 1.5, 11]],
   [drones],
@@ -2999,6 +3216,7 @@ renderer.setAnimationLoop((time) => {
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);
+  zoo.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);
   planes.update(time / 1000);
