@@ -20,7 +20,7 @@
         font:
           13px/1.4 "Inter",
           sans-serif;
-        color: #1d242b;
+        color: #f1f5f9;
         -webkit-tap-highlight-color: transparent; /* no blue flash on tap on mobile */
       }
       /* Holding a finger on it copies coordinates (src/main.js), so no callout or selection. */
@@ -33,6 +33,22 @@
       p {
         margin: 0;
       }
+      /* Glass: dark, translucent, blurring the scene behind it; the edge an inset line, so the
+         sizes stay. */
+      #loading,
+      #off,
+      #reset,
+      #menu,
+      #counter,
+      #dev,
+      #points,
+      #copied,
+      #steer button {
+        background: rgba(10, 15, 40, 0.5);
+        -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
+        backdrop-filter: blur(32px) saturate(200%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+      }
       #loading {
         position: absolute;
         top: 50%;
@@ -41,9 +57,7 @@
         padding: 10px 16px;
         font-size: 18px;
         white-space: nowrap; /* one line, also on phones */
-        background: rgba(255, 255, 255, 0.9);
         border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       }
       /* The buttons, the menu and the counter look alike: 36px tall (8px + 20px + 8px) like the
          steering buttons on desktop. */
@@ -59,10 +73,8 @@
         line-height: 20px;
         color: inherit;
         text-align: center;
-        background: rgba(255, 255, 255, 0.9);
         border: 0;
         border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         -webkit-user-select: none; /* Safari */
         user-select: none;
       }
@@ -151,7 +163,7 @@
         width: 14px;
         height: 14px;
         margin: 0;
-        accent-color: #1d242b;
+        accent-color: #f1f5f9;
         cursor: pointer;
       }
       #dev button,
@@ -161,8 +173,8 @@
         padding: 0;
         font: inherit;
         color: inherit;
-        background: #fff;
-        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: rgba(255, 255, 255, 0.3);
+        border: 0;
         border-radius: 6px;
         cursor: pointer;
       }
@@ -274,7 +286,7 @@
       #menu hr {
         margin: 4px 0;
         border: 0;
-        border-top: 1px solid rgba(0, 0, 0, 0.12);
+        border-top: 1px solid rgba(255, 255, 255, 0.3);
       }
       /* "All" neutral, as it stands for lines of all colours; the ground, "Names" and the panels
          neutral, as they show none. */
@@ -283,7 +295,7 @@
       #menu #names-box,
       #menu #points-box,
       #menu #dev-box {
-        accent-color: #1d242b;
+        accent-color: #f1f5f9;
       }
       /* "Trams", "All", then the tram lines one by one, five in a row, each pair of box and number
          well apart from the next. */
@@ -374,9 +386,7 @@
         font-size: 13px;
         line-height: 20px;
         text-align: center;
-        background: rgba(255, 255, 255, 0.9);
         border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         pointer-events: none;
       }
       /* Where the helicopter's rockets would hit (shoot in src/main.js): a ring with a dot, white
@@ -444,10 +454,8 @@
         font: inherit;
         font-size: 22px;
         color: inherit;
-        background: rgba(255, 255, 255, 0.9);
         border: 0;
         border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         cursor: pointer;
         pointer-events: auto;
         touch-action: none;
