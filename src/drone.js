@@ -12,7 +12,8 @@ const SIZE = 4; // times as large as a real one, to be seen
 const SPEED = 35;
 const DIVE = 0.6;
 const TILT = 1.4; // radians per second the nose tilts
-const PITCH = 1.3; // radians the nose points up or down at most
+const PITCH = 1.48; // radians the nose points up or down at most, about 85°
+const EASE = 0.3; // radians before that where tilting slows down, so it comes to rest softly
 const YAW = 2; // radians per second it turns at most
 const REACT = 8; // how fast (per second) turning follows the input
 const BANK = 0.5; // radians the view leans turning fully
@@ -78,7 +79,9 @@ export function createDrones(places, boost, { ground, blocked, intoArea }, camer
     };
 
     function fly(dt, input) {
-      s.pitch = THREE.MathUtils.clamp(s.pitch - input.climb * TILT * dt, -PITCH, PITCH);
+      const room = PITCH + input.climb * s.pitch; // radians left to the limit it tilts towards
+      s.pitch -= input.climb * TILT * dt * Math.min(1, room / EASE);
+      s.pitch = THREE.MathUtils.clamp(s.pitch, -PITCH, PITCH);
       s.turn += (input.turn - s.turn) * Math.min(1, dt * REACT);
       s.heading += s.turn * YAW * dt;
       const cruise = SPEED * (1 + DIVE * Math.sin(s.pitch));
