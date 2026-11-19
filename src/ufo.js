@@ -62,18 +62,14 @@ export function createUfo(boost, roof) {
       );
   };
   const body = new THREE.Mesh(hull, material);
-  // Glowing green: the guns' strips and muzzle flashes, the bolts and their flashes. It adds its colour and
-  // leaves the alpha, which the grey view (render in src/main.js) reads.
+  // Glowing green: the guns' strips and muzzle flashes, the bolts and their flashes.
   const glowing = new THREE.MeshBasicMaterial({
     color: GREEN,
     transparent: true,
     opacity: 0.9,
     depthWrite: false,
     toneMapped: false,
-    blending: THREE.CustomBlending,
-    blendDst: THREE.OneFactor,
-    blendSrcAlpha: THREE.ZeroFactor,
-    blendDstAlpha: THREE.OneFactor,
+    blending: THREE.AdditiveBlending,
   });
   const ball = new THREE.SphereGeometry(1, 12, 8);
   // Two black guns on arms out from the rim, left and right, pointing ahead (+z): each an angular

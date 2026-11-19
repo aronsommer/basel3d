@@ -2921,11 +2921,12 @@ const greyQuad = new FullScreenQuad(
       varying vec2 vUv;
       void main() {
         vec4 texel = texture2D(map, vUv);
+        float amount = min(texel.a, 1.0); // additive blending raises the alpha past 1
         float grey = dot(texel.rgb, vec3(0.2126, 0.7152, 0.0722));
-        gl_FragColor = vec4(mix(texel.rgb, vec3(grey), texel.a), 1.0);
+        gl_FragColor = vec4(mix(texel.rgb, vec3(grey), amount), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.4 * texel.a); // lighter
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.4 * amount); // lighter
       }`,
   }),
 );
