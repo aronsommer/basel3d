@@ -2,7 +2,10 @@
 // around its place: giraffes nodding, elephants swinging their trunks, zebras grazing, rhinos
 // nodding, a parade of penguins waddling round in a ring; in the water hippos opening their mouths
 // wide and seals swimming round in a ring, among flamingos (some on one leg) bobbing their heads;
-// a crocodile opening its jaws slowly.
+// a crocodile opening its jaws slowly; wild boars and their striped piglets rooting, foxes and a
+// wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans,
+// mallards and geese swimming round in rings, goats grazing, small monkeys hopping about and a lynx
+// looking round, donkeys grazing, wolves looking round or howling.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
@@ -22,10 +25,24 @@ const HIPPO = 0x7d6a72;
 const SEAL = 0x6b6560;
 const RHINO = 0x8a8178;
 const CROCODILE = 0x4a5a32;
+const BOAR = 0x4a3a2e;
+const FOX = 0xd2691e;
+const CAT = 0x8a7a62;
+const TABBY = 0x4a4030;
+const DEER = 0x8b5a2b;
+const CHAMOIS = 0x4a3626;
+const ANTLER = 0xd8c8a8;
+const MONKEY = 0x6b4a32;
+const GOAT = 0xe8e2d4;
+const LYNX = 0xb08a5a;
+const DONKEY = 0x8a8580;
+const PALE = 0xd8d0c4;
+const WOLF = 0x7a7670;
 
-// The kinds, facing +z: body, what stays still; swing, what turns about x at pivot (rest + amount ·
+// The kinds, facing +z: body, what stays still; swing, what turns about x (or axis) at pivot (rest + amount ·
 // sin(speed · seconds) radians); ring: metres round their place they go on at pace metres a second,
-// waddling on land or bobbing in water; lift: metres raised, so more shows above the water (or
+// waddling on land or bobbing in water; hop: metres it hops up, twice a second; lift: metres
+// raised, so more shows above the water (or
 // lowered, to stand in it).
 const flamingo = [
   part(box(0.35, 0.35, 0.6), PINK, [0, 1, 0]),
@@ -41,7 +58,188 @@ const flamingoNeck = {
   amount: 0.25,
   speed: 0.9,
 };
+const hind = [
+  part(box(0.55, 0.7, 1.5), DEER, [0, 1.25, 0]),
+  part(box(0.5, 0.3, 0.05), 0xe8dcc0, [0, 1.3, -0.76]), // rump
+  ...legs(0.1, 0.95, 0.18, 0.55, DEER),
+];
+const deerNeck = [
+  part(box(0.25, 0.7, 0.3).translate(0, 0.35, 0).rotateX(0.35), DEER, [0, 0, 0]), // neck
+  part(box(0.25, 0.25, 0.45), DEER, [0, 0.7, 0.35]), // head
+  part(box(0.15, 0.12, 0.1), 0x3a2a1c, [0, 0.66, 0.6]), // muzzle
+  ...[-1, 1].map((x) => part(box(0.15, 0.06, 0.12), DEER, [x * 0.17, 0.85, 0.2])), // ears
+];
+const deerSwing = { pivot: [0, 1.5, 0.6], rest: 0.7, amount: 0.7, speed: 0.4 }; // grazing
+const wolf = [
+  part(box(0.35, 0.4, 1), WOLF, [0, 0.68, 0]),
+  part(box(0.3, 0.25, 0.1), 0xc8c0b0, [0, 0.62, 0.5]), // chest
+  ...legs(0.09, 0.5, 0.11, 0.35, WOLF),
+  part(box(0.12, 0.12, 0.5).rotateX(-0.6), WOLF, [0, 0.6, -0.68]), // bushy tail
+  part(box(0.13, 0.13, 0.1).rotateX(-0.6), 0x3a3836, [0, 0.46, -0.88]), // its tip
+];
+const wolfHead = mergeGeometries([
+  part(box(0.22, 0.3, 0.25).translate(0, 0.12, 0).rotateX(0.3), WOLF, [0, 0, 0]), // neck
+  part(box(0.24, 0.22, 0.28), WOLF, [0, 0.2, 0.12]), // head
+  part(box(0.12, 0.1, 0.22), 0xc8c0b0, [0, 0.15, 0.34]), // snout
+  part(box(0.05, 0.04, 0.03), BLACK, [0, 0.18, 0.46]), // nose
+  ...[-1, 1].map((x) => part(new THREE.ConeGeometry(0.05, 0.13, 4), WOLF, [x * 0.08, 0.37, 0.05])), // ears
+  ...[-1, 1].map((x) => part(box(0.03, 0.03, 0.02), 0xd8b030, [x * 0.07, 0.25, 0.26])), // eyes
+]);
 const KINDS = {
+  wolf: {
+    body: wolf,
+    swing: { geometry: wolfHead, pivot: [0, 0.85, 0.45], axis: "y", amount: 0.6, speed: 0.4 },
+  },
+  howler: {
+    body: wolf,
+    swing: { geometry: wolfHead, pivot: [0, 0.85, 0.45], rest: -0.4, amount: 0.4, speed: 0.5 }, // snout up
+  },
+  hind: { body: hind, swing: { ...deerSwing, geometry: mergeGeometries(deerNeck) } },
+  stag: {
+    body: hind,
+    swing: {
+      ...deerSwing,
+      geometry: mergeGeometries([
+        ...deerNeck,
+        ...[-1, 1].flatMap((x) => [
+          part(box(0.05, 0.7, 0.05).rotateZ(-x * 0.45), ANTLER, [x * 0.25, 1.12, 0.2]), // beam
+          ...[0.95, 1.2, 1.4].map((y) =>
+            part(box(0.04, 0.25, 0.04).rotateX(0.6), ANTLER, [
+              x * (0.12 + (y - 0.8) * 0.45),
+              y,
+              0.3,
+            ]),
+          ), // tines
+        ]),
+      ]),
+    },
+  },
+  swan: {
+    body: [
+      part(box(0.45, 0.35, 0.9), WHITE, [0, 0.1, 0]),
+      part(box(0.25, 0.15, 0.25).rotateX(0.5), WHITE, [0, 0.3, -0.45]), // tail
+      ...[-1, 1].map((x) => part(box(0.1, 0.15, 0.6), WHITE, [x * 0.2, 0.32, -0.05])), // wings
+      part(box(0.08, 0.5, 0.08).rotateX(-0.2), WHITE, [0, 0.45, 0.35]), // neck
+      part(box(0.1, 0.1, 0.2), WHITE, [0, 0.72, 0.42]), // head
+      part(box(0.06, 0.05, 0.12), ORANGE, [0, 0.7, 0.56]), // beak
+      part(box(0.05, 0.05, 0.04), BLACK, [0, 0.72, 0.5]), // its knob
+    ],
+    ring: 3,
+    pace: 0.3,
+    swims: true,
+  },
+  goat: {
+    body: [
+      part(box(0.4, 0.45, 0.85), GOAT, [0, 0.7, 0]),
+      ...legs(0.08, 0.48, 0.13, 0.32, GOAT),
+      part(box(0.06, 0.12, 0.04).rotateX(-0.5), GOAT, [0, 0.95, -0.43]), // tail
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.16, 0.35, 0.2).translate(0, 0.17, 0).rotateX(0.4), GOAT, [0, 0, 0]), // neck
+        part(box(0.18, 0.2, 0.32), GOAT, [0, 0.35, 0.2]), // head
+        ...[-1, 1].map((x) =>
+          part(box(0.03, 0.2, 0.03).rotateX(-0.6), 0x6b6255, [x * 0.05, 0.5, 0.1]),
+        ), // horns
+        ...[-1, 1].map((x) => part(box(0.12, 0.04, 0.06), GOAT, [x * 0.12, 0.4, 0.12])), // ears
+        part(box(0.04, 0.1, 0.04), GOAT, [0, 0.2, 0.33]), // beard
+      ]),
+      pivot: [0, 0.85, 0.4],
+      rest: 0.5,
+      amount: 0.5, // grazing, then looking up
+      speed: 0.6,
+    },
+  },
+  monkey: {
+    body: [
+      part(box(0.25, 0.3, 0.2), MONKEY, [0, 0.3, 0]), // sitting up
+      ...[-1, 1].map((x) => part(box(0.09, 0.1, 0.22), MONKEY, [x * 0.09, 0.08, 0.08])), // legs
+      ...[-1, 1].map((x) =>
+        part(box(0.06, 0.25, 0.06).rotateX(-0.4), MONKEY, [x * 0.15, 0.28, 0.08]),
+      ), // arms
+      part(box(0.04, 0.04, 0.45), MONKEY, [0, 0.04, -0.3]), // tail
+      part(box(0.04, 0.2, 0.04), MONKEY, [0, 0.14, -0.52]), // its curl
+      part(box(0.18, 0.18, 0.16), MONKEY, [0, 0.55, 0]), // head
+      part(box(0.12, 0.1, 0.02), 0xd8b890, [0, 0.53, 0.08]), // face
+      ...[-1, 1].map((x) => part(box(0.03, 0.03, 0.01), BLACK, [x * 0.03, 0.56, 0.095])), // eyes
+      ...[-1, 1].map((x) => part(box(0.04, 0.07, 0.04), 0xd8b890, [x * 0.1, 0.56, 0])), // ears
+    ],
+    hop: 0.25,
+  },
+  lynx: {
+    body: [
+      part(box(0.35, 0.45, 0.95), LYNX, [0, 0.62, 0]),
+      ...[
+        [0.3, 0.2],
+        [0.2, -0.25],
+        [0.1, 0.35],
+      ].flatMap(([y, z]) =>
+        [-1, 1].map((x) => part(box(0.02, 0.08, 0.1), 0x5a4028, [x * 0.18, 0.62 + y - 0.2, z])),
+      ), // spots
+      ...legs(0.1, 0.45, 0.12, 0.35, LYNX),
+      part(box(0.07, 0.07, 0.15), LYNX, [0, 0.75, -0.55]), // short tail
+      part(box(0.075, 0.075, 0.05), BLACK, [0, 0.75, -0.64]), // its tip
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.3, 0.27, 0.27), LYNX, [0, 0.02, 0.08]), // head
+        part(box(0.36, 0.15, 0.1), 0xe8dcc0, [0, -0.06, 0.14]), // ruff
+        ...[-1, 1].flatMap((x) => [
+          part(new THREE.ConeGeometry(0.06, 0.14, 4), LYNX, [x * 0.1, 0.21, 0.04]), // ear
+          part(box(0.02, 0.08, 0.02), BLACK, [x * 0.1, 0.31, 0.04]), // its tuft
+        ]),
+        ...[-1, 1].map((x) => part(box(0.04, 0.04, 0.03), 0xc8b040, [x * 0.07, 0.06, 0.22])), // eyes
+        part(box(0.05, 0.03, 0.03), 0x3a2a1c, [0, 0, 0.23]), // nose
+      ]),
+      pivot: [0, 0.8, 0.45],
+      axis: "y",
+      amount: 0.6, // looking round
+      speed: 0.3,
+    },
+  },
+  donkey: {
+    body: [
+      part(box(0.5, 0.55, 1.1), DONKEY, [0, 0.85, 0]),
+      part(box(0.08, 0.03, 1), 0x3a3430, [0, 1.13, 0]), // stripe on its back
+      part(box(0.45, 0.08, 0.9), PALE, [0, 0.58, 0]), // belly
+      ...legs(0.1, 0.6, 0.16, 0.4, DONKEY),
+      part(box(0.05, 0.5, 0.05), DONKEY, [0, 0.75, -0.57]), // tail
+      part(box(0.08, 0.12, 0.08), 0x3a3430, [0, 0.48, -0.57]), // its tuft
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.22, 0.55, 0.28).translate(0, 0.27, 0).rotateX(0.5), DONKEY, [0, 0, 0]), // neck
+        part(box(0.06, 0.5, 0.08).translate(0, 0.27, -0.13).rotateX(0.5), 0x3a3430, [0, 0, 0]), // mane
+        part(box(0.22, 0.25, 0.5), DONKEY, [0, 0.55, 0.45]), // head
+        part(box(0.23, 0.18, 0.15), PALE, [0, 0.5, 0.68]), // muzzle
+        ...[-1, 1].map((x) =>
+          part(box(0.06, 0.3, 0.05).rotateZ(-x * 0.25), DONKEY, [x * 0.1, 0.8, 0.32]),
+        ), // long ears
+      ]),
+      pivot: [0, 1, 0.5],
+      rest: 0.6,
+      amount: 0.6, // grazing, then looking up
+      speed: 0.45,
+    },
+  },
+  chamois: {
+    body: [part(box(0.4, 0.5, 1), CHAMOIS, [0, 0.85, 0]), ...legs(0.08, 0.6, 0.13, 0.38, CHAMOIS)],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.18, 0.4, 0.22).translate(0, 0.2, 0).rotateX(0.3), CHAMOIS, [0, 0, 0]), // neck
+        part(box(0.18, 0.2, 0.32), 0xe6dccb, [0, 0.42, 0.22]), // face
+        ...[-1, 1].map((x) => part(box(0.02, 0.08, 0.3), BLACK, [x * 0.095, 0.44, 0.22])), // stripes
+        ...[-1, 1].flatMap((x) => [
+          part(box(0.03, 0.18, 0.03), BLACK, [x * 0.05, 0.6, 0.18]), // horn
+          part(box(0.03, 0.03, 0.08), BLACK, [x * 0.05, 0.68, 0.13]), // its hook
+        ]),
+      ]),
+      pivot: [0, 1.05, 0.45],
+      axis: "y",
+      amount: 0.5, // looking round
+      speed: 0.5,
+    },
+  },
   giraffe: {
     body: [
       part(box(1, 1.1, 2), GIRAFFE, [0, 2.3, 0]),
@@ -163,6 +361,76 @@ const KINDS = {
       speed: 0.6,
     },
   },
+  boar: {
+    body: [
+      part(box(0.6, 0.65, 1.2), BOAR, [0, 0.65, 0]),
+      part(box(0.1, 0.12, 1), 0x2e241c, [0, 1.02, 0]), // bristles
+      ...legs(0.12, 0.35, 0.2, 0.45, BOAR),
+      part(box(0.04, 0.25, 0.04), BOAR, [0, 0.75, -0.62]), // tail
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.45, 0.45, 0.5), BOAR, [0, -0.05, 0.2]), // head
+        part(box(0.25, 0.22, 0.35), BOAR, [0, -0.15, 0.55]), // snout
+        part(box(0.22, 0.2, 0.04), 0x6b5048, [0, -0.15, 0.73]), // nose
+        ...[-1, 1].map((x) => part(box(0.04, 0.1, 0.04), WHITE, [x * 0.13, -0.12, 0.6])), // tusks
+        ...[-1, 1].map((x) => part(box(0.08, 0.15, 0.08), BOAR, [x * 0.15, 0.22, 0.05])), // ears
+        ...[-1, 1].map((x) => part(box(0.05, 0.05, 0.05), BLACK, [x * 0.23, 0.05, 0.35])), // eyes
+      ]),
+      pivot: [0, 0.75, 0.6],
+      rest: 0.35,
+      amount: 0.35, // rooting in the ground, then looking up
+      speed: 0.7,
+    },
+  },
+  fox: {
+    body: [
+      part(box(0.3, 0.3, 0.7), FOX, [0, 0.4, 0]),
+      part(box(0.25, 0.2, 0.1), WHITE, [0, 0.35, 0.33]), // chest
+      ...legs(0.07, 0.27, 0.1, 0.25, 0x2a1d14),
+      part(box(0.16, 0.16, 0.55).rotateX(-0.3), FOX, [0, 0.33, -0.6]), // tail
+      part(box(0.17, 0.17, 0.12).rotateX(-0.3), WHITE, [0, 0.25, -0.88]), // its tip
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.22, 0.2, 0.22), FOX, [0, 0.05, 0.08]), // head
+        part(box(0.1, 0.09, 0.18), FOX, [0, 0, 0.25]), // snout
+        part(box(0.04, 0.04, 0.03), BLACK, [0, 0.01, 0.34]), // nose
+        ...[-1, 1].map((x) =>
+          part(new THREE.ConeGeometry(0.06, 0.14, 4), FOX, [x * 0.07, 0.21, 0.05]),
+        ), // ears
+        ...[-1, 1].map((x) => part(box(0.03, 0.03, 0.03), BLACK, [x * 0.07, 0.1, 0.19])), // eyes
+      ]),
+      pivot: [0, 0.5, 0.32],
+      axis: "y",
+      amount: 0.6, // looking left and right
+      speed: 0.5,
+    },
+  },
+  wildcat: {
+    body: [
+      part(box(0.25, 0.28, 0.6), CAT, [0, 0.38, 0]),
+      ...[-0.2, 0, 0.2].map((z) => part(box(0.27, 0.3, 0.05), TABBY, [0, 0.38, z])), // stripes
+      ...legs(0.07, 0.25, 0.08, 0.22, CAT),
+      part(box(0.1, 0.1, 0.4), CAT, [0, 0.4, -0.48]), // bushy tail
+      ...[-0.55, -0.62].map((z) => part(box(0.11, 0.11, 0.04), TABBY, [0, 0.4, z])), // its rings
+      part(box(0.11, 0.11, 0.06), BLACK, [0, 0.4, -0.69]), // its tip
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.22, 0.2, 0.2), CAT, [0, 0.02, 0.05]), // head
+        ...[-1, 1].map((x) =>
+          part(new THREE.ConeGeometry(0.05, 0.1, 4), CAT, [x * 0.07, 0.15, 0.03]),
+        ), // ears
+        ...[-1, 1].map((x) => part(box(0.04, 0.04, 0.03), 0xc8b040, [x * 0.06, 0.05, 0.15])), // eyes
+        part(box(0.04, 0.03, 0.03), 0xd08a8a, [0, -0.02, 0.16]), // nose
+      ]),
+      pivot: [0, 0.5, 0.3],
+      axis: "y",
+      amount: 0.7, // looking round
+      speed: 0.35,
+    },
+  },
   crocodile: {
     body: [
       part(box(0.7, 0.35, 1.4), CROCODILE, [0, 0.25, 0]),
@@ -201,6 +469,34 @@ const KINDS = {
     lift: 0.3,
   },
 };
+// Mallards, swimming round: drakes with green heads and white collars, ducks all brown; geese.
+const bird = (body, head, beak, size) => ({
+  body: [
+    part(box(0.22, 0.18, 0.42).scale(size, size, size), body, [0, 0.05 * size, 0]),
+    part(box(0.12, 0.13, 0.14).scale(size, size, size), head, [0, 0.2 * size, 0.2 * size]),
+    part(box(0.06, 0.03, 0.1).scale(size, size, size), beak, [0, 0.18 * size, 0.3 * size]),
+    part(box(0.1, 0.06, 0.1).rotateX(0.5).scale(size, size, size), body, [
+      0,
+      0.12 * size,
+      -0.22 * size,
+    ]), // tail
+  ],
+  ring: 2.5,
+  pace: 0.5,
+  swims: true,
+});
+KINDS.drake = bird(0x8a8070, 0x1f6b3a, 0xe0c020, 1);
+KINDS.drake.body.push(part(box(0.125, 0.03, 0.125), WHITE, [0, 0.13, 0.2])); // collar
+KINDS.duck = bird(0x7a5c3c, 0x7a5c3c, ORANGE, 1);
+KINDS.goose = bird(0x8c8c84, 0x8c8c84, ORANGE, 1.7);
+// Piglets: striped along their sides.
+KINDS.piglet = {
+  ...KINDS.boar,
+  body: [
+    ...KINDS.boar.body,
+    ...[0.55, 0.7, 0.85].map((y) => part(box(0.62, 0.05, 1.1), 0xb89a6a, [0, y, 0])),
+  ],
+};
 for (const kind of Object.values(KINDS)) kind.body = mergeGeometries(kind.body);
 
 // Metres round each kind (before BIG and its size), kept clear of trees.
@@ -215,6 +511,23 @@ const REACH = {
   hippo: 1.8,
   seal: 1,
   crocodile: 1.5,
+  boar: 0.8,
+  piglet: 0.8,
+  fox: 0.6,
+  wildcat: 0.5,
+  hind: 1.1,
+  stag: 1.2,
+  chamois: 0.7,
+  swan: 0.7,
+  drake: 0.3,
+  duck: 0.3,
+  goose: 0.5,
+  goat: 0.6,
+  monkey: 0.3,
+  lynx: 0.6,
+  donkey: 0.8,
+  wolf: 0.6,
+  howler: 0.6,
 };
 
 // Each group: its animals as [kind, x, z (metres from its place, facing along its heading, before
@@ -267,6 +580,78 @@ const GROUPS = {
     ["flamingoOnTwo", 6.5, 1.2, -1, 0.95],
   ],
   crocodiles: [["crocodile", 0, 0, 0, 1]],
+  boars: [
+    ["boar", 0, 0, 0, 1],
+    ["boar", 1.6, 0.8, 0.6, 0.95],
+    ["boar", -1.4, 1.2, -0.5, 1.05],
+    ["piglet", 0.6, -1.2, 0.3, 0.45],
+    ["piglet", -0.4, -1.4, -0.4, 0.4],
+    ["piglet", 1.2, -1.9, 1, 0.45],
+    ["piglet", -1, -0.6, 2.4, 0.4],
+  ],
+  foxes: [
+    ["fox", 0, 0, 0, 1],
+    ["fox", 1.2, 0.6, 0.8, 0.95],
+    ["fox", -0.9, 0.9, -0.6, 0.7],
+  ],
+  wildcat: [["wildcat", 0, 0, 0, 1]],
+  deer: [
+    ["stag", 0, 0, 0, 1.1],
+    ["hind", 2, 1, 0.5, 1],
+    ["hind", -1.8, 1.4, -0.6, 0.95],
+    ["hind", 1, -2, 2.6, 1],
+    ["hind", 2.6, -1.2, 1.2, 0.55], // a calf
+  ],
+  swans: ring("swan", 4, 1.1),
+  goats: [
+    ["goat", 0, 0, 0, 1],
+    ["goat", 1.3, 0.8, 0.7, 1.05],
+    ["goat", -1.2, 1, -0.6, 0.95],
+    ["goat", 0.5, -1.4, 2.3, 1],
+    ["goat", -1.6, -0.8, 1.5, 0.55],
+    ["goat", 1.8, -0.7, -0.9, 0.5],
+  ],
+  monkeys: [
+    ["monkey", 0, 0, 0, 1],
+    ["monkey", 0.8, 0.5, 0.8, 0.9],
+    ["monkey", -0.7, 0.6, -0.7, 1],
+    ["monkey", 0.4, -0.8, 2.6, 0.95],
+    ["monkey", -0.6, -0.7, -2.4, 0.7],
+    ["monkey", 1.3, -0.3, 1.6, 1],
+    ["monkey", -1.3, -0.1, -1.4, 0.85],
+  ],
+  // Mallards and geese in a loose line round their ring.
+  ducks: [
+    ["drake", 0, 0, 0, 1],
+    ["duck", 0, 0, -0.5, 1],
+    ["drake", 0, 0, -1.6, 1],
+    ["duck", 0, 0, -2, 1],
+    ["duck", 0, 0, -2.4, 0.6],
+    ["duck", 0, 0, -2.7, 0.6],
+    ["drake", 0, 0, -4, 1],
+  ],
+  geese: [
+    ["goose", 0, 0, 0, 1],
+    ["goose", 0, 0, -0.7, 1],
+    ["drake", 0, 0, -2.5, 1],
+    ["duck", 0, 0, -3, 1],
+    ["drake", 0, 0, -4.3, 1],
+  ],
+  lynx: [["lynx", 0, 0, 0, 1]],
+  donkeys: [
+    ["donkey", 0, 0, 0, 1],
+    ["donkey", 1.5, 0.8, 0.6, 1.05],
+    ["donkey", -1.4, 1, -0.5, 0.95],
+    ["donkey", 0.6, -1.4, 2.4, 0.6], // a foal
+  ],
+  wolf: [["wolf", 0, 0, 0, 1]],
+  howler: [["howler", 0, 0, 0, 1.1]],
+  chamois: [
+    ["chamois", 0, 0, 0, 1],
+    ["chamois", 1.3, 0.7, 0.7, 0.95],
+    ["chamois", -1.2, 0.9, -0.5, 1],
+    ["chamois", 0.6, -1.3, 2.2, 0.6],
+  ],
   seals: [
     ...ring("seal", 5, 1.2),
     ["flamingo", 0, 0, 0, 1],
@@ -312,16 +697,21 @@ export function createZoo(places, ground, clear) {
         neck.position.fromArray(kind.swing.pivot);
         mesh.add(neck);
       }
-      return { mesh, neck, kind, turn, k, lift, center: { x: ax, y: ground(ax, az), z: az } };
+      const center = { x: ax, y: ground(ax, az), z: az };
+      return { mesh, neck, kind, turn, k, lift, scale: BIG * size, center };
     }),
   );
   return {
     meshes: animals.map(({ mesh }) => mesh),
     update(seconds) {
-      for (const { mesh, neck, kind, turn, k, lift, center } of animals) {
+      for (const { mesh, neck, kind, turn, k, lift, scale, center } of animals) {
         const { swing, pace, swims } = kind;
         if (neck)
-          neck.rotation.x = (swing.rest ?? 0) + swing.amount * Math.sin(swing.speed * seconds + k);
+          neck.rotation[swing.axis ?? "x"] =
+            (swing.rest ?? 0) + swing.amount * Math.sin(swing.speed * seconds + k);
+        if (kind.hop)
+          mesh.position.y =
+            center.y + lift + scale * kind.hop * Math.abs(Math.sin(Math.PI * 2 * seconds + k));
         if (!kind.ring) continue;
         const ring = BIG * kind.ring;
         const a = turn + (BIG * pace * seconds) / ring;

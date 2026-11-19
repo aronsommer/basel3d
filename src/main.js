@@ -954,8 +954,9 @@ scene.add(
   ...createPeople(standing(MEN), MEN_LOOKS),
   ...createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
 );
-// The Zoo Basel's animals and a crocodile in the Merian Gärten (src/zoo.js) at LV95 points, each
-// group with its heading.
+// The Zoo Basel's animals, a crocodile in the Merian Gärten and wild boars, foxes, a wildcat, red
+// deer, chamois, swans, goats (twice), small monkeys, ducks, geese, a lynx, donkeys and wolves in the
+// Lange Erlen (src/zoo.js) at LV95 points, each group with its heading.
 const zoo = createZoo(
   [
     ["giraffes", 2610723.6, 1266483.0, 0.5],
@@ -966,6 +967,22 @@ const zoo = createZoo(
     ["rhinos", 2610587.7, 1266255.8, 0.8],
     ["penguins", 2610437.5, 1266003.1, 0],
     ["crocodiles", 2613500.5, 1264409.6, 0],
+    ["boars", 2612577.6, 1269243.4, 0],
+    ["foxes", 2612577.1, 1269194.8, 0],
+    ["wildcat", 2612617.9, 1269241.3, 0],
+    ["deer", 2612649.0, 1269188.8, 0],
+    ["chamois", 2612705.9, 1269201.7, 0],
+    ["swans", 2612675.9, 1269269.7, 0],
+    ["goats", 2612720.7, 1269278.9, 0],
+    ["monkeys", 2612733.4, 1269327.0, 0],
+    ["ducks", 2612756.0, 1269255.9, 0],
+    ["geese", 2612797.5, 1269228.5, 0],
+    ["lynx", 2612850.6, 1269239.8, 0],
+    ["goats", 2612871.7, 1269272.5, 1.5],
+    ["donkeys", 2612959.8, 1269327.0, 0],
+    ["howler", 2612841.2, 1269383.6, -1.2],
+    ["wolf", 2612810.9, 1269370.5, 1.8],
+    ["wolf", 2612805.8, 1269381.3, 0.4],
   ].map(([group, e, n, heading]) => ({ group, ...fromLV95([e, n]), heading })),
   heightAt,
   tree.clear,
