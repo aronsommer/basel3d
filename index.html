@@ -197,31 +197,7 @@
           display: inline;
         }
       }
-      /* Tiny, in the corner, with a white halo. */
-      #credit {
-        position: absolute;
-        bottom: 0;
-        right: 0;
-        display: flex;
-        flex-wrap: wrap-reverse;
-        justify-content: flex-end;
-        column-gap: 5px;
-        max-width: 100%;
-        padding: 2.5px 5px;
-        box-sizing: border-box;
-        font-size: 10px;
-        line-height: 1.6;
-        color: #000;
-        text-shadow:
-          -1px -1px 0 #fff,
-          1px -1px 0 #fff,
-          -1px 1px 0 #fff,
-          1px 1px 0 #fff;
-      }
-      #credit span {
-        white-space: nowrap;
-      }
-      #credit a,
+      #credits a,
       #about a {
         color: inherit;
         text-decoration: none;
@@ -310,16 +286,26 @@
       }
       #entries > hr,
       #entries > label,
-      #about {
+      #about,
+      #credits {
         grid-column: 1 / -1;
       }
-      /* Last row, small: the link left, the version right. */
-      #about {
+      /* Last rows, small: the link left, the version right; below them the credits. */
+      #about,
+      #credits {
         display: flex;
         justify-content: space-between;
         gap: 16px;
         font-size: 11px;
         opacity: 0.6;
+      }
+      #credits {
+        flex-wrap: wrap;
+        justify-content: start;
+        column-gap: 8px;
+      }
+      #credits span {
+        white-space: nowrap;
       }
       #tram-lines,
       #menu .pairs {
@@ -637,26 +623,28 @@
           <a href="https://github.com/aronsommer/basel3d" target="_blank" rel="noopener">GitHub</a>
           <span>Version __BUILD_TIMESTAMP__</span>
         </div>
+        <div id="credits">
+          <span
+            >©
+            <a href="https://www.swisstopo.admin.ch/" target="_blank" rel="noopener"
+              >swisstopo</a
+            ></span
+          >
+          <span
+            >©
+            <a href="https://www.geo.bs.ch/" target="_blank" rel="noopener"
+              >Geodaten Kanton Basel-Stadt</a
+            ></span
+          >
+          <span
+            >©
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"
+              >OpenStreetMap</a
+            ></span
+          >
+        </div>
       </div>
     </details>
-    <div id="credit">
-      <span
-        >©
-        <a href="https://www.swisstopo.admin.ch/" target="_blank" rel="noopener">swisstopo</a></span
-      >
-      <span
-        >©
-        <a href="https://www.geo.bs.ch/" target="_blank" rel="noopener"
-          >Geodaten Kanton Basel-Stadt</a
-        ></span
-      >
-      <span
-        >©
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"
-          >OpenStreetMap</a
-        ></span
-      >
-    </div>
     <script type="importmap">
       {
         "imports": {

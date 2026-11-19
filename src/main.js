@@ -30,6 +30,7 @@ import { createDev } from "./dev.js";
 import { createPoints } from "./points.js";
 import { copy } from "./copy.js";
 import { glow, part } from "./parts.js";
+import { ROAD, trainCar, tramCar } from "./vehicles.js";
 
 // Scene units are metres: x = east, z = south, y = altitude − 250 m; origin at LV95 E 2611000 / N 1267400.
 const LV95 = [2611000, 1267400]; // E, N of the scene's origin
@@ -452,7 +453,7 @@ function drive(dt) {
   for (const mover of movers) mover.move(dt);
 }
 for (const mover of movers) {
-  scene.add(mover.mesh);
+  scene.add(...mover.meshes);
   overlay.add(mover.routes);
   for (const deck of brokenDecks) mover.cut(deck);
 }
@@ -1632,8 +1633,8 @@ function riders(list) {
 
 // What moves along paths (tools/paths.mjs): trams, trains and cars, all called vehicles below.
 // A vehicle has CARS cars (one for road vehicles); each car follows the path on its
-// own, so long vehicles bend in curves. Its variant (say a goods train or a lorry) sets the length,
-// height and colour of its cars. All cars of a kind are instances of one box, in one draw call.
+// own, so long vehicles bend in curves. Its variant (say a goods train or a lorry) sets the model,
+// length, height and colour of its cars.
 // Also returns the paths as lines to check them (checkLines), one per line named by its ref (a
 // loop of two lines has two), in a group hidden at first.
 // A vehicle waits while a car of another one is on its own path just ahead: within ALONG of any
@@ -1649,14 +1650,13 @@ function createMovers({ routes }, points, kind, traffic) {
     tram: {
       CARS: 4,
       GAP: 0.6, // metres between cars
-      WIDTH: 2.3, // metres
       SPACING: 1500, // metres
       SPEED: 10, // metres per second
       LOOK: 25, // metres
       ALONG: 8, // metres; at least half the distance between a car's front, centre and back
       SIDE: 2, // metres; less than the distance to the track of the other direction (3.5 m)
       EYE: 2.4, // metres above the path, when riding
-      BAND: 0x1f2a30, // window band
+      models: () => [tramCar()],
       variant: ({ operator }) => ({
         length: 8,
         height: 3,
@@ -1666,69 +1666,43 @@ function createMovers({ routes }, points, kind, traffic) {
     train: {
       CARS: 5,
       GAP: 1,
-      WIDTH: 3,
       SPACING: 5000,
       SPEED: 22,
       LOOK: 60,
       ALONG: 15,
       SIDE: 2, // tracks of the other direction are about 4.5 m away
       EYE: 2.6,
-      BAND: 0xc8102e, // red
+      models: () => [trainCar(false), trainCar(true)],
       // White passenger trains, a quarter blue goods trains (green and yellow only for trams).
       variant: (_, r) =>
         r < 0.25
-          ? { length: 20, height: 3.6, color: 0x2f4f7f }
+          ? { model: 1, length: 20, height: 3.6, color: 0x2f4f7f }
           : { length: 25, height: 4, color: 0xf2f2f0 },
     },
     car: {
       CARS: 1,
       GAP: 0,
-      WIDTH: 1.8,
       SPACING: 100,
       SPEED: 12,
       LOOK: 9,
       ALONG: 2.5,
       SIDE: 1.2, // the lane of the other direction is 3.6 m away
       EYE: 1.2,
-      BAND: 0x1f2a30,
-      // Cars in strong colours so they can be seen, some lorries.
-      variant: (_, r) =>
-        r < 0.15
-          ? {
-              length: 10,
-              height: 3.2,
-              color: pick(r / 0.15, [0xf2f2f0, 0x2f6db5, 0xc8102e, 0xe0b52b]),
-            }
-          : {
-              length: 4.4,
-              height: 1.5,
-              color: pick(
-                r,
-                [0xe32b2b, 0x2f6db5, 0xf2c400, 0x3b9c4a, 0xf28c28, 0x18a5b5, 0xd6408f, 0xf2f2f0],
-              ),
-            },
+      models: () => ROAD.map(({ shape }) => shape()),
+      // A model of ROAD by its share, in one of its colours.
+      variant: (_, r) => {
+        let model = 0;
+        for (let below = ROAD[0].share; r >= below && model < ROAD.length - 1;)
+          below += ROAD[++model].share;
+        const { length, colors } = ROAD[model];
+        return { model, length, height: 1, color: pick((r * 7919) % 1, colors) };
+      },
     },
   };
-  const { CARS, GAP, WIDTH, SPACING, SPEED, LOOK, ALONG, SIDE, EYE, BAND, variant } = KINDS[kind];
+  const { CARS, GAP, SPACING, SPEED, LOOK, ALONG, SIDE, EYE, models, variant } = KINDS[kind];
   // Far away the cars grow higher, but at most this much wider, so that cars on neighbouring tracks
   // and lanes never overlap.
   const MAX_WIDER = 1.4;
-
-  // A car of length and height 1 along +z, from 0.1 to 1.1 above the path (scaled per car):
-  // white (tinted per vehicle), a window band in the third of four rows, a light roof.
-  const box = new THREE.BoxGeometry(WIDTH, 1, 1, 1, 4, 1).toNonIndexed();
-  box.translate(0, 0.6, 0);
-  const position = box.attributes.position;
-  const colors = new Float32Array(position.count * 3);
-  const color = new THREE.Color();
-  for (let i = 0; i < position.count; i += 3) {
-    const y = (position.getY(i) + position.getY(i + 1) + position.getY(i + 2)) / 3;
-    color.set(y > 1.05 ? 0xdadcd6 : y > 0.6 && y < 0.85 ? BAND : 0xffffff);
-    for (let k = 0; k < 3; k++) color.toArray(colors, 3 * (i + k));
-  }
-  box.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  box.deleteAttribute("normal");
-  box.deleteAttribute("uv");
 
   const lines = routes.map(({ ref, start, count, length, share, operator, parts }) => ({
     start,
@@ -1762,7 +1736,12 @@ function createMovers({ routes }, points, kind, traffic) {
   for (const line of lines) {
     const n = Math.max(1, Math.round(line.share / SPACING));
     for (let k = 0; k < n; k++) {
-      const { length, height, color } = variant(line, random(vehicles.length + k * 7919));
+      const {
+        length,
+        height,
+        color,
+        model = 0,
+      } = variant(line, random(vehicles.length + k * 7919));
       const total = CARS * (length + GAP);
       const d = (k * line.length) / n;
       const body = [];
@@ -1779,7 +1758,7 @@ function createMovers({ routes }, points, kind, traffic) {
               free = Math.hypot(list[q] - body[b], list[q + 1] - body[b + 1]) > SIDE;
           }
       if (!free) continue;
-      vehicles.push({ line, d, start: d, length, height, color: new THREE.Color(color) });
+      vehicles.push({ line, d, start: d, length, height, model, color: new THREE.Color(color) });
       for (let b = 0; b < body.length; b += 2) {
         const key = cell(body[b], body[b + 1]);
         if (!taken.has(key)) taken.set(key, []);
@@ -1787,21 +1766,58 @@ function createMovers({ routes }, points, kind, traffic) {
       }
     }
   }
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  // The cars of the vehicle under the mouse, instances highlightFrom to highlightTo - 1.
-  const highlighted = { highlightFrom: { value: 0 }, highlightTo: { value: 0 } };
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, highlighted);
-    highlightShader(
-      shader,
-      "gl_InstanceID >= highlightFrom && gl_InstanceID < highlightTo",
-      "uniform int highlightFrom, highlightTo;",
-    );
-  };
-  const mesh = new THREE.InstancedMesh(box, material, vehicles.length * CARS);
-  mesh.frustumCulled = false; // the vehicles move all over the city
+  // Per model (a geometry of length 1 along +z, scaled per car, white tinted per vehicle): its
+  // vehicles (fleet; a vehicle's slot is its place there) and their cars as instances of one mesh,
+  // in one draw call. Of each fleet's material, the uniforms that show the cars of the vehicle
+  // under the mouse, instances highlightFrom to highlightTo - 1, and the shader that keeps the parts
+  // of a car meant for the first or last one only (piece) and lights its lamps.
+  const geometries = models();
+  const fleets = geometries.map(() => []);
   vehicles.forEach((vehicle, v) => {
-    for (let c = 0; c < CARS; c++) mesh.setColorAt(v * CARS + c, vehicle.color);
+    vehicle.slot = fleets[vehicle.model].length;
+    fleets[vehicle.model].push(v);
+  });
+  const ranges = geometries.map(() => ({ highlightFrom: { value: 0 }, highlightTo: { value: 0 } }));
+  const meshes = geometries.map((geometry, m) => {
+    const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    material.customProgramCacheKey = () => kind; // the shader depends on CARS
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, ranges[m]);
+      highlightShader(
+        shader,
+        "gl_InstanceID >= highlightFrom && gl_InstanceID < highlightTo",
+        "uniform int highlightFrom, highlightTo;",
+      );
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          "#include <common>\nattribute float only;\nvarying float vLamp;",
+        )
+        .replace(
+          "#include <color_vertex>",
+          `#include <color_vertex>
+          vLamp = only > 2.5 ? 1.0 : 0.0;
+          if (vLamp > 0.5) vColor.rgb = color.rgb;`,
+        )
+        .replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          int part = int(only + 0.5) - (only > 2.5 ? 2 : 0), car = gl_InstanceID % ${CARS};
+          if (part == 1 && car != 0 || part == 2 && car != ${CARS - 1}) transformed = vec3(0.0);`,
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying float vLamp;")
+        .replace(
+          "#include <opaque_fragment>",
+          "if (vLamp > 0.5) outgoingLight = diffuseColor.rgb;\n#include <opaque_fragment>",
+        );
+    };
+    const mesh = new THREE.InstancedMesh(geometry, material, fleets[m].length * CARS);
+    mesh.frustumCulled = false; // the vehicles move all over the city
+    return mesh;
+  });
+  vehicles.forEach(({ model, slot, color }) => {
+    for (let c = 0; c < CARS; c++) meshes[model].setColorAt(slot * CARS + c, color);
   });
 
   // The loops 3 m above the ground, one line segment per pair of points, each part of a loop on
@@ -1881,10 +1897,10 @@ function createMovers({ routes }, points, kind, traffic) {
   // Places the cars and notes their points; those of a vehicle away are hidden.
   const place = () => {
     vehicles.forEach((vehicle, v) => {
-      const { line, d, length, height, away } = vehicle;
+      const { line, d, length, height, away, model, slot } = vehicle;
       for (let c = 0; c < CARS; c++) {
         if (away !== undefined) {
-          mesh.setMatrixAt(v * CARS + c, hidden);
+          meshes[model].setMatrixAt(slot * CARS + c, hidden);
           continue;
         }
         const end = d - c * (length + GAP);
@@ -1903,10 +1919,10 @@ function createMovers({ routes }, points, kind, traffic) {
         matrix
           .makeBasis(right, up.multiplyScalar(b * height), forward.multiplyScalar(length))
           .setPosition(centre);
-        mesh.setMatrixAt(v * CARS + c, matrix);
+        meshes[model].setMatrixAt(slot * CARS + c, matrix);
       }
     });
-    mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
   };
   // Notes for each vehicle what it waits for.
   const look = () => {
@@ -1957,15 +1973,17 @@ function createMovers({ routes }, points, kind, traffic) {
     out.y += 1.1 * height * boost(out);
     return line.parts.findLast((part) => part.from <= d);
   };
-  const vehicleOf = (hit) => Math.floor(hit.instanceId / CARS);
-  // Shows vehicle v in HIGHLIGHT; -1: none (instances -CARS to -1 do not exist).
-  const highlight = (v) => {
-    highlighted.highlightFrom.value = v * CARS;
-    highlighted.highlightTo.value = (v + 1) * CARS;
-  };
+  const vehicleOf = (hit) => fleets[meshes.indexOf(hit.object)][Math.floor(hit.instanceId / CARS)];
+  // Shows vehicle v in HIGHLIGHT; -1: none.
+  const highlight = (v) =>
+    ranges.forEach((range, m) => {
+      const on = v >= 0 && vehicles[v].model === m;
+      range.highlightFrom.value = on ? vehicles[v].slot * CARS : 0;
+      range.highlightTo.value = on ? (vehicles[v].slot + 1) * CARS : 0;
+    });
   return {
-    mesh,
-    objects: [mesh], // to click, as in riders
+    meshes,
+    objects: meshes, // to click, as in riders
     routes: routeLines,
     count: vehicles.length,
     place,
@@ -2743,7 +2761,8 @@ const gunner = () => (riding?.ride === tankRide ? tanks[riding.vehicle] : null);
 // looking around.
 const armed = () => (flying() && !pilot().unarmed) || gunner() !== null;
 const droneRide = drives.find(([vehicles]) => vehicles === drones)[1];
-// Whether what is ridden is steered; then clicks do not change to another.
+// Whether what is ridden is steered (in drives or pilots); then clicks do not change to another
+// and dragging does not look around.
 const steered = () => flying() || drives.some(([, ride]) => ride === riding?.ride);
 let flown = null; // the state of flying it (createFlight)
 document.getElementById("off").addEventListener("click", getOff);
@@ -2900,14 +2919,14 @@ function ride(found, clientX, clientY) {
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
   head.yaw = head.pitch = 0;
 }
-// Looking around while riding, but not while armed: dragging turns the head, up to PITCH up or
+// Looking around while riding, but not while steering (steered): dragging turns the head, up to PITCH up or
 // down and sideways as far as no view ray points behind the camera, so the front of a tram, train
 // or car (just behind it) stays out of view.
 const PITCH = 0.25; // radians
 const head = { yaw: 0, pitch: 0 }; // radians, left and up
 let dragged = null; // { x, y } of the primary pointer while dragging
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (riding && !armed() && e.isPrimary) dragged = { x: e.clientX, y: e.clientY };
+  if (riding && !steered() && e.isPrimary) dragged = { x: e.clientX, y: e.clientY };
 });
 addEventListener("pointermove", (e) => {
   if (!dragged || !e.isPrimary) return;
@@ -2944,7 +2963,7 @@ const handles = [
 ];
 const middle = new THREE.Vector3();
 function vehicleAt(clientX, clientY, reach = 0) {
-  for (const mover of movers) mover.mesh.boundingSphere = null; // they moved since computed
+  for (const mover of movers) for (const mesh of mover.meshes) mesh.boundingSphere = null; // they moved since computed
   const found = vehicleOn(clientX, clientY);
   if (found) return found;
   let [best, nearest] = [null, REACH + reach];
@@ -3196,8 +3215,9 @@ document.body.dataset.mode = "orbit";
 // the screen they stay opaque, as the canvas has alpha.
 const greyTarget = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
 const tramAlpha = { value: 1 };
-const highlightTrams = trams.mesh.material.onBeforeCompile; // as all vehicles on tracks
-trams.mesh.material.onBeforeCompile = (shader) => {
+const [tramMesh] = trams.meshes; // trams have one model
+const highlightTrams = tramMesh.material.onBeforeCompile; // as all vehicles on tracks
+tramMesh.material.onBeforeCompile = (shader) => {
   highlightTrams(shader);
   shader.uniforms.tramAlpha = tramAlpha;
   shader.fragmentShader = `uniform float tramAlpha;\n${shader.fragmentShader.replace(

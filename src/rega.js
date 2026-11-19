@@ -179,8 +179,8 @@ const MODELS = {
       part(box(2, 0.06, 0.45), RED, [0, 0.3, -6.2]), // stabiliser
       ...[
         [0, 2],
-        [-0.9, -0.6],
-        [0.9, -0.6],
+        [-0.45, -0.6],
+        [0.45, -0.6],
       ].flatMap(([x, z]) => [
         part(new THREE.CylinderGeometry(0.25, 0.25, 0.2, 10).rotateZ(Math.PI / 2), DARK, [
           x,
