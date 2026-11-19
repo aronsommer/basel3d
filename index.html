@@ -112,8 +112,8 @@
       #reset {
         cursor: pointer;
       }
-      /* Below the reset button, the panels ticked in the menu, 8px apart: "Dev panel"
-         (src/dev.js) above "Points panel" (src/points.js). */
+      /* Below the reset button, the panels ticked in the menu, 8px apart: "Dev"
+         (src/dev.js) above "Points" (src/points.js). */
       #panels {
         top: 148px;
         display: flex;
@@ -297,15 +297,34 @@
       #menu #dev-box {
         accent-color: #f1f5f9;
       }
-      /* "Trams", "All", then the tram lines one by one, five in a row, each pair of box and number
-         well apart from the next. */
-      #tram-lines {
+      /* One grid for all entries, five columns: "Trams", "All", then the tram lines one by one,
+         five in a row, each pair of box and number well apart from the next. The lines and
+         "Names" across all columns. */
+      #entries {
         display: grid;
         grid-template-columns: repeat(5, auto);
         justify-content: start;
         align-items: center;
         column-gap: 16px;
+      }
+      #entries > hr,
+      #entries > label {
+        grid-column: 1 / -1;
+      }
+      #tram-lines,
+      #menu .pairs {
+        display: contents;
+      }
+      #tram-lines {
         font-variant-numeric: tabular-nums;
+      }
+      /* Two entries in a row: the first below "Trams" and "All", the second from the third column
+         on, below the tram lines there. */
+      #menu .pairs label:nth-child(odd) {
+        grid-column: 1 / span 2;
+      }
+      #menu .pairs label:nth-child(even) {
+        grid-column: 3 / -1;
       }
       /* The names (updateNames in src/main.js), below the badges, the buttons and the menu; each
          with its bottom middle on its point, in a white halo: quarters and towns in spaced grey
@@ -579,22 +598,30 @@
     </div>
     <details id="menu">
       <summary>Menu</summary>
-      <label><input type="radio" name="ground" value="map" /> <span>Map</span></label>
-      <label><input type="radio" name="ground" value="photo" /> <span>Aerial</span></label>
-      <hr />
-      <label><input type="checkbox" id="names-box" /> Names</label>
-      <hr />
-      <div id="tram-lines">
-        <span>Trams</span>
-        <label><input type="checkbox" id="trams" /> All</label>
+      <div id="entries">
+        <div class="pairs">
+          <label><input type="radio" name="ground" value="map" /> <span>Map</span></label>
+          <label><input type="radio" name="ground" value="photo" /> <span>Aerial</span></label>
+        </div>
+        <hr />
+        <label><input type="checkbox" id="names-box" /> Names</label>
+        <hr />
+        <div id="tram-lines">
+          <span>Trams</span>
+          <label><input type="checkbox" id="trams" /> All</label>
+        </div>
+        <div class="pairs">
+          <label><input type="checkbox" data-kind="train" /> Trains</label>
+          <label><input type="checkbox" data-kind="car" /> Cars</label>
+          <label><input type="checkbox" data-kind="ship" /> Ships</label>
+          <label><input type="checkbox" data-kind="walk" /> Walks</label>
+        </div>
+        <hr />
+        <div class="pairs">
+          <label><input type="checkbox" id="points-box" /> Points</label>
+          <label><input type="checkbox" id="dev-box" /> Dev</label>
+        </div>
       </div>
-      <label><input type="checkbox" data-kind="train" /> Trains</label>
-      <label><input type="checkbox" data-kind="car" /> Cars</label>
-      <label><input type="checkbox" data-kind="ship" /> Ships</label>
-      <label><input type="checkbox" data-kind="walk" /> Walks</label>
-      <hr />
-      <label><input type="checkbox" id="points-box" /> Points panel</label>
-      <label><input type="checkbox" id="dev-box" /> Dev panel</label>
     </details>
     <div id="credit">
       <span

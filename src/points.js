@@ -1,4 +1,4 @@
-// "Points panel" in the menu: while ticked, a panel at the left (below the Dev panel,
+// "Points" in the menu: while ticked, a panel at the left (below the Dev panel,
 // src/dev.js, when both show) marks points on the scene with numbers. Record points: while
 // recording, each click on the scene marks what is there; Undo takes back the last; Stop ends it.
 // Paste points reads "latitude, longitude, altitude" lines from the clipboard (only over https or

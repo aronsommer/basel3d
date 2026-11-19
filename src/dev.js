@@ -1,4 +1,4 @@
-// "Dev panel" in the menu, remembered in this browser: while ticked, a panel at the
+// "Dev" in the menu, remembered in this browser: while ticked, a panel at the
 // left shows, below Copy stats, which copies it all, over a second (but at once after ticking it),
 // the frames per second; the ms to draw a frame (so it shows the cost even where the screen's
 // refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
