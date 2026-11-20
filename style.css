@@ -29,7 +29,6 @@ p {
    sizes stay. */
 #loading,
 #off,
-#reset,
 #menu,
 #counter,
 #dev,
@@ -54,7 +53,6 @@ p {
 /* The buttons, the menu and the counter look alike: 36px tall (8px + 20px + 8px) like the
    steering buttons on desktop. */
 #off,
-#reset,
 #menu,
 #counter,
 #dev,
@@ -72,10 +70,9 @@ p {
 }
 /* Two columns as wide, 8px apart. Right: the closed menu and the button to get off below it;
    the open menu covers the button to get off. Left: the counter, as tall as the two on the
-   right, and the reset button below it. All out of the notch and the rounded corners
+   right. All out of the notch and the rounded corners
    (viewport-fit=cover in index.html). */
 #off,
-#reset,
 #menu,
 #counter,
 #panels {
@@ -86,7 +83,6 @@ p {
 #menu {
   right: calc(env(safe-area-inset-right) + 12px);
 }
-#reset,
 #counter,
 #panels {
   left: calc(env(safe-area-inset-left) + 12px);
@@ -97,18 +93,12 @@ p {
 }
 #off {
   top: calc(env(safe-area-inset-top) + 56px);
-}
-#reset {
-  top: calc(env(safe-area-inset-top) + 100px);
-}
-#off,
-#reset {
   cursor: pointer;
 }
-/* Below the reset button, the panels ticked in the menu, 8px apart: "Dev"
+/* Below the counter, the panels ticked in the menu, 8px apart: "Dev"
    (src/dev.js) above "Points" (src/points.js). */
 #panels {
-  top: calc(env(safe-area-inset-top) + 148px);
+  top: calc(env(safe-area-inset-top) + 100px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -159,7 +149,8 @@ p {
   cursor: pointer;
 }
 #dev button,
-#points button {
+#points button,
+#reset {
   align-self: stretch;
   min-height: 22px;
   padding: 0;
@@ -170,7 +161,8 @@ p {
   border-radius: 6px;
   cursor: pointer;
 }
-#points button:disabled {
+#points button:disabled,
+#reset:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -278,9 +270,14 @@ p {
   column-gap: 16px;
 }
 #entries > hr,
+#reset,
 #about,
 #credits {
   grid-column: 1 / -1;
+}
+/* As tall as a row of boxes. */
+#reset {
+  min-height: 28px;
 }
 /* Last rows, small: the link left, the version right; below them the credits. */
 #about,
@@ -533,7 +530,6 @@ p {
 body:not([data-mode="loading"]) #loading,
 body[data-mode="loading"] #menu,
 body:not([data-mode="ride"]) #off,
-body[data-mode="loading"] #reset,
 body[data-mode="loading"] #counter {
   display: none;
 }

@@ -258,9 +258,9 @@ const structures = createBuildings(buildings.scene, bridges.scene, [terrain], re
 }
 const deckMaps = createDecks(bridges.scene, materials.bridge);
 const explosions = createExplosions(scene, structures, heightAt, camera);
-// What is blown up stays so in this browser until Rebuild, as long as the models are the same (by
-// their sizes and totals), since the numbers belong to them. Rebuild forgets it and loads the page
-// again. destroyed holds only what was really removed, so the counter is exact.
+// What is blown up stays so in this browser until "Rebuild Basel", as long as the models are the
+// same (by their sizes and totals), since the numbers belong to them. Rebuild forgets it and loads
+// the page again. destroyed holds only what was really removed, so the counter is exact.
 const DESTROYED_KEY = "basel3d.destroyed"; // { models, numbers }
 const { total } = structures;
 const MODELS = [
@@ -285,7 +285,7 @@ resetButton.addEventListener("click", () => {
   location.reload();
 });
 // Top left, how many buildings and bridges are still standing, counting down as they are destroyed.
-// The reset button shows once something is destroyed.
+// "Rebuild Basel" in the menu works once something is destroyed.
 function showCount() {
   let bridges = 0;
   for (const number of destroyed) if (structures.isBridge(number)) bridges++;
@@ -295,7 +295,7 @@ function showCount() {
   };
   for (const [kind, value] of Object.entries(standing))
     document.getElementById(kind).textContent = value;
-  resetButton.hidden = !destroyed.size;
+  resetButton.disabled = !destroyed.size;
 }
 showCount();
 // The decks of the bridges among these numbers, but hidden ones (deckOf).

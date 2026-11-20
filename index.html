@@ -12,7 +12,6 @@
     <div id="badges"></div>
     <div id="loading">Loading <span id="progress">0%</span></div>
     <button id="off">Get off<kbd> (Esc)</kbd></button>
-    <button id="reset" title="Rebuild all that was blown up" hidden>Rebuild</button>
     <div id="counter">
       <p title="Buildings">
         <svg viewBox="4 3 16 18" aria-hidden="true">
@@ -72,6 +71,8 @@
           <label><input type="checkbox" id="points-box" /> Points</label>
           <label><input type="checkbox" id="dev-box" /> Dev</label>
         </div>
+        <hr />
+        <button id="reset" title="Rebuild all that was blown up" disabled>Rebuild Basel</button>
         <hr />
         <!-- The deploy workflow replaces this with the UTC time of the deploy. -->
         <div id="about">
