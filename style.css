@@ -30,7 +30,6 @@ p {
 #loading,
 #off,
 #menu,
-#counter,
 #dev,
 #points,
 #copied,
@@ -50,11 +49,10 @@ p {
   white-space: nowrap; /* one line, also on phones */
   border-radius: 10px;
 }
-/* The buttons, the menu and the counter look alike: 36px tall (8px + 20px + 8px) like the
+/* The buttons and the menu look alike: 36px tall (8px + 20px + 8px) like the
    steering buttons on desktop. */
 #off,
 #menu,
-#counter,
 #dev,
 #points {
   box-sizing: border-box;
@@ -69,9 +67,8 @@ p {
   user-select: none;
 }
 /* Two columns as wide, 8px apart. Right: the closed menu and the button to get off below it;
-   the open menu covers the button to get off. Left: the counter, as tall as the two on the
-   right. All out of the notch and the rounded corners
-   (viewport-fit=cover in index.html). */
+   the open menu covers the button to get off. Left: the counter. All out of the notch and the
+   rounded corners (viewport-fit=cover in index.html). */
 #off,
 #menu,
 #counter,
@@ -87,9 +84,12 @@ p {
 #panels {
   left: calc(env(safe-area-inset-left) + 12px);
 }
-#menu,
-#counter {
+#menu {
   top: calc(env(safe-area-inset-top) + 12px);
+}
+/* The top of the numbers (about 6px below the roof's tip) level with the menu's top. */
+#counter {
+  top: calc(env(safe-area-inset-top) + 6px);
 }
 #off {
   top: calc(env(safe-area-inset-top) + 56px);
@@ -98,7 +98,7 @@ p {
 /* Below the counter, the panels ticked in the menu, 8px apart: "Dev"
    (src/dev.js) above "Points" (src/points.js). */
 #panels {
-  top: calc(env(safe-area-inset-top) + 100px);
+  top: calc(env(safe-area-inset-top) + 56px); /* as "Get off" */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -505,14 +505,22 @@ p {
   }
 }
 /* How many buildings and bridges are still standing (showCount in src/main.js), a line each:
-   an icon, then the number with all digits equally wide, so they stay in place. */
+   an icon, then the number with all digits equally wide, so they stay in place. Bold and white
+   in a soft shadow of the buttons' glass colour, without a background; both lines about as tall
+   as the menu (36px), the line so low that the roof's tip is the top. 14px, the only size
+   besides 10, 12 and 18px: 12px reads too small here, 18px too big. */
 #counter {
-  height: 80px; /* as tall as the menu and the button to get off, and the 8px between */
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 8px;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 17px;
+  color: #fff;
   font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 1px 2px rgba(10, 15, 40, 0.8)) drop-shadow(0 0 8px rgba(10, 15, 40, 0.5));
+  -webkit-user-select: none; /* Safari */
+  user-select: none;
 }
 #counter p {
   display: flex;
@@ -520,11 +528,10 @@ p {
   gap: 6px;
 }
 /* The house from Material Symbols (Apache License 2.0) and a bridge on its grid, cut to the
-   drawing (viewBox), so its bottom sits on the numbers' baseline. Lower than the line, so
-   the numbers stay where text would be. */
+   drawing (viewBox), so its bottom sits on the numbers' baseline. */
 #counter svg {
-  width: 12px;
-  height: 13.5px;
+  width: 14px;
+  height: 16px;
   fill: currentColor;
 }
 body:not([data-mode="loading"]) #loading,
