@@ -281,8 +281,9 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       return best;
     },
     // The triangles of those with these numbers, but hidden ones, in scene coordinates: a Map from
-    // each number to [{ color, positions }] per mesh, nine numbers per triangle. Each mesh is
-    // gone through once, however many numbers it has.
+    // each number to [{ color, positions, vertices }] per mesh, nine numbers per triangle and the
+    // mesh's vertex number of each corner. Each mesh is gone through once, however many numbers it
+    // has.
     triangles(numbers) {
       const wanted = new Set(numbers);
       const found = new Map();
@@ -302,12 +303,15 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
                 ? new THREE.Color().fromBufferAttribute(color, at(t))
                 : [mesh.material].flat()[0].color, // the bridges have one per ground tile
               positions: [],
+              vertices: [],
             });
-          const { positions } = lists.get(n);
-          for (let k = 0; k < 3; k++)
+          const { positions, vertices } = lists.get(n);
+          for (let k = 0; k < 3; k++) {
             positions.push(
               ...vertex.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
             );
+            vertices.push(at(t + k));
+          }
         }
         for (const [n, part] of lists) {
           if (!found.has(n)) found.set(n, []);
