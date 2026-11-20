@@ -23,6 +23,7 @@ npm run format
 ```
 basel3d/
 ├── index.html         page with the import map for three.js
+├── style.css          styles of the page
 ├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
 ├── src/buildings.js   buildings and bridges as single objects: picking, hits, highlight, hide
@@ -50,7 +51,7 @@ basel3d/
 │   ├── ships.bin      circuit of the ships on the Rhine as 3D points (tools/ships.mjs)
 │   ├── walks.bin      loops on the sidewalks around the inner city's blocks, for the pedestrians (tools/walks.mjs)
 │   ├── names.json     quarters, towns and landmarks with their place (tools/names.mjs)
-│   └── size.json      size of each file, for the loading percentage
+│   └── size.json      size and hash of each file, for the loading percentage and cache
 ├── tools/             converters that generate public/
 │   ├── area.mjs       shared area and coordinates
 │   ├── swisstopo.mjs  download helpers (STAC catalogue, single swissTLM3D layers, SWISSIMAGE tiles)
@@ -70,6 +71,8 @@ basel3d/
 │   └── size.mjs       → size.json, runs after every converter
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
+
+**Cache.** Every script or stylesheet in `index.html` ends in `?v=__BUILD_TIMESTAMP__`; the deploy replaces it with its time and bundles `src/` into one minified `src/main.js` (esbuild), so a new deploy is never mixed with cached old files. Files in `public/` are loaded with the content hash from `size.json`, so after changing one by hand, run `node tools/size.mjs`.
 
 ## Regenerating the data
 

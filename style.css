@@ -1,0 +1,538 @@
+@font-face {
+  font-family: "Inter";
+  font-weight: 100 900;
+  src: url(fonts/Inter.woff2) format("woff2");
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #bfd8ea;
+  font:
+    12px/1.4 "Inter",
+    sans-serif;
+  color: #f1f5f9;
+  -webkit-tap-highlight-color: transparent; /* no blue flash on tap on mobile */
+}
+/* Holding a finger on it copies coordinates (src/main.js), so no callout or selection. */
+canvas {
+  display: block;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none; /* Safari */
+  user-select: none;
+}
+p {
+  margin: 0;
+}
+/* Glass: dark, translucent, blurring the scene behind it; the edge an inset line, so the
+   sizes stay. */
+#loading,
+#off,
+#reset,
+#menu,
+#counter,
+#dev,
+#points,
+#copied,
+#steer button {
+  background: rgba(10, 15, 40, 0.5);
+  -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
+  backdrop-filter: blur(32px) saturate(200%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+#loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  font-size: 18px;
+  white-space: nowrap; /* one line, also on phones */
+  border-radius: 10px;
+}
+/* The buttons, the menu and the counter look alike: 36px tall (8px + 20px + 8px) like the
+   steering buttons on desktop. */
+#off,
+#reset,
+#menu,
+#counter,
+#dev,
+#points {
+  box-sizing: border-box;
+  padding: 8px 14px;
+  font: inherit;
+  line-height: 20px;
+  color: inherit;
+  text-align: center;
+  border: 0;
+  border-radius: 10px;
+  -webkit-user-select: none; /* Safari */
+  user-select: none;
+}
+/* Two columns as wide, 8px apart. Right: the closed menu and the button to get off below it;
+   the open menu covers the button to get off. Left: the counter, as tall as the two on the
+   right, and the reset button below it. */
+#off,
+#reset,
+#menu,
+#counter,
+#panels {
+  position: absolute;
+  width: 96px;
+}
+#off,
+#menu {
+  right: 12px;
+}
+#reset,
+#counter,
+#panels {
+  left: 12px;
+}
+#menu,
+#counter {
+  top: 12px;
+}
+#off {
+  top: 56px;
+}
+#reset {
+  top: 100px;
+}
+#off,
+#reset {
+  cursor: pointer;
+}
+/* Below the reset button, the panels ticked in the menu, 8px apart: "Dev"
+   (src/dev.js) above "Points" (src/points.js). */
+#panels {
+  top: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* In each, one below the other: the frame times' numbers, then a box per part and the
+   buttons; the points' buttons. Tighter, to fit the column's width and hide
+   little of the scene. */
+#dev,
+#points {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 16px;
+  text-align: left;
+}
+#dev[hidden],
+#points[hidden] {
+  display: none;
+}
+/* Names left, values right, so the units and decimal points line up. */
+#dev .stats {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 4px;
+  white-space: nowrap; /* "Draw 10.8 ms" on one line */
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: text; /* Safari; to copy by hand where Copy cannot */
+  user-select: text;
+}
+#dev .stats span:nth-child(even) {
+  text-align: right;
+}
+#dev label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  cursor: pointer;
+}
+#dev input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #f1f5f9;
+  cursor: pointer;
+}
+#dev button,
+#points button {
+  align-self: stretch;
+  min-height: 22px;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.3);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#points button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* The key to get off, only where there is a keyboard; less padding then, to fit in the same
+   width. */
+#off kbd {
+  display: none;
+  font: inherit;
+}
+@media (pointer: fine) {
+  #off {
+    padding-inline: 4px;
+    white-space: nowrap;
+  }
+  #off kbd {
+    display: inline;
+  }
+}
+#credits a,
+#about a {
+  color: inherit;
+  text-decoration: none;
+}
+/* Open: as wide as its entries need, left-aligned; above all else (nothing
+   else has a z-index). */
+#menu[open] {
+  z-index: 1;
+  width: auto;
+  min-width: 96px;
+  text-align: left;
+}
+/* The title fills the closed menu, so all of it can be tapped; open, it stays as it was, in
+   the top right corner, so the title and the chevron do not move. */
+#menu summary {
+  display: block;
+  box-sizing: border-box;
+  margin: -8px -14px;
+  padding: 8px 14px;
+  text-align: center;
+  cursor: pointer;
+}
+#menu[open] summary {
+  width: 96px;
+  margin-left: auto;
+  margin-bottom: 0;
+}
+#menu summary::-webkit-details-marker {
+  display: none;
+}
+/* A chevron: down when closed, up when open. */
+#menu summary::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 8px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+  transform: translateY(-3px) rotate(45deg);
+}
+#menu[open] summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+/* A box close to its text. Each label only as wide as its box and text, so a tap beside it
+   does not tick it. */
+#menu label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  width: fit-content;
+  cursor: pointer;
+}
+#menu input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #ff00ff;
+  cursor: pointer;
+}
+/* The ground, the names, the lines and the panels apart from each other. */
+#menu hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+/* "All" neutral, as it stands for lines of all colours; the ground, "Names" and the panels
+   neutral, as they show none. */
+#menu input[name="ground"],
+#menu #trams,
+#menu #names-box,
+#menu #points-box,
+#menu #dev-box {
+  accent-color: #f1f5f9;
+}
+/* One grid for all entries, five columns: "Trams", "All", then the tram lines one by one,
+   five in a row, each pair of box and number well apart from the next. The lines and
+   "Names" across all columns. */
+#entries {
+  display: grid;
+  grid-template-columns: repeat(5, auto);
+  justify-content: start;
+  align-items: center;
+  column-gap: 16px;
+}
+#entries > hr,
+#entries > label,
+#about,
+#credits {
+  grid-column: 1 / -1;
+}
+/* Last rows, small: the link left, the version right; below them the credits. */
+#about,
+#credits {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+#credits {
+  flex-wrap: wrap;
+  justify-content: start;
+  column-gap: 8px;
+}
+#credits span {
+  white-space: nowrap;
+}
+#tram-lines,
+#menu .pairs {
+  display: contents;
+}
+#tram-lines {
+  font-variant-numeric: tabular-nums;
+}
+/* Two entries in a row: the first below "Trams" and "All", the second from the third column
+   on, below the tram lines there. */
+#menu .pairs label:nth-child(odd) {
+  grid-column: 1 / span 2;
+}
+#menu .pairs label:nth-child(even) {
+  grid-column: 3 / -1;
+}
+/* The names (updateNames in src/main.js), below the badges, the buttons and the menu; each
+   with its bottom middle on its point, in a white halo: quarters and towns in spaced grey
+   capitals, landmarks dark above a dot. */
+#names {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+#names div {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-weight: 600;
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff;
+}
+#names .place {
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #56616b;
+}
+#names .landmark {
+  padding-bottom: 9px;
+  color: #1d242b;
+}
+#names .landmark::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: #1d242b;
+  box-shadow: 0 0 0 2px #fff;
+}
+/* The trams' line numbers (updateBadges in src/main.js), below the buttons and the menu. */
+#badges {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+#badges div {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+/* The points marked in the Points panel (src/points.js), numbered. */
+#badges .mark {
+  color: #fff;
+  background: #1d242b;
+}
+/* Above the mouse for a moment after C copied the coordinates there (src/main.js). */
+#copied {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 4px 10px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 8px;
+  pointer-events: none;
+}
+/* Where the helicopter's rockets would hit (shoot in src/main.js): a ring with a dot, white
+   in a dark halo, to be seen on any ground. */
+#crosshair {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  background: radial-gradient(#fff 2px, rgba(0, 0, 0, 0.5) 3px, transparent 4px);
+  pointer-events: none;
+}
+/* The steering buttons while riding the helicopter, the UFO, a police car or a motorcycle.
+   On touch screens in the bottom corners, for two thumbs: ← and → on the left; on the right
+   ↓, then ↑ outermost as the one held most, with the round stop and fire buttons above them;
+   the middle stays free and passes taps to the scene. With a mouse in the middle, laid out like the keys they show
+   (W, A, S, D, Q, Space / Mouse), but only showing them: clicks go through to the scene, so
+   a click anywhere fires. */
+#steer {
+  position: absolute;
+  bottom: 24px;
+  left: 16px;
+  right: 16px;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  grid-template-areas:
+    ". . . Stop Space"
+    "ArrowLeft ArrowRight . ArrowDown ArrowUp";
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+#steer [data-key="ArrowUp"] {
+  grid-area: ArrowUp;
+}
+#steer [data-key="ArrowLeft"] {
+  grid-area: ArrowLeft;
+}
+#steer [data-key="ArrowDown"] {
+  grid-area: ArrowDown;
+}
+#steer [data-key="ArrowRight"] {
+  grid-area: ArrowRight;
+}
+#steer [data-key="Space"] {
+  grid-area: Space;
+}
+#steer #stop {
+  grid-area: Stop;
+}
+#steer[hidden] {
+  display: none;
+}
+#steer button {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  font: inherit;
+  font-size: 18px;
+  color: inherit;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none; /* Safari */
+  user-select: none;
+}
+#steer [data-key="Space"],
+#steer #stop {
+  font-size: 12px;
+  border-radius: 50%;
+}
+#steer kbd {
+  display: none;
+  font: inherit;
+  line-height: 1;
+}
+@media (pointer: fine) {
+  #steer {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    grid-template-columns: none;
+    grid-template-areas:
+      "Stop ArrowUp ."
+      "ArrowLeft ArrowDown ArrowRight"
+      "Space Space Space";
+  }
+  /* The buttons smaller, as they only show the keys. */
+  #steer button {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+    border-radius: 8px;
+    pointer-events: none;
+  }
+  #steer [data-key="Space"] {
+    width: auto; /* as wide as the three above */
+    padding: 0 12px;
+    border-radius: 8px;
+  }
+  #steer #stop {
+    border-radius: 8px;
+  }
+  #steer kbd {
+    display: block;
+  }
+}
+/* How many buildings and bridges are still standing (showCount in src/main.js), a line each:
+   an icon, then the number with all digits equally wide, so they stay in place. */
+#counter {
+  height: 80px; /* as tall as the menu and the button to get off, and the 8px between */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+#counter p {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+/* The house from Material Symbols (Apache License 2.0) and a bridge on its grid, cut to the
+   drawing (viewBox), so its bottom sits on the numbers' baseline. Lower than the line, so
+   the numbers stay where text would be. */
+#counter svg {
+  width: 12px;
+  height: 13.5px;
+  fill: currentColor;
+}
+body:not([data-mode="loading"]) #loading,
+body[data-mode="loading"] #menu,
+body:not([data-mode="ride"]) #off,
+body[data-mode="loading"] #reset,
+body[data-mode="loading"] #counter {
+  display: none;
+}

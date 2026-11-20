@@ -4,8 +4,8 @@
 // refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
 // and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
-// part hides and shows it, to see what it costs. All of it lives here, the menu entry and the styles
-// in index.html (#dev-box, #dev), so it can be taken out whole.
+// part hides and shows it, to see what it costs. All of it lives here, the menu entry in index.html
+// and the styles in style.css (#dev-box, #dev), so it can be taken out whole.
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"

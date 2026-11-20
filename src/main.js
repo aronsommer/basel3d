@@ -100,10 +100,11 @@ for (const type of ["pointerup", "pointercancel"])
   addEventListener(type, (e) => pointers.delete(e.pointerId));
 
 // Loads files from public/; show(percent) gets the exact share of their decompressed bytes,
-// measured against the sizes in public/size.json (tools/size.mjs).
-const sizes = await fetch("public/size.json").then((r) => r.json());
+// measured against the sizes in public/size.json (tools/size.mjs). Each file is requested with
+// ?v=<content hash>, size.json with the deploy's timestamp (.github/workflows/deploy.yml).
+const files = await fetch("public/size.json?v=__BUILD_TIMESTAMP__").then((r) => r.json());
 function load(paths, show) {
-  const total = paths.reduce((sum, path) => sum + sizes[path], 0);
+  const total = paths.reduce((sum, path) => sum + files[path].size, 0);
   let loaded = 0;
   return Promise.all(
     paths.map(async (path) => {
@@ -114,7 +115,9 @@ function load(paths, show) {
           controller.enqueue(chunk);
         },
       });
-      return new Response((await fetch(`public/${path}`)).body.pipeThrough(counter)).arrayBuffer();
+      return new Response(
+        (await fetch(`public/${path}?v=${files[path].hash}`)).body.pipeThrough(counter),
+      ).arrayBuffer();
     }),
   );
 }
@@ -123,7 +126,7 @@ function load(paths, show) {
 // OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs); "deck", the roads
 // on the 3D bridges for the map (tools/map.mjs), only where there are bridges.
 const groundPaths = (kind) =>
-  Object.keys(sizes).filter((path) => path.startsWith(`ground/${kind}/`));
+  Object.keys(files).filter((path) => path.startsWith(`ground/${kind}/`));
 const ktx2 = new KTX2Loader()
   .setTranscoderPath(import.meta.resolve("three/addons/libs/basis/"))
   .detectSupport(renderer);
@@ -260,7 +263,12 @@ const explosions = createExplosions(scene, structures, heightAt, camera);
 // again. destroyed holds only what was really removed, so the counter is exact.
 const DESTROYED_KEY = "basel3d.destroyed"; // { models, numbers }
 const { total } = structures;
-const MODELS = [sizes["basel.glb"], sizes["bridges.glb"], total.buildings, total.bridges].join(" ");
+const MODELS = [
+  files["basel.glb"].size,
+  files["bridges.glb"].size,
+  total.buildings,
+  total.bridges,
+].join(" ");
 let saved = [];
 try {
   const stored = JSON.parse(localStorage.getItem(DESTROYED_KEY));

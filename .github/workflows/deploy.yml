@@ -24,8 +24,12 @@ jobs:
       - name: Inject build timestamp
         run: |
           BUILD_TIMESTAMP=$(date -u +"%Y%m%d%H%M%S")
-          sed -i "s|__BUILD_TIMESTAMP__|${BUILD_TIMESTAMP}|g" index.html
+          sed -i "s|__BUILD_TIMESTAMP__|${BUILD_TIMESTAMP}|g" index.html src/main.js
           echo "Injected build timestamp: $BUILD_TIMESTAMP"
+
+      # src/ as one minified src/main.js, loaded with ?v=; three.js stays on the import map.
+      - name: Bundle scripts
+        run: npx --yes esbuild@0.28.2 src/main.js --bundle --minify --format=esm --external:three "--external:three/addons/*" --outfile=src/main.js --allow-overwrite
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
