@@ -44,10 +44,9 @@ function blur(values, size, sigma) {
   return from;
 }
 
-// 1 for each of size × size pixels (`pixel` metres wide, the first at x0, y0) whose middle lies
-// in one of the triangles [x, y, x, y, x, y, …], else 0.
-function cover(triangles, size, pixel, x0, y0) {
-  const covered = new Uint8Array(size * size);
+// Sets covered to 1 for each of its size × size pixels (`pixel` metres wide, the first at x0, y0)
+// whose middle lies in one of the triangles [x, y, x, y, x, y, …].
+function cover(covered, triangles, size, pixel, x0, y0) {
   for (let t = 0; t < triangles.length; t += 6) {
     let [low, high] = [Infinity, -Infinity];
     for (let k = 1; k < 6; k += 2) {
@@ -71,13 +70,13 @@ function cover(triangles, size, pixel, x0, y0) {
         covered[row * size + column] = 1;
     }
   }
-  return covered;
 }
 
 // files: { map, soft, city } as ArrayBuffers (city may be missing: no shadows);
 // origin: the scene's x and z at the map's north-west corner; make: { canvas(width, height),
 // image(bytes): a promise of a drawable WebP image, Path2D, ImageData }.
-// Gives { decks: the names ("column_row") of the tiles with bridge decks, draw }.
+// Gives { chunk: metres across a tile, decks: the names ("column_row") of the tiles with bridge
+// decks, draw }.
 export function createGroundMap({ map, soft, city }, origin, make) {
   const length = new Uint32Array(map, 0, 1)[0];
   const { background, sidewalk, chunk, decks, styles } = JSON.parse(
@@ -113,19 +112,20 @@ export function createGroundMap({ map, soft, city }, origin, make) {
     }
     geometries.push({ path, box });
   }
-  // The shapes of the ground and of the decks, per tile in drawing order: [{ style, path }].
+  // The shapes of the ground and of the decks, per tile in drawing order: [{ style, path, box,
+  // order: its place in that order }].
   const tiles = (column, row) => `${column}_${row}`;
   const [ground, deck] = [0, 1].map(() => {
     const perTile = new Map();
     let g = 0;
-    for (let left = packed.number(); left > 0; left--) {
+    for (let left = packed.number(), order = 0; left > 0; left--, order++) {
       const style = styles[packed.number()];
       const { path, box } = geometries[(g += packed.signed())];
       const reach = (style.width ?? 0) / 2;
       for (let c = Math.floor((box[0] - reach) / chunk); c <= (box[2] + reach) / chunk; c++)
         for (let r = Math.floor((box[1] - reach) / chunk); r <= (box[3] + reach) / chunk; r++) {
           if (!perTile.has(tiles(c, r))) perTile.set(tiles(c, r), []);
-          perTile.get(tiles(c, r)).push({ style, path });
+          perTile.get(tiles(c, r)).push({ style, path, box, order });
         }
     }
     return perTile;
@@ -173,17 +173,25 @@ export function createGroundMap({ map, soft, city }, origin, make) {
     for (const [name, list] of roofs) roofs.set(name, Float32Array.from(list));
   }
 
-  // The tile (column, row) as { ground, deck }: canvases px wide, south up as the terrain's
-  // textures are; deck only for a tile with bridge decks.
-  async function draw(column, row, px) {
-    const name = tiles(column, row);
-    const [x0, y0] = [column * chunk, row * chunk];
-    const scale = px / chunk;
-    const layer = (width = px) => {
-      const canvas = make.canvas(width, width);
-      return canvas.getContext("2d");
+  // The square of `extent` metres with its north-west corner x0, y0 metres from the map's, as
+  // { ground, deck }: canvases px wide, south up as the terrain's textures are; deck: the decks'
+  // roads there if it is a tile with decks or a smaller square with a deck's road, else null.
+  async function draw(x0, y0, extent, px) {
+    const scale = px / extent;
+    // The tiles it lies on.
+    const names = [];
+    for (let row = Math.floor(y0 / chunk); row * chunk < y0 + extent; row++)
+      for (let column = Math.floor(x0 / chunk); column * chunk < x0 + extent; column++)
+        names.push([tiles(column, row), column, row]);
+    // The shapes of all of them, in drawing order, each once.
+    const shapesOf = (perTile) => {
+      if (names.length === 1) return perTile.get(names[0][0]) ?? [];
+      const all = new Map();
+      for (const [name] of names) for (const s of perTile.get(name) ?? []) all.set(s.order, s);
+      return [...all.values()].sort((a, b) => a.order - b.order);
     };
-    // Metres from the north-west corner → pixels of a canvas `size` wide showing the tile and
+    const layer = (width = px) => make.canvas(width, width).getContext("2d");
+    // Metres from the north-west corner → pixels of a canvas `size` wide showing the square and
     // `margin` metres round it, `pixel` metres per pixel.
     const view = (context, pixel = 1 / scale, margin = 0, size = px) => {
       context.setTransform(
@@ -208,61 +216,89 @@ export function createGroundMap({ map, soft, city }, origin, make) {
     };
     const colours = (context, style) => (context.fillStyle = context.strokeStyle = style.paint);
 
-    // The land's lawn, the shapes on it.
-    const shapes = ground.get(name) ?? [];
+    // The land's lawn, tile by tile (left halves of the soft images), the shapes on it.
+    const shapes = shapesOf(ground);
     const context = layer();
     view(context);
-    const bytes = softBytes(column, row);
-    const photo = bytes && (await make.image(bytes));
-    if (photo) context.drawImage(photo, 0, 0, photo.height, photo.height, x0, y0, chunk, chunk);
-    else {
-      context.fillStyle = background;
-      context.fillRect(x0, y0, chunk, chunk);
+    context.fillStyle = background;
+    context.fillRect(x0, y0, extent, extent);
+    const photos = [];
+    for (const [, column, row] of names) {
+      const bytes = softBytes(column, row);
+      if (bytes) photos.push([await make.image(bytes), column * chunk, row * chunk]);
     }
+    // A half (0 or 1) of each tile's soft image on its tile: the half's outer pixels are its
+    // neighbours', so they lie round the tile and only join it smoothly to them.
+    const soften = (target, half) => {
+      for (const [photo, x, y] of photos) {
+        const side = photo.height;
+        const pixel = chunk / (side - 2);
+        target.save();
+        target.beginPath();
+        target.rect(x, y, chunk, chunk);
+        target.clip();
+        target.drawImage(
+          photo,
+          half * side,
+          0,
+          side,
+          side,
+          x - pixel,
+          y - pixel,
+          chunk + 2 * pixel,
+          chunk + 2 * pixel,
+        );
+        target.restore();
+      }
+    };
+    soften(context, 0);
     paintShapes(context, shapes, colours);
-    // The patches, where a green area shows: the others cut their shapes out of the green ones.
-    if (photo && shapes.some(({ style }) => style.green)) {
+    // The patches (right halves), where a green area shows: the others cut their shapes out of
+    // the green ones.
+    if (photos.length && shapes.some(({ style }) => style.green)) {
+      const patches = layer();
+      view(patches);
+      soften(patches, 1);
       const green = layer();
       view(green);
       paintShapes(green, shapes, (c, style) => {
         c.globalCompositeOperation = style.green ? "source-over" : "destination-out";
         return true;
       });
+      green.resetTransform();
       green.globalCompositeOperation = "source-in";
-      green.drawImage(photo, photo.height, 0, photo.height, photo.height, x0, y0, chunk, chunk);
+      green.drawImage(patches.canvas, 0, 0);
       context.resetTransform();
       context.globalCompositeOperation = "multiply";
       context.drawImage(green.canvas, 0, 0);
       context.globalCompositeOperation = "source-over";
     }
-    photo?.close?.();
-    // The shadows round the buildings: their roofs seen from above, with pixels of a metre or
-    // more and those of MARGIN round the tile, blurred, as black the more opaque the darker.
-    const roof = roofs.get(name);
-    if (roof) {
-      const grid = Math.min(px, 1024);
-      const pixel = chunk / grid;
+    for (const [photo] of photos) photo.close?.();
+    // The shadows round the buildings: their roofs seen from above, with pixels of a quarter of
+    // a metre or more (at most 1024 across) and those of MARGIN round the square, blurred, as
+    // black the more opaque the darker.
+    const lists = names.map(([name]) => roofs.get(name)).filter(Boolean);
+    if (lists.length) {
+      const pixel = Math.max(extent / px, extent / 1024, 0.25);
       const margin = Math.ceil(MARGIN / pixel);
-      const size = grid + 2 * margin;
-      const covered = cover(roof, size, pixel, x0 - margin * pixel, y0 - margin * pixel);
+      const size = Math.round(extent / pixel) + 2 * margin;
+      const covered = new Uint8Array(size * size);
+      for (const list of lists)
+        cover(covered, list, size, pixel, x0 - margin * pixel, y0 - margin * pixel);
       const light = new Float32Array(size * size).fill(1);
       for (const [metres, dark] of SHADOWS) {
         const blurred = blur(covered, size, metres / pixel);
         for (let i = 0; i < light.length; i++) light[i] *= 1 - dark * blurred[i];
       }
-      // The pixels' bytes (south up) as a canvas.
-      const picture = (image) => {
-        const canvas = make.canvas(image.width, image.width);
-        canvas.getContext("2d").putImageData(image, 0, 0);
-        return canvas;
-      };
-      const shade = new make.ImageData(size, size);
+      const shade = new make.ImageData(size, size); // south up
       for (let row = 0, i = 3; row < size; row++)
         for (let at = (size - 1 - row) * size, end = at + size; at < end; at++, i += 4)
           shade.data[i] = 255 * (1 - light[at]);
+      const canvas = make.canvas(size, size);
+      canvas.getContext("2d").putImageData(shade, 0, 0);
       context.resetTransform();
       context.drawImage(
-        picture(shade),
+        canvas,
         -margin * pixel * scale,
         -margin * pixel * scale,
         size * pixel * scale,
@@ -270,13 +306,20 @@ export function createGroundMap({ map, soft, city }, origin, make) {
       );
     }
 
-    if (!decks.includes(name)) return { ground: context.canvas, deck: null };
+    const roads = shapesOf(deck);
+    const reaches = ({ box, style }) =>
+      box[2] + (style.width ?? 0) / 2 > x0 &&
+      box[0] - (style.width ?? 0) / 2 < x0 + extent &&
+      box[3] + (style.width ?? 0) / 2 > y0 &&
+      box[1] - (style.width ?? 0) / 2 < y0 + extent;
+    if (extent === chunk ? !decks.includes(names[0][0]) : !roads.some(reaches))
+      return { ground: context.canvas, deck: null };
     const top = layer();
     view(top);
     top.fillStyle = sidewalk;
-    top.fillRect(x0, y0, chunk, chunk);
-    paintShapes(top, deck.get(name) ?? [], colours);
+    top.fillRect(x0, y0, extent, extent);
+    paintShapes(top, roads, colours);
     return { ground: context.canvas, deck: top.canvas };
   }
-  return { decks, draw };
+  return { chunk, decks, draw };
 }

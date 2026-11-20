@@ -202,6 +202,15 @@ const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
 // file for the rails, which addRails makes of it.
 const ground = {};
 let map = null;
+// The squares round the point looked at that the map draws finer than its tiles (src/ground.js),
+// the finest first: their textures and where they lie (x, z of the north-west corner, metres
+// across, 1 if shown), for the terrain's shader (addWater), and the same for the bridges' decks
+// (deckShader).
+const squares = Object.fromEntries(
+  ["maps", "deckMaps"].map((name) => [name, [0, 1, 2].map(() => ({ value: null }))]),
+);
+for (const name of ["rects", "deckRects"])
+  squares[name] = [0, 1, 2].map(() => ({ value: new THREE.Vector4(0, 0, 1, 0) }));
 let tracks = null;
 let rails = null;
 function startMap([shapes, soft, railsFile]) {
@@ -211,6 +220,7 @@ function startMap([shapes, soft, railsFile]) {
     terrainInfo,
     renderer,
     new URL("./ground-worker.js?v=__BUILD_TIMESTAMP__", import.meta.url),
+    squares,
   );
   ground.map = map.tiles;
 }
@@ -2528,6 +2538,8 @@ function updateTrees() {
 
 function addWater(shader) {
   Object.assign(shader.uniforms, water);
+  squares.maps.forEach((map, i) => (shader.uniforms[`squareMap${i}`] = map));
+  squares.rects.forEach((rect, i) => (shader.uniforms[`squareRect${i}`] = rect));
   shader.vertexShader = shader.vertexShader
     .replace("void main() {", "varying vec3 vWorld;\nvoid main() {")
     .replace(
@@ -2541,7 +2553,17 @@ function addWater(shader) {
       uniform float waterTime;
       uniform vec4 waterArea;
       uniform vec3 waterDark, waterLight;
+      uniform sampler2D squareMap0, squareMap1, squareMap2;
+      uniform vec4 squareRect0, squareRect1, squareRect2;
       varying vec3 vWorld;
+      // The colour with a finer square of the map (src/ground.js) over it where it lies, its
+      // edge blended in.
+      vec3 withSquare(vec3 under, sampler2D squareMap, vec4 rect) {
+        vec2 uv = (vWorld.xz - rect.xy) / rect.z;
+        vec2 edge = min(uv, 1.0 - uv);
+        float inside = rect.w * smoothstep(0.0, 0.06, min(edge.x, edge.y));
+        return mix(under, texture2D(squareMap, vec2(uv.x, 1.0 - uv.y)).rgb, inside);
+      }
       // Smooth value noise in [0, 1] (hash without sine, stable for large coordinates).
       float hash(vec2 p) {
         vec3 q = fract(p.xyx * 0.1031);
@@ -2560,6 +2582,13 @@ function addWater(shader) {
         return 0.65 * noise(q * 0.03) + 0.35 * mix(0.5, noise(q * 0.1 + 17.0), fine);
       }
       void main() {`,
+    )
+    .replace(
+      "#include <map_fragment>",
+      `#include <map_fragment>
+      diffuseColor.rgb = withSquare(diffuseColor.rgb, squareMap2, squareRect2);
+      diffuseColor.rgb = withSquare(diffuseColor.rgb, squareMap1, squareRect1);
+      diffuseColor.rgb = withSquare(diffuseColor.rgb, squareMap0, squareRect0);`,
     )
     .replace(
       "#include <opaque_fragment>",
@@ -2642,6 +2671,8 @@ function createDecks(model, base) {
       const material = base.clone();
       material.onBeforeCompile = (shader, renderer) => {
         Object.assign(shader.uniforms, { deckMap: map, deckTile: { value: tile } });
+        squares.deckMaps.forEach((m, i) => (shader.uniforms[`deckSquareMap${i}`] = m));
+        squares.deckRects.forEach((r, i) => (shader.uniforms[`deckSquareRect${i}`] = r));
         deckShader(shader);
         base.onBeforeCompile(shader, renderer);
       };
@@ -2666,13 +2697,28 @@ function deckShader(shader) {
   shader.fragmentShader = shader.fragmentShader
     .replace(
       "void main() {",
-      "uniform sampler2D deckMap;\nuniform vec3 deckTile;\nvarying vec3 vDeck;\nvoid main() {",
+      `uniform sampler2D deckMap, deckSquareMap0, deckSquareMap1, deckSquareMap2;
+      uniform vec3 deckTile;
+      uniform vec4 deckSquareRect0, deckSquareRect1, deckSquareRect2;
+      varying vec3 vDeck;
+      // The colour with a finer square of the decks' roads (src/ground.js) over it where it
+      // lies, its edge blended in.
+      vec3 withDeckSquare(vec3 under, sampler2D squareMap, vec4 rect) {
+        vec2 uv = (vDeck.xz - rect.xy) / rect.z;
+        vec2 edge = min(uv, 1.0 - uv);
+        float inside = rect.w * smoothstep(0.0, 0.06, min(edge.x, edge.y));
+        return mix(under, texture2D(squareMap, vec2(uv.x, 1.0 - uv.y)).rgb, inside);
+      }
+      void main() {`,
     )
     .replace(
       "#include <color_fragment>",
       `vec3 deckNormal = normalize(cross(dFdx(vDeck), dFdy(vDeck))); // towards the camera
       vec3 deckGround = texture2D(deckMap,
         vec2(vDeck.x - deckTile.x, deckTile.y + deckTile.z - vDeck.z) / deckTile.z).rgb;
+      deckGround = withDeckSquare(deckGround, deckSquareMap2, deckSquareRect2);
+      deckGround = withDeckSquare(deckGround, deckSquareMap1, deckSquareRect1);
+      deckGround = withDeckSquare(deckGround, deckSquareMap0, deckSquareRect0);
       diffuseColor.rgb = mix(diffuseColor.rgb, deckGround, smoothstep(0.75, 0.9, deckNormal.y));
       #include <color_fragment>`,
     );
@@ -2754,7 +2800,8 @@ function updateTerrain() {
   // The pixels a metre takes on the screen a metre away.
   const focal =
     (renderer.getDrawingBufferSize(bufferSize).y / 2) * camera.projectionMatrix.elements[5];
-  map.update((name) => distances.get(name), focal);
+  const focus = riding ? camera.position : orbit.target;
+  map.update((name) => distances.get(name), focal, focus, camera.position.distanceTo(focus));
   // The rails have faded where a pixel spans 1.6 m (src/rails.js), and lie on the fine terrain.
   const far = Math.min(1.6 * focal, TERRAIN_DETAIL);
   for (const mesh of rails.children) mesh.visible = distances.get(mesh.name) < far;

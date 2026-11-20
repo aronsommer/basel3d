@@ -1,6 +1,7 @@
-// Draws the map's tiles for src/ground.js off the page's thread. First message: { files, origin }
-// (src/groundmap.js); then { column, row, px } each, answered by the same with ground and deck
-// (null without decks) as ImageBitmaps.
+// Draws squares of the map for src/ground.js off the page's thread. First message: { files,
+// origin } (src/groundmap.js); then { id, x, y, extent, px } each (metres from the map's
+// north-west corner), answered by { id, ground, deck } (deck: null but for a tile with decks) as
+// ImageBitmaps.
 import { createGroundMap } from "./groundmap.js";
 
 let map = null;
@@ -14,9 +15,8 @@ self.onmessage = async ({ data }) => {
     });
     return;
   }
-  const { column, row, px } = data;
-  const tile = await map.draw(column, row, px);
-  const ground = tile.ground.transferToImageBitmap();
-  const deck = tile.deck?.transferToImageBitmap() ?? null;
-  postMessage({ column, row, px, ground, deck }, deck ? [ground, deck] : [ground]);
+  const square = await map.draw(data.x, data.y, data.extent, data.px);
+  const ground = square.ground.transferToImageBitmap();
+  const deck = square.deck?.transferToImageBitmap() ?? null;
+  postMessage({ id: data.id, ground, deck }, deck ? [ground, deck] : [ground]);
 };

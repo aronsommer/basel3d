@@ -363,23 +363,29 @@ const closed = (await blur(rough, 1.6)).map((v) => 255 * smoothstep(0.3, 0.55, v
 const opened = await blur(closed, 2.4);
 const canopy = opened.map((v, i) => smoothstep(0.5, 0.7, v / 255) * woods[i]);
 
-// --- public/ground/soft.bin: per tile, row by row, a WebP image twice SOFT_PX wide. Left the
-// land where no shape is drawn: BACKGROUND, and where the photo is green, lawn as bright as the
-// photo. Right the patches of the green areas, as a grey of 255 / BRIGHTEST times the factor
-// their colours take (1: none), weakened under crowns; each pixel the mean of the green ones.
+// --- public/ground/soft.bin: per tile, row by row, a WebP image of two squares side by side,
+// each SOFT_PX + 2 wide: the tile and a pixel of its neighbours round it, so they join smoothly.
+// Left the land where no shape is drawn: BACKGROUND, and where the photo is green, lawn as
+// bright as the photo. Right the patches of the green areas, as a grey of 255 / BRIGHTEST times
+// the factor their colours take (1: none), weakened under crowns; each pixel the mean of the
+// green ones.
 const BRIGHTEST = 1.35; // the largest factor, as in src/groundmap.js
 const background = [1, 3, 5].map((i) => parseInt(BACKGROUND.slice(i, i + 2), 16));
 const step = TILE_PX / SOFT_PX;
+const side = SOFT_PX + 2;
+const clamp = (v, most) => Math.min(Math.max(v, 0), most);
 const images = [];
 for (let row = 0; row < height / TILE_PX; row++)
   for (let column = 0; column < width / TILE_PX; column++) {
-    const image = Buffer.alloc(2 * SOFT_PX * SOFT_PX * 3);
-    for (let y = 0; y < SOFT_PX; y++)
-      for (let x = 0; x < SOFT_PX; x++) {
+    const image = Buffer.alloc(2 * side * side * 3);
+    for (let y = 0; y < side; y++)
+      for (let x = 0; x < side; x++) {
         const sum = [0, 0, 0, 0, 0]; // land r, g, b; patch × green; green
         for (let dy = 0; dy < step; dy++)
           for (let dx = 0; dx < step; dx++) {
-            const i = (row * TILE_PX + y * step + dy) * width + column * TILE_PX + x * step + dx;
+            const i =
+              clamp(row * TILE_PX + (y - 1) * step + dy, height - 1) * width +
+              clamp(column * TILE_PX + (x - 1) * step + dx, width - 1);
             const [r, g, b] = soft.subarray(i * 3, i * 3 + 3);
             const leafy = smoothstep(15, 35, 2 * g - r - b);
             const lit = Math.min(
@@ -396,13 +402,13 @@ for (let row = 0; row < height / TILE_PX; row++)
               sum[4] += vegetation[i];
             }
           }
-        const land = (y * 2 * SOFT_PX + x) * 3;
+        const land = (y * 2 * side + x) * 3;
         for (let c = 0; c < 3; c++) image[land + c] = Math.min(255, Math.round(sum[c] / step ** 2));
         const patches = Math.round(((sum[4] ? sum[3] / sum[4] : 1) / BRIGHTEST) * 255);
-        image.fill(patches, land + SOFT_PX * 3, land + SOFT_PX * 3 + 3);
+        image.fill(patches, land + side * 3, land + side * 3 + 3);
       }
     images.push(
-      await sharp(image, { raw: { width: 2 * SOFT_PX, height: SOFT_PX, channels: 3 } })
+      await sharp(image, { raw: { width: 2 * side, height: side, channels: 3 } })
         .webp({ quality: SOFT_QUALITY })
         .toBuffer(),
     );
