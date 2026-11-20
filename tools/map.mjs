@@ -1,11 +1,12 @@
-// Draws a map of the area from OpenStreetMap (roads, rail, water, green areas; no text or trees),
-// with the patches of the aerial photo (SWISSIMAGE, downloaded by tools/terrain.mjs) in the green
-// areas and soft shadows around the buildings of public/basel.glb (tools/buildings.mjs, run it
-// first), and writes it to public/ground/map/ as one KTX2 per 1 km tile, like the aerial photo.
-// Also writes public/ground/deck/ for the bridge decks (see below) and public/water.ktx2 for the
-// water shader in src/main.js: red marks all visible water, green and blue the downstream
-// direction.
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+// The map of the area from OpenStreetMap (roads, rail, water, green areas; no text or trees), for
+// the viewer to draw (src/groundmap.js): its shapes in public/ground/map.bin, the tracks for
+// their rails in public/ground/rails.bin, and what the aerial
+// photo (SWISSIMAGE, downloaded by tools/terrain.mjs) adds, coarsely, in public/ground/soft.bin:
+// lawn where gardens and courtyards are green and the patches of the green areas.
+// Also writes public/canopy.bin (trees on the photo's crowns, not on the buildings of
+// public/basel.glb, so run tools/buildings.mjs first) and public/water.ktx2 for the water shader
+// in src/main.js: red marks all visible water, green and blue the downstream direction.
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { NodeIO } from "@gltf-transform/core";
@@ -14,22 +15,23 @@ import { MeshoptDecoder } from "meshoptimizer";
 import { E_MIN, E_MAX, N_MIN, N_MAX, CHUNK, PUBLIC, TREE_GRID, toX, toZ } from "./area.mjs";
 import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, onBridge } from "./osm.mjs";
 import { underBridges, BRIDGES_FILE } from "./bsbridges.mjs";
-import { writeTiles, encodeTexture } from "./tiles.mjs";
+import { encodeTexture } from "./tiles.mjs";
+import { Bytes } from "./pack.mjs";
 import { photoMosaic } from "./swisstopo.mjs";
 
-// Pixels per 1 km tile, a power of two (compressed mipmaps). Doubling it makes the map sharper up
-// close, with four times the pixels to draw, keep in memory, store and load.
+// Pixels per 1 km tile of the photo's work, and of what is stored of it (SOFT_PX wide, each pixel
+// the mean of TILE_PX / SOFT_PX squared; a power of two).
 const TILE_PX = 1024;
-const QUALITY = 128; // of the compressed tiles, 1 to 255: lower is smaller and coarser
+const SOFT_PX = 512;
+const SOFT_QUALITY = 80; // of the stored WebP images, 1 to 100
 const PX_PER_M = TILE_PX / CHUNK;
 const MASK_SIZE = 2048; // px of the water mask for the whole area (about 4 m per px)
 const BACKGROUND = "#9a968c"; // built-up land
-const FOOTPRINT = "#6b675e"; // under the buildings, seen where one is destroyed
 const elements = await osmElements();
 // Bridges built in 3D (tools/bridges.mjs, run it first): the OSM bridges whose middle lies under
-// one of them are left out of the ground and drawn on their own, on sidewalk colour, into
-// public/ground/deck/ for the decks (src/main.js), only the tiles holding the middle of a 3D
-// bridge triangle, as the viewer sorts them.
+// one of them are left out of the ground and drawn on their own, on sidewalk colour, for the
+// decks (src/main.js), only on the tiles holding the middle of a 3D bridge triangle, as the
+// viewer sorts them.
 const bridgeTriangles = new Float32Array(new Uint8Array(readFileSync(BRIDGES_FILE)).buffer);
 const underBridge = underBridges(bridgeTriangles);
 const deckTiles = new Set();
@@ -97,7 +99,13 @@ function lineStyle(t) {
   if (has(t.waterway, "stream", "ditch", "drain")) return { order: 7, stroke: WATER, width: 3 };
   if (has(t.railway, "rail", "light_rail", "narrow_gauge"))
     return { order: 8, stroke: BALLAST, width: 3 };
-  if (t.railway === "tram") return { order: 12, stroke: TRAM_BED, width: 2.2 }; // on the road
+  // A tram track lies on its own strip of asphalt, under the carriageways, so it is never beside
+  // the road on nothing.
+  if (t.railway === "tram")
+    return [
+      { order: 10.5, stroke: ROAD, width: 3.6 },
+      { order: 12, stroke: TRAM_BED, width: 2.2 },
+    ];
   const width = roadWidth(t.highway);
   if (!width || t.area === "yes") return null;
   if (width < 4) return { order: 8, stroke: FOOTWAY, width };
@@ -109,13 +117,13 @@ function lineStyle(t) {
   ];
 }
 
-// --- Geometry: WGS84 → LV95 → SVG metres from the north-west corner.
-function toSvg(point) {
-  const [e, n] = toLV95(point);
-  return `${(e - E_MIN).toFixed(1)} ${(N_MAX - n).toFixed(1)}`;
-}
-const pathData = (points, close) =>
-  "M" + points.filter(Boolean).map(toSvg).join("L") + (close ? "Z" : ""); // nodes outside the query box are null
+// --- Geometry: WGS84 → LV95 → tenths of a metre from the north-west corner, a ring's points
+// [[x, y], …].
+const ring = (points) =>
+  points.filter(Boolean).map((point) => {
+    const [e, n] = toLV95(point);
+    return [Math.round((e - E_MIN) * 10), Math.round((N_MAX - n) * 10)];
+  }); // nodes outside the query box are null
 
 // Joins a multipolygon's member ways into rings by matching end points.
 function rings(lines) {
@@ -137,6 +145,7 @@ function rings(lines) {
   return result;
 }
 
+// Per shape its style and geometry: { rings, closed }, shared by the styles of a way.
 const shapes = [];
 for (const el of elements) {
   const tags = el.tags ?? {};
@@ -144,7 +153,7 @@ for (const el of elements) {
     const style = areaStyle(tags);
     const ways = el.members.filter((m) => m.type === "way" && m.geometry).map((m) => m.geometry);
     if (style && ways.length)
-      shapes.push({ ...style, d: rings(ways).map((r) => pathData(r, true)) });
+      shapes.push({ ...style, geometry: { rings: rings(ways).map(ring), closed: true } });
     continue;
   }
   if (!el.geometry) continue;
@@ -152,23 +161,114 @@ for (const el of elements) {
   const closed = el.nodes[0] === el.nodes.at(-1);
   const area = closed && areaStyle(tags);
   const line = lineStyle(tags);
-  if (area) shapes.push({ ...area, deck, d: [pathData(el.geometry, true)] });
-  else if (line)
-    for (const style of [line].flat())
-      shapes.push({ ...style, deck, d: [pathData(el.geometry, false)] });
+  const geometry = { rings: [ring(el.geometry)], closed: Boolean(area) };
+  if (area) shapes.push({ ...area, deck, geometry });
+  else if (line) for (const style of [line].flat()) shapes.push({ ...style, deck, geometry });
 }
 shapes.sort((a, b) => a.order - b.order);
 const ground = shapes.filter((s) => !s.deck);
 
-// --- Render the whole area at once and cut it into tiles.
-const svg = (size, background, paint, list = ground) => `<svg xmlns="http://www.w3.org/2000/svg"
+// --- public/ground/map.bin: as JSON the colours, the tile size, the names of the tiles with
+// decks and the styles ({ fill, green: gets the photo's patches } or { stroke, width }); then,
+// packed (tools/pack.mjs), the geometries (per ring its points, each as the step from the point
+// before) and the shapes of the ground and of the decks in drawing order (style, geometry).
+{
+  const styles = [];
+  const styleOf = new Map();
+  const geometries = new Map(); // geometry -> number
+  const bytes = new Bytes();
+  for (const s of shapes)
+    if (!geometries.has(s.geometry)) geometries.set(s.geometry, geometries.size);
+  bytes.number(geometries.size);
+  let [x, y] = [0, 0];
+  for (const { rings, closed } of geometries.keys()) {
+    bytes.number(rings.length * 2 + (closed ? 1 : 0));
+    for (const points of rings) {
+      bytes.number(points.length);
+      for (const [px, py] of points) {
+        bytes.signed(px - x);
+        bytes.signed(py - y);
+        [x, y] = [px, py];
+      }
+    }
+  }
+  for (const list of [ground, shapes.filter((s) => s.deck)]) {
+    bytes.number(list.length);
+    let last = 0;
+    for (const s of list) {
+      const key = s.fill ?? `${s.stroke} ${s.width}`;
+      if (!styleOf.has(key)) {
+        styleOf.set(key, styles.length);
+        styles.push(
+          s.fill
+            ? { fill: s.fill, green: VEGETATION.has(s.fill) || undefined }
+            : { stroke: s.stroke, width: s.width },
+        );
+      }
+      bytes.number(styleOf.get(key));
+      bytes.signed(geometries.get(s.geometry) - last);
+      last = geometries.get(s.geometry);
+    }
+  }
+  const json = Buffer.from(
+    JSON.stringify({
+      background: BACKGROUND,
+      sidewalk: SIDEWALK,
+      chunk: CHUNK,
+      decks: [...deckTiles].sort(),
+      styles,
+    }),
+  );
+  writeFileSync(
+    join(PUBLIC, "ground", "map.bin"),
+    Buffer.concat([
+      Buffer.from(new Uint32Array([json.length]).buffer),
+      json,
+      Buffer.from(bytes.list),
+    ]),
+  );
+  console.log(
+    `${shapes.length} shapes of ${geometries.size} geometries in ${styles.length} styles`,
+  );
+}
+
+// --- public/ground/rails.bin: the tracks drawn on the ground, for the rails the viewer lays on
+// them (src/rails.js), packed (tools/pack.mjs): per track 2 for a railway or 0 for a tram, + 1 on
+// a deck, and its points in tenths of a metre from the north-west corner, each as the step from
+// the point before.
+{
+  const bytes = new Bytes();
+  const tracks = elements.filter((el) => el.geometry && el.tags?.railway && lineStyle(el.tags));
+  bytes.number(tracks.length);
+  let [x, y] = [0, 0];
+  for (const el of tracks) {
+    const points = ring(el.geometry);
+    bytes.number((el.tags.railway === "tram" ? 0 : 2) + (coveredBridge(el) ? 1 : 0));
+    bytes.number(points.length);
+    for (const [px, py] of points) {
+      bytes.signed(px - x);
+      bytes.signed(py - y);
+      [x, y] = [px, py];
+    }
+  }
+  writeFileSync(join(PUBLIC, "ground", "rails.bin"), Buffer.from(bytes.list));
+  console.log(`${tracks.length} tracks`);
+}
+
+// --- The photo's work on the whole area at once, at TILE_PX per tile.
+const d = ({ rings, closed }) =>
+  rings
+    .map((r) => "M" + r.map(([x, y]) => `${x / 10} ${y / 10}`).join("L") + (closed ? "Z" : ""))
+    .join("");
+// The ground's shapes in order as SVG, each in the colour paint(colour, shape) gives.
+const svg = (size, background, paint) => `<svg xmlns="http://www.w3.org/2000/svg"
   width="${size[0]}" height="${size[1]}" viewBox="0 0 ${E_MAX - E_MIN} ${N_MAX - N_MIN}">
   <rect width="100%" height="100%" fill="${background}"/>
-  ${list
+  ${ground
     .map((s) =>
       s.fill
-        ? `<path fill="${paint(s.fill, s)}" fill-rule="evenodd" d="${s.d.join("")}"/>`
-        : `<path fill="none" stroke="${paint(s.stroke, s)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" d="${s.d.join("")}"/>`,
+        ? `<path fill="${paint(s.fill, s)}" fill-rule="evenodd" d="${d(s.geometry)}"/>`
+        : `<path fill="none" stroke="${paint(s.stroke, s)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" d="${d(s.geometry)}"/>`,
     )
     .join("\n")}
 </svg>`;
@@ -176,9 +276,6 @@ const render = (svgText) => sharp(Buffer.from(svgText), { limitInputPixels: fals
 console.time("map");
 const width = Math.round((E_MAX - E_MIN) * PX_PER_M);
 const height = Math.round((N_MAX - N_MIN) * PX_PER_M);
-const raster = await render(svg([width, height], BACKGROUND, (c) => c))
-  .raw()
-  .toBuffer();
 const grey = (data) => sharp(data, { raw: { width, height, channels: 1 } });
 const blur = (data, metres) =>
   grey(data)
@@ -222,10 +319,6 @@ const [near, nearGreen, around, aroundGreen] = await Promise.all([
 
 // Gardens and courtyards on the built-up land OSM leaves empty: where the photo is green, lawn
 // as bright as the photo there.
-const land = await render(svg([width, height], "#fff", () => "#000"))
-  .extractChannel(0)
-  .raw()
-  .toBuffer();
 const LAWN_BRIGHTNESS = 105; // the photo's median on OSM lawns
 const lawn = [1, 3, 5].map((i) => parseInt(GRASS.slice(i, i + 2), 16));
 const smoothstep = (a, b, x) => {
@@ -233,10 +326,8 @@ const smoothstep = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
-// Contact shadows: the buildings' roofs seen from above darken the ground around them, softly
-// and further out, then fill their footprints.
+// The buildings' roofs seen from above: no trees stand there.
 const inside = await footprints();
-const [shadowNear, shadowFar] = await Promise.all([blur(inside, 1.5), blur(inside, 5)]);
 
 // Tree crowns in the photo, only in woods (canopy, 0 to 255): green and either dark or rough (sun
 // and shade change within metres, lawn is smooth), over a 5 x 5 px tent; then closed (holes
@@ -271,29 +362,58 @@ for (let y = 2; y < height - 2; y++)
 const closed = (await blur(rough, 1.6)).map((v) => 255 * smoothstep(0.3, 0.55, v / 255));
 const opened = await blur(closed, 2.4);
 const canopy = opened.map((v, i) => smoothstep(0.5, 0.7, v / 255) * woods[i]);
-const footprintColour = [1, 3, 5].map((i) => parseInt(FOOTPRINT.slice(i, i + 2), 16));
-for (let i = 0; i < width * height; i++) {
-  if (inside[i]) {
-    raster.set(footprintColour, i * 4);
-    continue;
+
+// --- public/ground/soft.bin: per tile, row by row, a WebP image twice SOFT_PX wide. Left the
+// land where no shape is drawn: BACKGROUND, and where the photo is green, lawn as bright as the
+// photo. Right the patches of the green areas, as a grey of 255 / BRIGHTEST times the factor
+// their colours take (1: none), weakened under crowns; each pixel the mean of the green ones.
+const BRIGHTEST = 1.35; // the largest factor, as in src/groundmap.js
+const background = [1, 3, 5].map((i) => parseInt(BACKGROUND.slice(i, i + 2), 16));
+const step = TILE_PX / SOFT_PX;
+const images = [];
+for (let row = 0; row < height / TILE_PX; row++)
+  for (let column = 0; column < width / TILE_PX; column++) {
+    const image = Buffer.alloc(2 * SOFT_PX * SOFT_PX * 3);
+    for (let y = 0; y < SOFT_PX; y++)
+      for (let x = 0; x < SOFT_PX; x++) {
+        const sum = [0, 0, 0, 0, 0]; // land r, g, b; patch × green; green
+        for (let dy = 0; dy < step; dy++)
+          for (let dx = 0; dx < step; dx++) {
+            const i = (row * TILE_PX + y * step + dy) * width + column * TILE_PX + x * step + dx;
+            const [r, g, b] = soft.subarray(i * 3, i * 3 + 3);
+            const leafy = smoothstep(15, 35, 2 * g - r - b);
+            const lit = Math.min(
+              Math.max((brightness(soft, i) / LAWN_BRIGHTNESS) ** 0.8, 0.6),
+              1.35,
+            );
+            for (let c = 0; c < 3; c++)
+              sum[c] += background[c] + (lawn[c] * lit - background[c]) * leafy;
+            if (vegetation[i] && nearGreen[i] > 8 && aroundGreen[i] > 8 && around[i]) {
+              const patch = (near[i] / nearGreen[i]) * (aroundGreen[i] / around[i]);
+              const strength = Math.min(Math.max(patch ** 0.8, 0.6), BRIGHTEST);
+              const kept = 1 + (strength - 1) * (1 - ((1 - CROWN_PATCHES) * canopy[i]) / 255);
+              sum[3] += kept * vegetation[i];
+              sum[4] += vegetation[i];
+            }
+          }
+        const land = (y * 2 * SOFT_PX + x) * 3;
+        for (let c = 0; c < 3; c++) image[land + c] = Math.min(255, Math.round(sum[c] / step ** 2));
+        const patches = Math.round(((sum[4] ? sum[3] / sum[4] : 1) / BRIGHTEST) * 255);
+        image.fill(patches, land + SOFT_PX * 3, land + SOFT_PX * 3 + 3);
+      }
+    images.push(
+      await sharp(image, { raw: { width: 2 * SOFT_PX, height: SOFT_PX, channels: 3 } })
+        .webp({ quality: SOFT_QUALITY })
+        .toBuffer(),
+    );
   }
-  if (land[i]) {
-    const [r, g, b] = soft.subarray(i * 3, i * 3 + 3);
-    const leafy = (smoothstep(15, 35, 2 * g - r - b) * land[i]) / 255;
-    if (leafy) {
-      const lit = Math.min(Math.max((brightness(soft, i) / LAWN_BRIGHTNESS) ** 0.8, 0.6), 1.35);
-      for (let c = 0; c < 3; c++) raster[i * 4 + c] += (lawn[c] * lit - raster[i * 4 + c]) * leafy;
-    }
-  }
-  let factor = (1 - (0.42 * shadowNear[i]) / 255) * (1 - (0.5 * shadowFar[i]) / 255);
-  if (vegetation[i] && nearGreen[i] > 8 && aroundGreen[i] > 8 && around[i]) {
-    const patch = (near[i] / nearGreen[i]) * (aroundGreen[i] / around[i]);
-    const strength = Math.min(Math.max(patch ** 0.8, 0.6), 1.35);
-    const kept = 1 + (strength - 1) * (1 - ((1 - CROWN_PATCHES) * canopy[i]) / 255);
-    factor *= 1 + ((kept - 1) * vegetation[i]) / 255;
-  }
-  for (let c = 0; c < 3; c++) raster[i * 4 + c] = Math.min(255, raster[i * 4 + c] * factor);
-}
+writeFileSync(
+  join(PUBLIC, "ground", "soft.bin"),
+  Buffer.concat([
+    Buffer.from(new Uint32Array([images.length, ...images.map((image) => image.length)]).buffer),
+    ...images,
+  ]),
+);
 
 // 3D trees on the crowns, written to public/canopy.bin (Uint16 east, south as in trees.bin, height
 // in dm):
@@ -330,25 +450,6 @@ for (let row = 0; row < (N_MAX - N_MIN) / TREE_SPACING; row++)
   }
 writeFileSync(join(PUBLIC, "canopy.bin"), new Uint16Array(planted));
 console.log(`${planted.length / 3} trees on crowns`);
-await writeTiles(raster, width, height, 4, join(PUBLIC, "ground", "map"), {
-  texture: TILE_PX,
-  quality: QUALITY,
-});
-
-const deckDir = join(PUBLIC, "ground", "deck");
-rmSync(deckDir, { recursive: true, force: true });
-const decks = svg(
-  [width, height],
-  SIDEWALK,
-  (c) => c,
-  shapes.filter((s) => s.deck),
-);
-await writeTiles(await render(decks).raw().toBuffer(), width, height, 4, deckDir, {
-  texture: TILE_PX,
-  only: deckTiles,
-  quality: QUALITY,
-});
-
 // Water white, everything else black, in the same order, so roads drawn over water stay dry.
 const mask = svg([MASK_SIZE, MASK_SIZE], "#000", (c) => (c === WATER ? "#fff" : "#000"));
 const maskData = await render(mask).ensureAlpha().raw().toBuffer();

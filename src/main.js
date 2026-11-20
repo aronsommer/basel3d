@@ -11,6 +11,8 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
 import { createCity } from "./city.js";
+import { createGround } from "./ground.js";
+import { createRails } from "./rails.js";
 import { unpackHeights, unpackPoints } from "./pack.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
@@ -124,11 +126,16 @@ function load(paths, show) {
   );
 }
 
-// Ground textures in public/ground/<kind>/, one per 1 km tile named column_row: "map" from
-// OpenStreetMap (tools/map.mjs), "photo" from SWISSIMAGE (tools/terrain.mjs); "deck", the roads
-// on the 3D bridges for the map (tools/map.mjs), only where there are bridges.
+// The ground, one texture per 1 km tile named column_row: the aerial photo (SWISSIMAGE,
+// tools/terrain.mjs) loaded from public/ground/photo/, the map from OpenStreetMap drawn here
+// (src/ground.js) from MAP_FILES (tools/map.mjs), with its own textures for the decks of the 3D
+// bridges, as it leaves their roads out of the ground, and with rails on its tracks
+// (src/rails.js).
+const MAP_FILES = ["ground/map.bin", "ground/soft.bin", "ground/rails.bin"];
 const groundPaths = (kind) =>
-  Object.keys(files).filter((path) => path.startsWith(`ground/${kind}/`));
+  kind === "map"
+    ? MAP_FILES
+    : Object.keys(files).filter((path) => path.startsWith(`ground/${kind}/`));
 const ktx2 = new KTX2Loader()
   .setTranscoderPath(import.meta.resolve("three/addons/libs/basis/"))
   .detectSupport(renderer);
@@ -184,27 +191,41 @@ const [
     "walks.bin",
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
     ...groundPaths(groundKind),
-    ...groundPaths("deck"),
   ],
   (percent) => (progress.textContent = `${percent}%`),
 );
 const moverFiles = rest.slice(0, MOVER_KINDS.length * 2);
-const groundEnd = MOVER_KINDS.length * 2 + groundPaths(groundKind).length;
-const groundBuffers = rest.slice(MOVER_KINDS.length * 2, groundEnd);
-const deckBuffers = rest.slice(groundEnd);
+const groundBuffers = rest.slice(MOVER_KINDS.length * 2);
 const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
+// The ground's textures by tile name, per kind once loaded; map: src/ground.js once the map was
+// shown, drawing its textures from now on (without ?glb also the buildings' shadows); tracks: its
+// file for the rails, which addRails makes of it.
+const ground = {};
+let map = null;
+let tracks = null;
+let rails = null;
+function startMap([shapes, soft, railsFile]) {
+  tracks = railsFile;
+  map = createGround(
+    { map: shapes, soft, city: CITY === "basel.bin" ? cityBuffer : undefined },
+    terrainInfo,
+    renderer,
+    new URL("./ground-worker.js?v=__BUILD_TIMESTAMP__", import.meta.url),
+  );
+  ground.map = map.tiles;
+}
+if (groundKind === "map") startMap(groundBuffers);
 const heights = Float32Array.from(unpackHeights(heightsBuffer, terrainInfo.nx), (cm) => cm / 100);
 const treePositions = new Uint16Array(treesBuffer);
 const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-const [glb, bridges, waterMask, firstGround, decks] = await Promise.all([
+const [glb, bridges, waterMask, photo] = await Promise.all([
   CITY === "basel.glb" && gltfLoader.parseAsync(cityBuffer, ""),
   gltfLoader.parseAsync(bridgesGlb, ""),
   new Promise((resolve, reject) => ktx2.parse(waterBuffer, resolve, reject)),
-  groundTextures(groundPaths(groundKind), groundBuffers),
-  groundTextures(groundPaths("deck"), deckBuffers),
+  groundKind === "photo" && groundTextures(groundPaths("photo"), groundBuffers),
 ]);
-const ground = { [groundKind]: firstGround }; // textures by tile name, per kind once loaded
+if (photo) ground.photo = photo;
 
 // Water on the ground wherever the mask (tools/map.mjs) is red: two blues with light patches,
 // carried downstream along the flow stored in the mask's green and blue, the same from every
@@ -263,6 +284,7 @@ const structures = createBuildings(buildings.scene, bridges.scene, [terrain], re
   extend(materials.roof, pavilionShader);
 }
 const deckMaps = createDecks(bridges.scene, materials.bridge);
+if (map) map.changed = mapChanged;
 const explosions = createExplosions(scene, structures, heightAt, camera);
 // What is blown up stays so in this browser until "Rebuild Basel", as long as the models are the
 // same (by their sizes and totals), since the numbers belong to them. Rebuild forgets it and loads
@@ -278,7 +300,9 @@ try {
   if (stored?.models === MODELS && Array.isArray(stored.numbers)) saved = stored.numbers;
 } catch {} // storage blocked or not JSON
 saved = saved.filter(Number.isInteger);
-const brokenDecks = decksOf(saved); // before they are hidden; cut into the ways once these exist
+// The decks of all destroyed bridges, taken before they are hidden; cut into the ways and rails
+// once these exist.
+const brokenDecks = decksOf(saved);
 const destroyed = new Set(explosions.ruin(saved));
 const resetButton = document.getElementById("reset");
 resetButton.addEventListener("click", () => {
@@ -360,6 +384,8 @@ function destroy(number) {
   if (!explosions.explode(number)) return;
   scene.remove(...(onRoofs.get(number) ?? []));
   if (deck) for (const mover of movers) mover.cut(deck);
+  if (deck) rails?.cut(deck);
+  if (deck) brokenDecks.push(deck);
   if (deck) roads = null; // made anew without it
   destroyed.add(number);
   showCount();
@@ -374,26 +400,34 @@ const rockets = createRockets(scene, structures, explosions, heightAt, camera, d
 
 // At the top of the menu the ground, map or aerial photo, each loaded on first use (meanwhile its
 // percentage beside its name, and neither can be chosen). Only the shown textures stay in GPU
-// memory; the others are re-uploaded when shown again.
+// memory: the photo's are re-uploaded when shown again, the map's drawn again.
 const groundBoxes = [...document.querySelectorAll('#menu input[name="ground"]')];
 for (const box of groundBoxes) {
   box.checked = box.value === groundKind;
   box.addEventListener("change", async () => {
     const kind = box.value;
+    for (const other of groundBoxes) other.disabled = true;
     if (!ground[kind]) {
       const name = box.nextElementSibling;
       const text = name.textContent;
-      for (const other of groundBoxes) other.disabled = true;
       const paths = groundPaths(kind);
       const buffers = await load(paths, (percent) => (name.textContent = `${text} ${percent}%`));
-      ground[kind] = await groundTextures(paths, buffers);
+      if (kind === "map") {
+        startMap(buffers);
+        map.changed = mapChanged;
+        addRails();
+      } else ground[kind] = await groundTextures(paths, buffers);
       name.textContent = text;
-      for (const other of groundBoxes) other.disabled = false;
-    }
-    for (const texture of ground[groundKind].values()) texture.dispose();
+    } else if (kind === "map") map.show();
+    if (kind === "map") await map.ready;
+    for (const other of groundBoxes) other.disabled = false;
+    const before = groundKind;
     groundKind = kind;
     for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
-    for (const [name, map] of deckMaps) map.value = deckTexture(kind, name);
+    for (const [name, deck] of deckMaps) deck.value = deckTexture(kind, name);
+    if (before === "map") map.hide();
+    else for (const texture of ground[before].values()) texture.dispose();
+    rails.visible = kind === "map";
     try {
       localStorage.setItem(GROUND_KEY, kind);
     } catch {} // storage blocked
@@ -757,6 +791,15 @@ const bridgeDecks = () =>
       parts.flatMap(({ positions }) => positions),
     ),
   ));
+// The map's rails (src/rails.js), on the ground and on the decks, but those of destroyed bridges.
+function addRails() {
+  rails = createRails(tracks, terrainInfo, heights, (x, z) =>
+    Math.max(-Infinity, ...[bridgeDecks(), ...brokenDecks].flatMap((deck) => deck.heights(x, z))),
+  );
+  for (const deck of brokenDecks) rails.cut(deck);
+  scene.add(rails);
+}
+if (map) addRails();
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y
 // Where the vehicles on the ground (src/drive.js) drive: each stands on the terrain or on the
@@ -2546,7 +2589,15 @@ function addWater(shader) {
 // The texture for the decks on a tile with this ground kind: the map's own deck tile (the map
 // leaves the bridges' roads out), else the ground's, as the aerial photo shows the decks.
 function deckTexture(kind, name) {
-  return (kind === "map" && decks.get(name)) || ground[kind].get(name);
+  return (kind === "map" && map.decks.get(name)) || ground[kind].get(name);
+}
+
+// The map drew the tile anew (src/ground.js): its textures go onto the terrain and the decks.
+function mapChanged(name) {
+  if (groundKind !== "map") return;
+  terrain.getObjectByName(name).material.map = ground.map.get(name);
+  const deck = deckMaps.get(name);
+  if (deck) deck.value = deckTexture("map", name);
 }
 
 // The bridges' tops show their place's texture (deckTexture), as if the map or photo ran across
@@ -2689,13 +2740,24 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
   return group;
 }
 
-// The coarse terrain for the chunks TERRAIN_DETAIL metres or more from the camera.
+// The coarse terrain for the chunks TERRAIN_DETAIL metres or more from the camera, the map as
+// sharp as each chunk's distance needs and the rails of the chunks near enough to show them.
+const bufferSize = new THREE.Vector2();
 function updateTerrain() {
+  const distances = new Map();
   for (const mesh of terrain.children) {
     const [fine, coarse] = mesh.userData.levels;
-    mesh.geometry =
-      fine.boundingBox.distanceToPoint(camera.position) < TERRAIN_DETAIL ? fine : coarse;
+    distances.set(mesh.name, fine.boundingBox.distanceToPoint(camera.position));
+    mesh.geometry = distances.get(mesh.name) < TERRAIN_DETAIL ? fine : coarse;
   }
+  if (groundKind !== "map") return;
+  // The pixels a metre takes on the screen a metre away.
+  const focal =
+    (renderer.getDrawingBufferSize(bufferSize).y / 2) * camera.projectionMatrix.elements[5];
+  map.update((name) => distances.get(name), focal);
+  // The rails have faded where a pixel spans 1.6 m (src/rails.js), and lie on the fine terrain.
+  const far = Math.min(1.6 * focal, TERRAIN_DETAIL);
+  for (const mesh of rails.children) mesh.visible = distances.get(mesh.name) < far;
 }
 
 // A scene position moved into the terrain's area, as [x, z].
@@ -3254,6 +3316,7 @@ if (!readView()) {
   orbit.target.set(537, heightAt(537, 99) + CENTRE, 99);
   camera.position.copy(orbit.target).add(new THREE.Vector3(-1500, 1400, 2200));
 }
+if (groundKind === "map") await map.ready;
 document.body.dataset.mode = "orbit";
 
 // While a tram line is shown, the scene but the trams is drawn in light grey under the check

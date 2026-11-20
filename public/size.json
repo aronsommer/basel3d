@@ -1,19 +1,19 @@
 {
  "basel.bin": {
-  "size": 15033827,
-  "hash": "9228ad80"
+  "size": 15033775,
+  "hash": "3ec447c0"
  },
  "basel.glb": {
-  "size": 19447000,
-  "hash": "cbee44f4"
+  "size": 19444656,
+  "hash": "cd247be2"
  },
  "bridges.glb": {
   "size": 304100,
   "hash": "0d9c3b41"
  },
  "canopy.bin": {
-  "size": 149190,
-  "hash": "97e2b040"
+  "size": 149172,
+  "hash": "0be08548"
  },
  "cars.bin": {
   "size": 269342,
@@ -23,401 +23,9 @@
   "size": 13330,
   "hash": "a1716bc0"
  },
- "ground/deck/2_1.ktx2": {
-  "size": 1841,
-  "hash": "bebdf3b9"
- },
- "ground/deck/2_2.ktx2": {
-  "size": 3299,
-  "hash": "d18a93af"
- },
- "ground/deck/2_3.ktx2": {
-  "size": 1467,
-  "hash": "c49a0e5d"
- },
- "ground/deck/2_4.ktx2": {
-  "size": 2162,
-  "hash": "d3cda329"
- },
- "ground/deck/2_5.ktx2": {
-  "size": 1718,
-  "hash": "e8bd3ff5"
- },
- "ground/deck/3_2.ktx2": {
-  "size": 4401,
-  "hash": "893126f7"
- },
- "ground/deck/3_3.ktx2": {
-  "size": 1790,
-  "hash": "d6d9393d"
- },
- "ground/deck/3_4.ktx2": {
-  "size": 3581,
-  "hash": "2891ca76"
- },
- "ground/deck/3_5.ktx2": {
-  "size": 3931,
-  "hash": "ac52df3c"
- },
- "ground/deck/4_0.ktx2": {
-  "size": 3841,
-  "hash": "ceb8726d"
- },
- "ground/deck/4_1.ktx2": {
-  "size": 6835,
-  "hash": "bdea611a"
- },
- "ground/deck/4_2.ktx2": {
-  "size": 3159,
-  "hash": "57c3b06b"
- },
- "ground/deck/4_3.ktx2": {
-  "size": 5224,
-  "hash": "f9458346"
- },
- "ground/deck/4_4.ktx2": {
-  "size": 6609,
-  "hash": "405f875e"
- },
- "ground/deck/4_5.ktx2": {
-  "size": 4639,
-  "hash": "2ec4f71d"
- },
- "ground/deck/4_6.ktx2": {
-  "size": 1269,
-  "hash": "e304181c"
- },
- "ground/deck/4_7.ktx2": {
-  "size": 1269,
-  "hash": "e304181c"
- },
- "ground/deck/5_0.ktx2": {
-  "size": 2835,
-  "hash": "48a59eb8"
- },
- "ground/deck/5_1.ktx2": {
-  "size": 9654,
-  "hash": "8bd61ce2"
- },
- "ground/deck/5_2.ktx2": {
-  "size": 9026,
-  "hash": "61c961f3"
- },
- "ground/deck/5_3.ktx2": {
-  "size": 3411,
-  "hash": "614b4c16"
- },
- "ground/deck/5_4.ktx2": {
-  "size": 2018,
-  "hash": "f5614187"
- },
- "ground/deck/5_5.ktx2": {
-  "size": 8210,
-  "hash": "5534b4b8"
- },
- "ground/deck/5_6.ktx2": {
-  "size": 2259,
-  "hash": "88adc222"
- },
- "ground/deck/6_1.ktx2": {
-  "size": 1567,
-  "hash": "7569f161"
- },
- "ground/deck/6_2.ktx2": {
-  "size": 1269,
-  "hash": "e304181c"
- },
- "ground/deck/6_3.ktx2": {
-  "size": 8234,
-  "hash": "8f3ee0d8"
- },
- "ground/deck/6_4.ktx2": {
-  "size": 6350,
-  "hash": "2abc9b1e"
- },
- "ground/deck/6_5.ktx2": {
-  "size": 12529,
-  "hash": "2a5ef182"
- },
- "ground/deck/6_6.ktx2": {
-  "size": 2475,
-  "hash": "5ffb2220"
- },
- "ground/deck/6_7.ktx2": {
-  "size": 3509,
-  "hash": "099e5c43"
- },
- "ground/deck/7_0.ktx2": {
-  "size": 1546,
-  "hash": "306060b4"
- },
- "ground/deck/7_1.ktx2": {
-  "size": 1533,
-  "hash": "eea333eb"
- },
- "ground/deck/7_2.ktx2": {
-  "size": 1914,
-  "hash": "be7f1c75"
- },
- "ground/deck/7_3.ktx2": {
-  "size": 4181,
-  "hash": "d5d34baa"
- },
- "ground/map/0_0.ktx2": {
-  "size": 139995,
-  "hash": "124d070f"
- },
- "ground/map/0_1.ktx2": {
-  "size": 151647,
-  "hash": "f8fb7e2d"
- },
- "ground/map/0_2.ktx2": {
-  "size": 162284,
-  "hash": "ca24e045"
- },
- "ground/map/0_3.ktx2": {
-  "size": 159834,
-  "hash": "cfb9e874"
- },
- "ground/map/0_4.ktx2": {
-  "size": 178979,
-  "hash": "799ddedf"
- },
- "ground/map/0_5.ktx2": {
-  "size": 172826,
-  "hash": "36649206"
- },
- "ground/map/0_6.ktx2": {
-  "size": 168314,
-  "hash": "ab05bf21"
- },
- "ground/map/0_7.ktx2": {
-  "size": 165392,
-  "hash": "435c4483"
- },
- "ground/map/1_0.ktx2": {
-  "size": 155474,
-  "hash": "e0a80edd"
- },
- "ground/map/1_1.ktx2": {
-  "size": 163141,
-  "hash": "7fa945d5"
- },
- "ground/map/1_2.ktx2": {
-  "size": 169904,
-  "hash": "8716a8f2"
- },
- "ground/map/1_3.ktx2": {
-  "size": 155562,
-  "hash": "c1c41859"
- },
- "ground/map/1_4.ktx2": {
-  "size": 176532,
-  "hash": "939e0074"
- },
- "ground/map/1_5.ktx2": {
-  "size": 170154,
-  "hash": "df662aa4"
- },
- "ground/map/1_6.ktx2": {
-  "size": 172384,
-  "hash": "aa3d8f5b"
- },
- "ground/map/1_7.ktx2": {
-  "size": 157029,
-  "hash": "b8eb21a3"
- },
- "ground/map/2_0.ktx2": {
-  "size": 148024,
-  "hash": "273fda5e"
- },
- "ground/map/2_1.ktx2": {
-  "size": 157285,
-  "hash": "ac4e2633"
- },
- "ground/map/2_2.ktx2": {
-  "size": 168997,
-  "hash": "471ac635"
- },
- "ground/map/2_3.ktx2": {
-  "size": 170425,
-  "hash": "c6278549"
- },
- "ground/map/2_4.ktx2": {
-  "size": 170569,
-  "hash": "7a7f597e"
- },
- "ground/map/2_5.ktx2": {
-  "size": 177418,
-  "hash": "b8948e70"
- },
- "ground/map/2_6.ktx2": {
-  "size": 181775,
-  "hash": "efe27e7e"
- },
- "ground/map/2_7.ktx2": {
-  "size": 181512,
-  "hash": "86cfecb2"
- },
- "ground/map/3_0.ktx2": {
-  "size": 144465,
-  "hash": "03ad4535"
- },
- "ground/map/3_1.ktx2": {
-  "size": 106372,
-  "hash": "36141316"
- },
- "ground/map/3_2.ktx2": {
-  "size": 142268,
-  "hash": "61ac9410"
- },
- "ground/map/3_3.ktx2": {
-  "size": 153459,
-  "hash": "30afa450"
- },
- "ground/map/3_4.ktx2": {
-  "size": 161671,
-  "hash": "5363b23f"
- },
- "ground/map/3_5.ktx2": {
-  "size": 173844,
-  "hash": "bb4df509"
- },
- "ground/map/3_6.ktx2": {
-  "size": 168390,
-  "hash": "d42791c3"
- },
- "ground/map/3_7.ktx2": {
-  "size": 176970,
-  "hash": "50869704"
- },
- "ground/map/4_0.ktx2": {
-  "size": 106068,
-  "hash": "f3f2821e"
- },
- "ground/map/4_1.ktx2": {
-  "size": 130729,
-  "hash": "92bcb4ff"
- },
- "ground/map/4_2.ktx2": {
-  "size": 129318,
-  "hash": "b8f59f5f"
- },
- "ground/map/4_3.ktx2": {
-  "size": 120562,
-  "hash": "22ae93c5"
- },
- "ground/map/4_4.ktx2": {
-  "size": 135035,
-  "hash": "a1c3a611"
- },
- "ground/map/4_5.ktx2": {
-  "size": 151312,
-  "hash": "11ddc38f"
- },
- "ground/map/4_6.ktx2": {
-  "size": 181405,
-  "hash": "6fa7c101"
- },
- "ground/map/4_7.ktx2": {
-  "size": 176902,
-  "hash": "d22154c1"
- },
- "ground/map/5_0.ktx2": {
-  "size": 151765,
-  "hash": "f6832cf3"
- },
- "ground/map/5_1.ktx2": {
-  "size": 141896,
-  "hash": "6059c105"
- },
- "ground/map/5_2.ktx2": {
-  "size": 161292,
-  "hash": "e2720a20"
- },
- "ground/map/5_3.ktx2": {
-  "size": 145993,
-  "hash": "6e532773"
- },
- "ground/map/5_4.ktx2": {
-  "size": 145463,
-  "hash": "eb539b48"
- },
- "ground/map/5_5.ktx2": {
-  "size": 157965,
-  "hash": "bafd104d"
- },
- "ground/map/5_6.ktx2": {
-  "size": 154232,
-  "hash": "77646ea7"
- },
- "ground/map/5_7.ktx2": {
-  "size": 155724,
-  "hash": "dd9b7033"
- },
- "ground/map/6_0.ktx2": {
-  "size": 175429,
-  "hash": "7a8fa57b"
- },
- "ground/map/6_1.ktx2": {
-  "size": 161255,
-  "hash": "406e3189"
- },
- "ground/map/6_2.ktx2": {
-  "size": 175284,
-  "hash": "7a0dc452"
- },
- "ground/map/6_3.ktx2": {
-  "size": 139553,
-  "hash": "c2d9006f"
- },
- "ground/map/6_4.ktx2": {
-  "size": 170170,
-  "hash": "aba4f5d0"
- },
- "ground/map/6_5.ktx2": {
-  "size": 152127,
-  "hash": "9bed3cc7"
- },
- "ground/map/6_6.ktx2": {
-  "size": 164898,
-  "hash": "00c0ad40"
- },
- "ground/map/6_7.ktx2": {
-  "size": 173001,
-  "hash": "1f370898"
- },
- "ground/map/7_0.ktx2": {
-  "size": 164154,
-  "hash": "523af8e7"
- },
- "ground/map/7_1.ktx2": {
-  "size": 169701,
-  "hash": "c1b70f5a"
- },
- "ground/map/7_2.ktx2": {
-  "size": 177855,
-  "hash": "5cfd6e78"
- },
- "ground/map/7_3.ktx2": {
-  "size": 131551,
-  "hash": "98d5332d"
- },
- "ground/map/7_4.ktx2": {
-  "size": 158050,
-  "hash": "cb5b586d"
- },
- "ground/map/7_5.ktx2": {
-  "size": 164022,
-  "hash": "5ffa6d9c"
- },
- "ground/map/7_6.ktx2": {
-  "size": 169736,
-  "hash": "bbd02ca4"
- },
- "ground/map/7_7.ktx2": {
-  "size": 174778,
-  "hash": "b6868cfe"
+ "ground/map.bin": {
+  "size": 875165,
+  "hash": "c9f98f11"
  },
  "ground/photo/0_0.ktx2": {
   "size": 254930,
@@ -675,6 +283,14 @@
   "size": 288310,
   "hash": "302c67f6"
  },
+ "ground/rails.bin": {
+  "size": 77181,
+  "hash": "ecaba475"
+ },
+ "ground/soft.bin": {
+  "size": 3403064,
+  "hash": "732f2612"
+ },
  "names.json": {
   "size": 2688,
   "hash": "a6d69c3a"
@@ -716,7 +332,7 @@
   "hash": "19a17c6f"
  },
  "water.ktx2": {
-  "size": 227963,
-  "hash": "6d181a42"
+  "size": 227833,
+  "hash": "57a025a3"
  }
 }

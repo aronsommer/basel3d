@@ -54,7 +54,10 @@ const stats = { buildings: 0, roof: 0, wall: 0, dupes: 0, other: {} };
 // The building being read: roof, wall: [x, y, z, …]; spots: [e, n, …] on its roof, about 2 m
 // apart; area of its roof, flat: of which slopes less than 14°.
 let building = null;
-const info = []; // per building number: { spots, flat (share of its roof), height, size, e, n }
+// Per building number: { spots, flat (share of its roof), height, size, e, n, box: [x0, z0, x1,
+// z1] in the scene, roof: its triangles, wall: those of its walls or null without, key: its
+// chunk }.
+const info = [];
 
 function addTriangle(kind, v) {
   for (let i = 0; i < 9; i += 3) building[kind].push(toX(v[i]), v[i + 2] - Y0, toZ(v[i + 1]));
@@ -72,7 +75,60 @@ function addTriangle(kind, v) {
       building.spots.push(ax + (ux * i + wx * j) / steps, ay + (uy * i + wy * j) / steps);
 }
 
-// Adds the building read into the chunk of its middle, so it stays in one mesh.
+// Roofs without walls (a canopy, a dome), kept until all are read: one over another building's
+// roof becomes part of that building, so both are one object in the viewer.
+const loose = []; // { number, building, key }
+
+// Adds the building b under this number to the chunk `key`; foot: its lowest height.
+function place(key, number, b, foot) {
+  let c = chunks.get(key);
+  if (!c) {
+    const lists = () => ({
+      position: new List(Float32Array),
+      building: new List(Uint16Array),
+      range: new List(Uint16Array),
+    });
+    chunks.set(key, (c = { roof: lists(), wall: lists() }));
+  }
+  for (const kind of ["roof", "wall"]) {
+    for (const value of b[kind]) c[kind].position.push(value);
+    for (let i = 0; i < b[kind].length; i += 3) c[kind].building.push(number);
+  }
+  for (const value of wallRanges(b.wall, foot)) c.wall.range.push(value);
+}
+
+// The number of the building with walls that, seen from above, has its roof over or under the
+// middle of the building with this number, or its walls to the east, west, north and south of
+// it (a courtyard); -1 if none.
+function hostOf(number) {
+  const [x, z] = [toX(info[number].e), toZ(info[number].n)];
+  for (let host = 0; host < info.length; host++) {
+    const { box, roof, wall } = info[host];
+    if (!wall || x < box[0] || x > box[2] || z < box[1] || z > box[3]) continue;
+    for (let i = 0; i < roof.length; i += 9) {
+      const [ax, az, bx, bz] = [roof[i], roof[i + 2], roof[i + 3], roof[i + 5]];
+      const [cx, cz] = [roof[i + 6], roof[i + 8]];
+      const d = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
+      if (!d) continue;
+      const s = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / d;
+      const t = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / d;
+      if (s >= 0 && t >= 0 && s + t <= 1) return host;
+    }
+    const sides = new Set();
+    for (let i = 0; i < wall.length; i += 9)
+      for (const k of [0, 3, 6]) {
+        const [ax, az] = [wall[i + k], wall[i + k + 2]];
+        const [bx, bz] = [wall[i + ((k + 3) % 9)], wall[i + ((k + 5) % 9)]];
+        if (az > z !== bz > z) sides.add(ax + ((z - az) / (bz - az)) * (bx - ax) > x ? "e" : "w");
+        if (ax > x !== bx > x) sides.add(az + ((x - ax) / (bx - ax)) * (bz - az) > z ? "s" : "n");
+      }
+    if (sides.size === 4) return host;
+  }
+  return -1;
+}
+
+// Adds the building read into the chunk of its middle, so it stays in one mesh; one without
+// walls waits in loose.
 function addBuilding() {
   const b = building;
   if (b) for (const v of missingRoofs(b)) addTriangle("roof", v);
@@ -87,15 +143,6 @@ function addBuilding() {
       z1 = Math.max(z1, list[i + 2]);
     }
   const key = `${Math.floor((x0 + x1) / 2 / CHUNK)},${Math.floor((z0 + z1) / 2 / CHUNK)}`;
-  let c = chunks.get(key);
-  if (!c) {
-    const lists = () => ({
-      position: new List(Float32Array),
-      building: new List(Uint16Array),
-      range: new List(Uint16Array),
-    });
-    chunks.set(key, (c = { roof: lists(), wall: lists() }));
-  }
   const number = stats.buildings++;
   if (number > 0xffff) throw new Error("Too many buildings for 16-bit numbers");
   let [y0, y1] = [Infinity, -Infinity];
@@ -109,6 +156,10 @@ function addBuilding() {
     size: [x1 - x0, z1 - z0],
     e: (x0 + x1) / 2 + (E_MIN + E_MAX) / 2,
     n: (N_MIN + N_MAX) / 2 - (z0 + z1) / 2,
+    box: [x0, z0, x1, z1],
+    roof: b.roof,
+    wall: b.wall.length ? b.wall : null,
+    key,
   };
   if (
     KASERNE.some(
@@ -116,11 +167,8 @@ function addBuilding() {
     )
   )
     kaserne.add(number);
-  for (const kind of ["roof", "wall"]) {
-    for (const value of b[kind]) c[kind].position.push(value);
-    for (let i = 0; i < b[kind].length; i += 3) c[kind].building.push(number);
-  }
-  for (const value of wallRanges(b.wall, y0)) c.wall.range.push(value);
+  if (b.wall.length) place(key, number, b, y0);
+  else loose.push({ number, building: b, key });
 }
 
 // Buildings whose RoofSurfaces miss parts their lod2Solid has (swissBUILDINGS3D gml:id).
@@ -554,7 +602,13 @@ for (const sheet of [...tiles.keys()].sort()) {
   await readTile(file);
   console.timeEnd(file);
 }
-console.log(stats);
+let hosted = 0;
+for (const { number, building: b, key } of loose) {
+  const host = hostOf(number);
+  if (host >= 0) hosted++;
+  place(host < 0 ? key : info[host].key, host < 0 ? number : host, b, 0);
+}
+console.log(stats, `${hosted} of ${loose.length} roofs without walls joined the building there`);
 
 await writeGlb();
 console.log("done");
