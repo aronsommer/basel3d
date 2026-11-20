@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Basel 3D</title>
     <link rel="preload" href="fonts/Inter.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="style.css?v=__BUILD_TIMESTAMP__" />
@@ -52,7 +52,10 @@
           <label><input type="radio" name="ground" value="photo" /> <span>Aerial</span></label>
         </div>
         <hr />
-        <label><input type="checkbox" id="names-box" /> Names</label>
+        <div class="pairs">
+          <label><input type="checkbox" id="names-box" /> Names</label>
+          <label><input type="checkbox" id="fullscreen-box" /> Fullscreen</label>
+        </div>
         <hr />
         <div id="tram-lines">
           <span>Trams</span>

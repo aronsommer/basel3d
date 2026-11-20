@@ -72,7 +72,8 @@ p {
 }
 /* Two columns as wide, 8px apart. Right: the closed menu and the button to get off below it;
    the open menu covers the button to get off. Left: the counter, as tall as the two on the
-   right, and the reset button below it. */
+   right, and the reset button below it. All out of the notch and the rounded corners
+   (viewport-fit=cover in index.html). */
 #off,
 #reset,
 #menu,
@@ -83,22 +84,22 @@ p {
 }
 #off,
 #menu {
-  right: 12px;
+  right: calc(env(safe-area-inset-right) + 12px);
 }
 #reset,
 #counter,
 #panels {
-  left: 12px;
+  left: calc(env(safe-area-inset-left) + 12px);
 }
 #menu,
 #counter {
-  top: 12px;
+  top: calc(env(safe-area-inset-top) + 12px);
 }
 #off {
-  top: 56px;
+  top: calc(env(safe-area-inset-top) + 56px);
 }
 #reset {
-  top: 100px;
+  top: calc(env(safe-area-inset-top) + 100px);
 }
 #off,
 #reset {
@@ -107,7 +108,7 @@ p {
 /* Below the reset button, the panels ticked in the menu, 8px apart: "Dev"
    (src/dev.js) above "Points" (src/points.js). */
 #panels {
-  top: 148px;
+  top: calc(env(safe-area-inset-top) + 148px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -256,18 +257,19 @@ p {
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.3);
 }
-/* "All" neutral, as it stands for lines of all colours; the ground, "Names" and the panels
-   neutral, as they show none. */
+/* "All" neutral, as it stands for lines of all colours; the ground, "Names", "Fullscreen" and
+   the panels neutral, as they show none. */
 #menu input[name="ground"],
 #menu #trams,
 #menu #names-box,
+#menu #fullscreen-box,
 #menu #points-box,
 #menu #dev-box {
   accent-color: #f1f5f9;
 }
 /* One grid for all entries, five columns: "Trams", "All", then the tram lines one by one,
-   five in a row, each pair of box and number well apart from the next. The lines and
-   "Names" across all columns. */
+   five in a row, each pair of box and number well apart from the next. The lines across all
+   columns. */
 #entries {
   display: grid;
   grid-template-columns: repeat(5, auto);
@@ -276,7 +278,6 @@ p {
   column-gap: 16px;
 }
 #entries > hr,
-#entries > label,
 #about,
 #credits {
   grid-column: 1 / -1;
@@ -416,9 +417,9 @@ p {
    a click anywhere fires. */
 #steer {
   position: absolute;
-  bottom: 24px;
-  left: 16px;
-  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 24px);
+  left: calc(env(safe-area-inset-left) + 16px);
+  right: calc(env(safe-area-inset-right) + 16px);
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;
   grid-template-areas:

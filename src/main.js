@@ -709,6 +709,19 @@ namesBox.addEventListener("change", () => {
     localStorage.setItem(NAMES_KEY, namesBox.checked ? "1" : "0");
   } catch {} // storage blocked
 });
+
+// Fullscreen, also left with Esc. iPhone has no Fullscreen API.
+const fullscreenBox = document.getElementById("fullscreen-box");
+fullscreenBox.disabled = !document.fullscreenEnabled;
+fullscreenBox.addEventListener("change", () => {
+  if (fullscreenBox.checked)
+    document.documentElement.requestFullscreen().catch(() => (fullscreenBox.checked = false));
+  else document.exitFullscreen();
+});
+document.addEventListener(
+  "fullscreenchange",
+  () => (fullscreenBox.checked = !!document.fullscreenElement),
+);
 const nameLayer = document.getElementById("names");
 scene.updateMatrixWorld(); // for the rays from above
 const fromAbove = new THREE.Raycaster();
