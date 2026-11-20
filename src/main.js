@@ -2137,16 +2137,16 @@ function createHelicopter(cx, cz, radius, height, scale) {
 }
 
 // Flying the helicopter or the UFO while riding it (input { climb, turn, stop }, climb and turn
-// each -1, 0 or 1, from steering()), at least LOW above the terrain, at most HIGH, over the
-// terrain's area. Holding climb tilts the nose by TILT radians per second, and it stays when let
-// go. Flying, it goes craft.speed (metres per second) along the nose, from UP above level to DOWN
-// below; tilting through level, it stops there until pressed anew, and it levels out at LOW or
-// HIGH. Stopped, it hovers and the nose only aims, from level to AIM down. Speed, nose and turning
-// (up to craft.turn radians per second) are eased. A craft with lift (metres) first rises straight
-// up that far at half its speed, then goes on from a standstill. The state, flown: { x, y, z,
-// heading, speed (0 to 1, times craft.speed), aim (where the nose goes, radians down), nose, turn,
-// levelled (the climb input that last reached level, while still held), lift (metres still to
-// rise) }.
+// each -1, 0 or 1, from steering()), LOW above the terrain at least (where the ground rises, back
+// to it smoothly), at most HIGH, over the terrain's area. Holding climb tilts the nose by TILT
+// radians per second, and it stays when let go. Flying, it goes craft.speed (metres per second)
+// along the nose, from UP above level to DOWN below; tilting through level, it stops there until
+// pressed anew, and it levels out at LOW or HIGH. Stopped, it hovers and the nose only aims, from
+// level to AIM down. Speed, nose and turning (up to craft.turn radians per second) are eased. A
+// craft with lift (metres) first rises straight up that far at half its speed, then goes on from a
+// standstill. The state, flown: { x, y, z, heading, speed (0 to 1, times craft.speed), aim (where
+// the nose goes, radians down), nose, turn, levelled (the climb input that last reached level,
+// while still held), lift (metres still to rise) }.
 function createFlight() {
   const LEVEL = 0.12; // the nose down when flying level (radians)
   const UP = 0.35; // radians, about 20°
@@ -2179,7 +2179,12 @@ function createFlight() {
       if (input.climb !== flown.levelled) flown.levelled = 0;
       if (input.climb && !flown.levelled) {
         const next = flown.aim - input.climb * TILT * dt;
-        if (!input.stop && (next - LEVEL) * (flown.aim - LEVEL) < 0) {
+        // Already at LOW or HIGH, flying, the nose does not tilt on towards it, so it does not
+        // dip for a moment before levelling out again.
+        const bound =
+          (next > LEVEL && flown.y <= heightAt(flown.x, flown.z) + LOW) ||
+          (next < LEVEL && flown.y >= HIGH);
+        if (!input.stop && ((next - LEVEL) * (flown.aim - LEVEL) < 0 || bound)) {
           flown.aim = LEVEL;
           flown.levelled = input.climb;
         } else flown.aim = next;
@@ -2203,7 +2208,12 @@ function createFlight() {
         flown.aim = LEVEL;
         flown.levelled = input.climb;
       }
-      flown.y = THREE.MathUtils.clamp(y, low, HIGH);
+      // Below LOW it goes no lower and rises back smoothly, not at once, so it does not jolt with
+      // every bump of the ground it follows; never below half LOW.
+      flown.y = Math.min(
+        y < low ? Math.max(ease(Math.max(y, flown.y), low, 3), low - LOW / 2) : y,
+        HIGH,
+      );
     },
   };
 }
@@ -2813,17 +2823,18 @@ function steering() {
 }
 
 // Shooting while flying or in a tank: holding Space, the fire button or the left mouse button on
-// the scene ("Mouse" in keys) aims along the nose or the gun to where it first meets something
-// (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every FIRE_GAP
-// seconds, from its launchers in turn. The UFO sends a laser bolt there every BOLT_GAP seconds,
-// from its cannons in turn, which on arriving destroys what it meets: a building or bridge
-// (destroy) or the ground (a small blast). The tank fires a shell along its gun every SHELL_GAP
-// seconds; its crosshair stays SIGHT metres ahead on that line, as what the line first meets
-// changes all the time while it drives and would make it jump.
+// the scene ("Mouse" in keys) aims, from the camera through a point AHEAD metres along the nose, to
+// where that line first meets something (rockets.aim), which the crosshair shows. The helicopter
+// sends a rocket there every FIRE_GAP seconds, from its launchers in turn. The UFO sends a laser
+// bolt there every BOLT_GAP seconds, from its cannons in turn, which on arriving destroys what it
+// meets: a building or bridge (destroy) or the ground (a small blast). The tank fires a shell along
+// its gun every SHELL_GAP seconds; its crosshair stays SIGHT metres ahead on that line, as what the
+// line first meets changes all the time while it drives and would make it jump.
 const FIRE_GAP = 0.1; // seconds
 const BOLT_GAP = 0.12; // seconds
 const SHELL_GAP = 1; // seconds
 const SIGHT = 200; // metres
+const AHEAD = 900; // metres along a craft's nose, the point its crosshair is aimed through
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (armed() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
 });
@@ -2833,6 +2844,8 @@ addEventListener("pointerup", (e) => {
 const muzzle = new THREE.Vector3(); // where shots leave
 const sight = new THREE.Vector3(); // where the tank's crosshair is
 const nose = new THREE.Vector3(); // which way
+const through = new THREE.Vector3(); // which way from the camera
+const start = new THREE.Vector3(); // where a craft's line of fire is looked along from
 const launcher = new THREE.Vector3();
 const crosshair = document.getElementById("crosshair");
 let nextShot = 0; // when the next may go (seconds)
@@ -2854,7 +2867,17 @@ function shoot(seconds) {
       Math.cos(heading) * Math.cos(pitch),
     );
   }
-  const target = tank ? sight.copy(muzzle).addScaledVector(nose, SIGHT) : rockets.aim(muzzle, nose);
+  // A craft aims along the line from the camera through a point far along its nose: from the
+  // craft itself, as the camera is above and behind it, near and far hits would show at different
+  // heights, so the crosshair would wander with whatever the line meets. Looked along from abreast
+  // of the craft, so a hill behind it, where the camera may be, is not met.
+  let target;
+  if (tank) target = sight.copy(muzzle).addScaledVector(nose, SIGHT);
+  else {
+    through.copy(muzzle).addScaledVector(nose, AHEAD).sub(camera.position).normalize();
+    const abreast = start.copy(muzzle).sub(camera.position).dot(through); // metres along it
+    target = rockets.aim(start.copy(camera.position).addScaledVector(through, abreast), through);
+  }
   const { x, y, front } = onScreen(target);
   crosshair.hidden = !front;
   crosshair.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
