@@ -3,10 +3,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PUBLIC } from "./area.mjs";
+import { unpackHeights } from "../src/pack.js";
 
 const terrain = JSON.parse(readFileSync(join(PUBLIC, "terrain", "terrain.json"), "utf8"));
-const file = readFileSync(join(PUBLIC, "terrain", "heights.bin"));
-const heights = new Int16Array(file.buffer, file.byteOffset, file.length / 2); // cm
+const heights = unpackHeights(readFileSync(join(PUBLIC, "terrain", "heights.bin")), terrain.nx); // cm
 
 export function heightAt(x, z) {
   const { x0, z0, cell, nx, nz } = terrain;

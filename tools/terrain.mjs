@@ -1,5 +1,5 @@
 // Downloads swissALTI3D (terrain, 2 m) and SWISSIMAGE (aerial photo, 1 m) for the area into data/
-// and writes public/terrain/ (terrain.json, heights.bin as Int16 in cm) and public/ground/photo/
+// and writes public/terrain/ (terrain.json, heights.bin in cm, packed by tools/pack.mjs) and public/ground/photo/
 // (one aerial-photo KTX2 per 1 km tile).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import {
   photoMosaic,
 } from "./swisstopo.mjs";
 import { writeTiles } from "./tiles.mjs";
+import { packHeights } from "./pack.mjs";
 
 const CELL = 10; // terrain grid spacing in metres (must divide CHUNK)
 const ALTI_DIR = join(DATA, "swissalti3d");
@@ -143,7 +144,7 @@ console.time("terrain");
 const { heights, nx, nz } = await buildHeights();
 const cm = Int16Array.from(heights, (v) => Math.round(v * 100));
 if (cm.some((v, i) => v !== Math.round(heights[i] * 100))) throw new Error("Heights exceed ±327 m");
-writeFileSync(join(OUT, "heights.bin"), cm);
+writeFileSync(join(OUT, "heights.bin"), packHeights(cm, nx));
 writeFileSync(
   join(OUT, "terrain.json"),
   JSON.stringify({

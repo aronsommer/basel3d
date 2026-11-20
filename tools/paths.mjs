@@ -1,7 +1,7 @@
 // Closed loops from OpenStreetMap for what moves in the viewer: `node tools/paths.mjs <kind>`
 // writes public/<kind>s.json, listing the loops (start, count of points, length, for round trips
 // their share of the roads, for lines where each line runs), and public/<kind>s.bin, their points
-// (Float32 x, y, z about STEP metres apart), for these kinds:
+// (x, y, z about STEP metres apart, to a tenth of a metre, packed by tools/pack.mjs), for these kinds:
 // - tram, train: the lines of the route=tram (train) relations, downloaded once into
 //   data/osm-<kind>s.json, there and back;
 // - car: round trips through the roads of data/osm.json (tools/osm.mjs), on the right of the
@@ -16,6 +16,7 @@ import { BBOX_WGS84, DATA, PUBLIC, E_MIN, E_MAX, N_MIN, N_MAX, toX, toZ } from "
 import { osmElements, toLV95, onBridge } from "./osm.mjs";
 import { bridgeTop, BRIDGES_FILE } from "./bsbridges.mjs";
 import { heightAt } from "./heights.mjs";
+import { packPoints } from "./pack.mjs";
 
 const osm = await osmElements();
 
@@ -509,7 +510,4 @@ console.log(
   `${routesOut.length} loops, ${(routesOut.reduce((sum, r) => sum + r.length, 0) / 1000).toFixed(0)} km`,
 );
 writeFileSync(join(PUBLIC, `${KIND}s.json`), JSON.stringify({ routes: routesOut }));
-writeFileSync(
-  join(PUBLIC, `${KIND}s.bin`),
-  new Float32Array(out.map((v) => Math.round(v * 10) / 10)),
-);
+writeFileSync(join(PUBLIC, `${KIND}s.bin`), packPoints(out));

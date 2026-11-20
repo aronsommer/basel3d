@@ -7,6 +7,7 @@ import { NodeIO } from "@gltf-transform/core";
 import { EXTMeshoptCompression, KHRMeshQuantization } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
 import { PUBLIC } from "./area.mjs";
+import { Bytes } from "./pack.mjs";
 
 await MeshoptDecoder.ready;
 const io = new NodeIO()
@@ -113,16 +114,6 @@ for (const mesh of meshes) {
   mesh.records = records.sort((p, q) => row(p) - row(q) || p.x - q.x || p.z - q.z);
 }
 
-class Bytes {
-  list = [];
-  number(n) {
-    for (; n > 127; n = Math.floor(n / 128)) this.list.push((n % 128) | 128);
-    this.list.push(n);
-  }
-  signed(n) {
-    this.number(n < 0 ? -n * 2 - 1 : n * 2);
-  }
-}
 const streams = [...Array(9)].map(() => new Bytes());
 const [head, xs, zs, columns, heights, ranks, walls, triangles, colours] = streams;
 for (const { records } of meshes) {

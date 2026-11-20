@@ -11,6 +11,7 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
 import { createCity } from "./city.js";
+import { unpackHeights, unpackPoints } from "./pack.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
@@ -192,7 +193,7 @@ const groundEnd = MOVER_KINDS.length * 2 + groundPaths(groundKind).length;
 const groundBuffers = rest.slice(MOVER_KINDS.length * 2, groundEnd);
 const deckBuffers = rest.slice(groundEnd);
 const terrainInfo = JSON.parse(new TextDecoder().decode(terrainJson));
-const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 100);
+const heights = Float32Array.from(unpackHeights(heightsBuffer, terrainInfo.nx), (cm) => cm / 100);
 const treePositions = new Uint16Array(treesBuffer);
 const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -436,7 +437,7 @@ const traffic = {
 const movers = MOVER_KINDS.map((kind, i) =>
   createMovers(
     JSON.parse(new TextDecoder().decode(moverFiles[2 * i])),
-    new Float32Array(moverFiles[2 * i + 1]),
+    unpackPoints(moverFiles[2 * i + 1]),
     kind,
     traffic,
   ),

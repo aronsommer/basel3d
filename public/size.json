@@ -16,8 +16,8 @@
   "hash": "97e2b040"
  },
  "cars.bin": {
-  "size": 1070508,
-  "hash": "024b4e45"
+  "size": 269342,
+  "hash": "25ea855e"
  },
  "cars.json": {
   "size": 13330,
@@ -684,24 +684,24 @@
   "hash": "8463425c"
  },
  "terrain/heights.bin": {
-  "size": 1283202,
-  "hash": "73d8de6a"
+  "size": 740152,
+  "hash": "40175ea8"
  },
  "terrain/terrain.json": {
   "size": 64,
   "hash": "3fcf3721"
  },
  "trains.bin": {
-  "size": 567720,
-  "hash": "eda7252f"
+  "size": 142087,
+  "hash": "15d3f962"
  },
  "trains.json": {
   "size": 2606,
   "hash": "a97c6cfb"
  },
  "trams.bin": {
-  "size": 563736,
-  "hash": "38c5581b"
+  "size": 141031,
+  "hash": "98d94b4f"
  },
  "trams.json": {
   "size": 1469,

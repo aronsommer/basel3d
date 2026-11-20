@@ -29,6 +29,7 @@ basel3d/
 ├── src/buildings.js   buildings and bridges as single objects: picking, hits, highlight, hide
 ├── src/city.js        the buildings' meshes from basel.bin
 ├── src/cityfile.js    reads basel.bin
+├── src/pack.js        reads the packed numbers of heights.bin, the routes and basel.bin
 ├── src/explosions.js  blowing up a building or bridge: flying faces, fire, smoke, bang, scorched ground
 ├── src/facade.js      windows, shopfronts and balconies drawn onto the walls by the shader
 ├── src/highlight.js   the cyan of what can be clicked, under the mouse
@@ -72,6 +73,7 @@ basel3d/
 │   ├── walks.mjs      OSM street network → loops around its blocks in the inner city → walks.bin
 │   ├── names.mjs      OSM places + landmarks chosen by OSM id → names.json
 │   ├── heights.mjs    terrain height at a point, for the converters
+│   ├── pack.mjs       packs whole numbers into few bytes, for heights.bin, the routes and basel.bin (read by src/pack.js)
 │   └── size.mjs       → size.json, runs after every converter
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
@@ -99,7 +101,7 @@ Run out of order, a script stops with an error where a file it reads is missing 
 **Which data.** OpenStreetMap (cached in `data/osm.json`, `osm-churches.json`, `osm-trams.json`, `osm-trains.json`, `osm-names.json`), the aerial photo, the swissTLM3D layers and the canton's bridge models are downloaded once into `data/` and then reused, so they stay as they are until deleted. swissALTI3D and swissBUILDINGS3D are looked up in the STAC catalogue on every run: when swisstopo publishes a newer version of a tile, it is downloaded and used. Downloaded anew, everything comes in its current state, so the result can differ a little from the one in the repo. `data/reference/buildings.json` is not shared; without it the buildings take their roof colours from the aerial photo and guessed wall colours (see 2.).
 
 1. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
-   - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (Int16 in cm),
+   - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (in cm, packed by `tools/pack.mjs`: each height as its difference from what its neighbours suggest),
    - SWISSIMAGE from the WMTS service `wmts.geo.admin.ch` at 1 m per pixel, cut into 1 km tiles and stored as GPU-compressed KTX2 textures (ETC1S, 1024 px). This takes about 6 minutes.
 2. **Buildings:** `npm run buildings` takes swissBUILDINGS3D 3.0 as CityGML from the STAC catalogue `data.geo.admin.ch`, the newest version per map sheet (about 480 MB). The script:
    - takes only roof and wall surfaces,
