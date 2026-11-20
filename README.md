@@ -27,13 +27,16 @@ basel3d/
 ├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
 ├── src/buildings.js   buildings and bridges as single objects: picking, hits, highlight, hide
+├── src/city.js        the buildings' meshes from basel.bin
+├── src/cityfile.js    reads basel.bin
 ├── src/explosions.js  blowing up a building or bridge: flying faces, fire, smoke, bang, scorched ground
 ├── src/facade.js      windows, shopfronts and balconies drawn onto the walls by the shader
 ├── src/highlight.js   the cyan of what can be clicked, under the mouse
 ├── src/rockets.js     the helicopter's rockets: flight, whoosh, hitting buildings, bridges and ground
 ├── src/sound.js       sounds made with Web Audio, without sound files
 ├── public/            finished model data loaded by the viewer
-│   ├── basel.glb      buildings (also for Unity/Blender)
+│   ├── basel.glb      buildings (for Unity/Blender; the viewer loads it only with ?glb, to compare)
+│   ├── basel.bin      the same buildings packed smaller, loaded by the viewer
 │   ├── bridges.glb    bridges in 3D (canton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
 │   ├── terrain/       terrain: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
 │   ├── ground/        ground images, 64 tiles each but deck/ (KTX2, 1 km, named column_row)
@@ -56,6 +59,7 @@ basel3d/
 │   ├── area.mjs       shared area and coordinates
 │   ├── swisstopo.mjs  download helpers (STAC catalogue, single swissTLM3D layers, SWISSIMAGE tiles)
 │   ├── buildings.mjs  swissBUILDINGS3D + SWISSIMAGE → basel.glb
+│   ├── compact.mjs    basel.glb → basel.bin
 │   ├── terrain.mjs    swissALTI3D + SWISSIMAGE → terrain/, ground/photo/
 │   ├── osm.mjs        OpenStreetMap download, WGS84 → LV95, road widths
 │   ├── map.mjs        OpenStreetMap + SWISSIMAGE + basel.glb + bridges → ground/map/, water.ktx2
@@ -104,7 +108,8 @@ Run out of order, a script stops with an error where a file it reads is missing 
    - splits everything into 1 km tiles,
    - colours each roof like the aerial photo (median of the pixels on it; flat roofs greyed), so run `npm run terrain` first,
    - gives each building a wall colour and a facade style (old town, modern, offices, glass, church, town hall, hall) from its size and roof shape, which `src/facade.js` draws as windows, shopfronts and balconies; buildings in the optional, not shared `data/reference/buildings.json` take its colours and names instead,
-   - compresses with Meshopt (about 19 MB, 2.4 million triangles).
+   - compresses with Meshopt (about 19 MB, 2.4 million triangles),
+   - packs the same meshes into `basel.bin` (`tools/compact.mjs`, also `npm run compact`): the same vertices and triangles, with colour, number and facade values stored once per building or wall instead of per vertex, about 8 MB over the network instead of 13. `src/cityfile.js` reads it, `src/city.js` builds the meshes.
 3. **Bridges:** `npm run bridges` takes the modelled bridges of the canton Basel-Stadt (official cadastral survey, service 3D-Tiles BS, `https://3d.geo.bs.ch/cesium/tiles/av-bruecken/tileset.json`, about 10 MB in `data/bs-bruecken/`), with piers, arches and railings. The script converts them from Earth coordinates (ECEF) into the scene. Structures such as the Käppelijoch on the Mittlere Brücke come from the swisstopo buildings and stand exactly on the deck.
    - Crossings of the Rhine and the Birs that the canton modelled only partly (at the canton border) or not at all are built entirely from swissTLM3D: a simple deck with side walls on the measured line, instead of the canton's model. This covers the Birsfelden power station, the Dreiländerbrücke and the Birs bridges at the border and in Baselland. The swissTLM3D layers `TLM_STRASSE` and `TLM_EISENBAHN` come from the ZIP via HTTP range requests, like the trees (about 530 MB download, 3 GB in `data/`).
    - Together about 114,000 triangles and 300 KB in `bridges.glb`. All built triangles also end up in `data/bridges.bin`, which `npm run map` (to draw the OSM bridges underneath on their own), `trams`, `trains`, `cars` and `ships` read, so run `npm run bridges` before them. In the viewer the faces looking up show the texture of their place, so a deck continues the road: in the map view the deck tiles (see 5.), in the aerial view the photo, which shows the decks itself. Sides and undersides stay stone.

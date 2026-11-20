@@ -10,6 +10,7 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { HIGHLIGHT, highlightShader } from "./highlight.js";
 import { createBuildings } from "./buildings.js";
+import { createCity } from "./city.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
@@ -152,11 +153,14 @@ let groundKind = "map";
 try {
   if (localStorage.getItem(GROUND_KEY) === "photo") groundKind = "photo";
 } catch {} // storage blocked
+// The buildings: basel.bin (tools/compact.mjs), or with ?glb in the address the model it was made
+// from, to compare.
+const CITY = new URLSearchParams(location.search).has("glb") ? "basel.glb" : "basel.bin";
 const progress = document.getElementById("progress");
 const [
   terrainJson,
   heightsBuffer,
-  glb,
+  cityBuffer,
   bridgesGlb,
   treesBuffer,
   canopyBuffer,
@@ -169,7 +173,7 @@ const [
   [
     "terrain/terrain.json",
     "terrain/heights.bin",
-    "basel.glb",
+    CITY,
     "bridges.glb",
     "trees.bin",
     "canopy.bin",
@@ -192,8 +196,8 @@ const heights = Float32Array.from(new Int16Array(heightsBuffer), (cm) => cm / 10
 const treePositions = new Uint16Array(treesBuffer);
 const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-const [buildings, bridges, waterMask, firstGround, decks] = await Promise.all([
-  gltfLoader.parseAsync(glb, ""),
+const [glb, bridges, waterMask, firstGround, decks] = await Promise.all([
+  CITY === "basel.glb" && gltfLoader.parseAsync(cityBuffer, ""),
   gltfLoader.parseAsync(bridgesGlb, ""),
   new Promise((resolve, reject) => ktx2.parse(waterBuffer, resolve, reject)),
   groundTextures(groundPaths(groundKind), groundBuffers),
@@ -231,6 +235,7 @@ const materials = {
     side: THREE.DoubleSide,
   }),
 };
+const buildings = glb || { scene: createCity(cityBuffer, materials) };
 for (const { scene: model } of [buildings, bridges]) {
   model.traverse((o) => {
     if (o.isMesh) o.material = materials[o.material.name];
@@ -263,12 +268,9 @@ const explosions = createExplosions(scene, structures, heightAt, camera);
 // the page again. destroyed holds only what was really removed, so the counter is exact.
 const DESTROYED_KEY = "basel3d.destroyed"; // { models, numbers }
 const { total } = structures;
-const MODELS = [
-  files["basel.glb"].size,
-  files["bridges.glb"].size,
-  total.buildings,
-  total.bridges,
-].join(" ");
+const MODELS = [files[CITY].size, files["bridges.glb"].size, total.buildings, total.bridges].join(
+  " ",
+);
 let saved = [];
 try {
   const stored = JSON.parse(localStorage.getItem(DESTROYED_KEY));
