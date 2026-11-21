@@ -242,7 +242,8 @@ function light(color, [x, y, z]) {
 }
 
 // The model on its pad ({ x, y, z, heading }): { pad, group, material, update(seconds, flown),
-// speed, turn, lift, unarmed } (speed, turn and lift as createFlight takes them); boost as for the
+// land(y): moves the pad, and it parked, to the height y, speed, turn, lift, low, unarmed }
+// (speed, turn, lift and low as createFlight and fly in src/main.js take them); boost as for the
 // vehicles.
 export function createRega({ x, y, z, heading }, model, boost) {
   const pad = new THREE.Mesh(
@@ -300,5 +301,21 @@ export function createRega({ x, y, z, heading }, model, boost) {
     strobe.visible = t < 0.06 || (t > 0.18 && t < 0.24);
   };
   update(0, null);
-  return { pad, group, material, update, speed: 50, turn: 1, lift: 30, unarmed: true };
+  const land = (y) => {
+    pad.position.y = y;
+    parked.y = y + 0.3 + floor;
+  };
+  return {
+    pad,
+    group,
+    material,
+    update,
+    land,
+    speed: 50,
+    turn: 1,
+    lift: 30,
+    low: floor,
+    nose: 5.2, // metres its rotor reaches ahead of its middle
+    unarmed: true,
+  };
 }

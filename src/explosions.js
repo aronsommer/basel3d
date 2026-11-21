@@ -13,6 +13,8 @@ const PIECES = 300; // per building aimed at, above which the pieces grow; more 
 const KEEP = 0.2; // the chance that a piece up to 6 times the pieces' width splits no further
 const SPECK = 1; // m², faces smaller give no pieces (railings, edges): few in area, many in number
 const THICKNESS = 0.2; // of the pieces on average, in the pieces' width
+const CHUNKS = 5; // across a crashed craft, the chunks it is cut into
+const PUSH = 0.25; // of a crashed craft's speed its chunks keep
 const DARKER = 0.7; // the pieces' backs, of their colour; their sides shade from front to back
 
 // The pieces' flight, on the GPU: each vertex relative to its piece's centre (position), turning
@@ -138,7 +140,6 @@ export function createExplosions(scene, structures, heightAt, camera) {
     const size = Math.max(PIECE, Math.sqrt(area / PIECES));
     const depth = size * THICKNESS;
     const shards = []; // { color, polygon, inward } per piece
-    let corners = 0;
     for (const { color, positions, vertices } of parts)
       for (const face of faces(positions, vertices)) {
         if (face.area < SPECK) continue;
@@ -146,20 +147,15 @@ export function createExplosions(scene, structures, heightAt, camera) {
         const outward =
           dot(normal, corner(positions, 9 * face.triangles[0])) > dot(normal, middle.toArray());
         const inward = outward ? normal.map((x) => -x) : normal;
-        for (const polygon of shatter(positions, vertices, face, size)) {
+        for (const polygon of shatter(positions, vertices, face, size))
           shards.push({ color: pavilion ? pavilionBlack : color, polygon, inward });
-          corners += polygon.length;
-        }
       }
-
     // Each piece's corners twice, its front then its back (each corner between 0.4 and 1.6 times
     // depth behind), relative to its centre; n - 2 triangles in front, as many behind, two per side.
+    const corners = shards.reduce((sum, { polygon }) => sum + polygon.length, 0);
     const count = 2 * corners;
-    const local = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const centres = new Float32Array(count * 4);
-    const velocities = new Float32Array(count * 4);
-    const axes = new Float32Array(count * 4);
+    const batch = flying(count);
+    const { local, colors } = batch;
     const index = new (count > 65535 ? Uint32Array : Uint16Array)(12 * (corners - shards.length));
     let [v, i] = [0, 0];
     const triangleOf = (a, b, c) => {
@@ -168,34 +164,10 @@ export function createExplosions(scene, structures, heightAt, camera) {
       index[i++] = c;
     };
     const centre = new THREE.Vector3();
-    const velocity = new THREE.Vector3();
-    const axis = new THREE.Vector3();
     for (const { color, polygon, inward } of shards) {
       const n = polygon.length;
       const [cx, cy, cz] = middleOf(polygon).map((x, d) => x + inward[d] * depth * 0.5);
-      centre.set(cx, cy, cz);
-      velocity.set(cx - middle.x, 0, cz - middle.z);
-      if (velocity.lengthSq() < 0.01) velocity.set(Math.random() - 0.5, 0, Math.random() - 0.5);
-      velocity.setLength((4 + Math.random() * 12) * scale);
-      velocity.y = (8 + Math.random() * 12) * scale;
-      axis.randomDirection();
-      const spin = (Math.random() - 0.5) * 6; // radians per second
-      const [lands, restY] = landing(centre, velocity);
-      // Written number by number, as three's toArray measured slow here.
-      const piece = [
-        cx,
-        cy,
-        cz,
-        spin,
-        velocity.x,
-        velocity.y,
-        velocity.z,
-        lands,
-        axis.x,
-        axis.y,
-        axis.z,
-        restY,
-      ];
+      const piece = thrown(centre.set(cx, cy, cz), middle, scale);
       const [front, back] = [v, v + n];
       for (let k = 0; k < 2 * n; k++, v++) {
         const p = polygon[k % n];
@@ -207,11 +179,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
         colors[3 * v] = color.r * shade;
         colors[3 * v + 1] = color.g * shade;
         colors[3 * v + 2] = color.b * shade;
-        for (let d = 0; d < 4; d++) {
-          centres[4 * v + d] = piece[d];
-          velocities[4 * v + d] = piece[4 + d];
-          axes[4 * v + d] = piece[8 + d];
-        }
+        batch.of(v, piece);
       }
       for (let k = 1; k < n - 1; k++) {
         triangleOf(front, front + k, front + k + 1);
@@ -223,39 +191,179 @@ export function createExplosions(scene, structures, heightAt, camera) {
         triangleOf(front + k, back + j, back + k);
       }
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setIndex(new THREE.BufferAttribute(index, 1));
-    geometry.setAttribute("position", new THREE.BufferAttribute(local, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute("debrisCentre", new THREE.BufferAttribute(centres, 4));
-    geometry.setAttribute("debrisVelocity", new THREE.BufferAttribute(velocities, 4));
-    geometry.setAttribute("debrisAxis", new THREE.BufferAttribute(axes, 4));
-    const uniforms = {
-      debrisAge: { value: 0 },
-      debrisSink: { value: Math.max(4, scale * 8) },
-    };
-    const material = new THREE.MeshLambertMaterial({
-      vertexColors: true,
-      flatShading: true,
-      side: THREE.DoubleSide,
+    batch.launch(scale, index);
+  }
+
+  // A crashed object's opaque, visible meshes fly apart from the middle, cut along a grid of
+  // cells a CHUNKS-th of its size wide (placed at random) into chunks, each a piece; they keep
+  // PUSH of its velocity (metres per second) along the ground, and every third trails smoke.
+  function wreck(object, middle, scale, velocity) {
+    const triangles = []; // each [colour [r, g, b], its corners [x, y, z]], in scene coordinates
+    const box = new THREE.Box3();
+    const corner = new THREE.Vector3();
+    const shade = new THREE.Color();
+    const tint = new THREE.Color();
+    object.traverseVisible((o) => {
+      if (!o.isMesh || o.material.transparent) return;
+      const { index, attributes } = o.geometry;
+      const { position, color } = attributes;
+      const at = (i) => (index ? index.getX(i) : i);
+      for (let t = 0; t < (index ?? position).count; t += 3) {
+        // In its material's colour times its vertices', or as the material's own wreck paints it.
+        shade.copy(o.material.color);
+        if (color) shade.multiply(tint.fromBufferAttribute(color, at(t)));
+        o.material.userData.wreck?.(shade);
+        const corners = [0, 1, 2].map((k) => {
+          corner.fromBufferAttribute(position, at(t + k)).applyMatrix4(o.matrixWorld);
+          box.expandByPoint(corner);
+          return corner.toArray();
+        });
+        triangles.push([shade.toArray(), corners]);
+      }
     });
-    material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", `#include <common>\n${DEBRIS}`)
-        .replace("#include <begin_vertex>", `#include <begin_vertex>\n${DEBRIS_VERTEX}`);
+    const size = Math.max(...box.getSize(corner).toArray()) / CHUNKS;
+    const from = box.min.toArray().map((x) => x - Math.random() * size);
+    // The parts of a convex polygon in the cells along dimension d, each [cell, polygon].
+    const slices = (polygon, d) => {
+      const axis = [0, 1, 2].map((k) => +(k === d));
+      const cells = polygon.map((p) => Math.floor((p[d] - from[d]) / size));
+      const parts = [];
+      for (let cell = Math.min(...cells); cell <= Math.max(...cells); cell++) {
+        const low = from[d] + cell * size;
+        const part = clip(clip(polygon, axis, low, 1), axis, low + size, -1);
+        if (part.length > 2) parts.push([cell, part]);
+      }
+      return parts;
     };
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.frustumCulled = false; // it moves beyond its bounds
-    scene.add(mesh);
-    running.add((dt) => {
-      uniforms.debrisAge.value += dt;
-      if (uniforms.debrisAge.value <= GONE_AT) return true;
-      scene.remove(mesh);
-      geometry.dispose();
-      material.dispose();
-      return false;
-    });
+    const chunks = new Map(); // "column,level,row" → { positions, colors }: three numbers per corner
+    for (const [color, corners] of triangles)
+      for (const [column, a] of slices(corners, 0))
+        for (const [level, b] of slices(a, 1))
+          for (const [row, polygon] of slices(b, 2)) {
+            const key = `${column},${level},${row}`;
+            if (!chunks.has(key)) chunks.set(key, { positions: [], colors: [] });
+            const { positions, colors } = chunks.get(key);
+            for (let k = 1; k < polygon.length - 1; k++) {
+              positions.push(...polygon[0], ...polygon[k], ...polygon[k + 1]);
+              colors.push(...color, ...color, ...color);
+            }
+          }
+    const push = velocity.clone().multiplyScalar(PUSH);
+    const batch = flying([...chunks.values()].reduce((sum, c) => sum + c.positions.length / 3, 0));
+    const centre = new THREE.Vector3();
+    let [v, n] = [0, 0];
+    for (const { positions, colors } of chunks.values()) {
+      centre.set(0, 0, 0);
+      for (let i = 0; i < positions.length; i += 3) centre.add(corner.fromArray(positions, i));
+      centre.divideScalar(positions.length / 3);
+      const piece = thrown(centre, middle, scale, push);
+      batch.colors.set(colors, 3 * v);
+      for (let i = 0; i < positions.length; i += 3, v++) {
+        batch.local[3 * v] = positions[i] - centre.x;
+        batch.local[3 * v + 1] = positions[i + 1] - centre.y;
+        batch.local[3 * v + 2] = positions[i + 2] - centre.z;
+        batch.of(v, piece);
+      }
+      if (n++ % 3) continue;
+      // Smoke along its flight (piece: its centre, spin, velocity, seconds until it lands).
+      for (let t = 0.1; t < Math.min(piece[7], 2); t += 0.1) {
+        corner.set(
+          piece[0] + piece[4] * t,
+          piece[1] + piece[5] * t - (GRAVITY * t * t) / 2,
+          piece[2] + piece[6] * t,
+        );
+        puff(corner, size * 0.6, 1, 1.5 + Math.random(), t);
+      }
+    }
+    batch.launch(scale);
+  }
+
+  // How a piece with its centre there flies apart from the middle, carried on along the ground
+  // by push if given: the twelve numbers of its debrisCentre, debrisVelocity and debrisAxis
+  // (DEBRIS).
+  const velocity = new THREE.Vector3();
+  const axis = new THREE.Vector3();
+  function thrown(centre, middle, scale, push) {
+    velocity.set(centre.x - middle.x, 0, centre.z - middle.z);
+    if (velocity.lengthSq() < 0.01) velocity.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+    velocity.setLength((4 + Math.random() * 12) * scale);
+    velocity.y = (8 + Math.random() * 12) * scale;
+    if (push) velocity.add(push);
+    axis.randomDirection();
+    const spin = (Math.random() - 0.5) * 6; // radians per second
+    const [lands, restY] = landing(centre, velocity);
+    // Written number by number, as three's toArray measured slow here.
+    return [
+      centre.x,
+      centre.y,
+      centre.z,
+      spin,
+      velocity.x,
+      velocity.y,
+      velocity.z,
+      lands,
+      axis.x,
+      axis.y,
+      axis.z,
+      restY,
+    ];
+  }
+
+  // Buffers for count vertices of pieces flying on the GPU (DEBRIS): local (each vertex from its
+  // piece's centre) and colors to fill; of(v, piece) sets how vertex v's piece flies (thrown);
+  // launch(scale, index) shows them, with their triangles' indices if any, until GONE_AT.
+  function flying(count) {
+    const local = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const centres = new Float32Array(count * 4);
+    const velocities = new Float32Array(count * 4);
+    const axes = new Float32Array(count * 4);
+    return {
+      local,
+      colors,
+      of(v, piece) {
+        for (let d = 0; d < 4; d++) {
+          centres[4 * v + d] = piece[d];
+          velocities[4 * v + d] = piece[4 + d];
+          axes[4 * v + d] = piece[8 + d];
+        }
+      },
+      launch(scale, index) {
+        const geometry = new THREE.BufferGeometry();
+        if (index) geometry.setIndex(new THREE.BufferAttribute(index, 1));
+        geometry.setAttribute("position", new THREE.BufferAttribute(local, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute("debrisCentre", new THREE.BufferAttribute(centres, 4));
+        geometry.setAttribute("debrisVelocity", new THREE.BufferAttribute(velocities, 4));
+        geometry.setAttribute("debrisAxis", new THREE.BufferAttribute(axes, 4));
+        const uniforms = {
+          debrisAge: { value: 0 },
+          debrisSink: { value: Math.max(4, scale * 8) },
+        };
+        const material = new THREE.MeshLambertMaterial({
+          vertexColors: true,
+          flatShading: true,
+          side: THREE.DoubleSide,
+        });
+        material.onBeforeCompile = (shader) => {
+          Object.assign(shader.uniforms, uniforms);
+          shader.vertexShader = shader.vertexShader
+            .replace("#include <common>", `#include <common>\n${DEBRIS}`)
+            .replace("#include <begin_vertex>", `#include <begin_vertex>\n${DEBRIS_VERTEX}`);
+        };
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.frustumCulled = false; // it moves beyond its bounds
+        scene.add(mesh);
+        running.add((dt) => {
+          uniforms.debrisAge.value += dt;
+          if (uniforms.debrisAge.value <= GONE_AT) return true;
+          scene.remove(mesh);
+          geometry.dispose();
+          material.dispose();
+          return false;
+        });
+      },
+    };
   }
 
   // When a piece thrown from p at velocity v comes down onto the terrain (0.3 m above it), and the
@@ -407,6 +515,18 @@ export function createExplosions(scene, structures, heightAt, camera) {
     burst(point) {
       blast(new THREE.Box3().setFromCenterAndSize(point, new THREE.Vector3(4, 4, 4)), 0.8, 12, 3);
       bang(camera.position.distanceTo(point), 0, 0.25);
+    },
+    // A craft (an object of meshes) crashing at a scene point at a velocity: it flies apart in
+    // chunks in a big blast; the object itself is left as it is.
+    crash(point, object, velocity) {
+      wreck(object, point, 1.5, velocity);
+      blast(
+        new THREE.Box3().setFromCenterAndSize(point, new THREE.Vector3(12, 12, 12)),
+        1.5,
+        30,
+        12,
+      );
+      bang(camera.position.distanceTo(point), 1);
     },
     // Leaves the ones with these numbers as explode does in the end, at once: gone, a building's
     // ground burning; returns the numbers of those it removed.

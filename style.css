@@ -66,15 +66,32 @@ p {
   -webkit-user-select: none; /* Safari */
   user-select: none;
 }
-/* Two columns as wide, 8px apart. Right: the closed menu and the button to get off below it;
-   the open menu covers the button to get off. Left: the counter. All out of the notch and the
-   rounded corners (viewport-fit=cover in index.html). */
+/* Right: the closed menu and the button to get off below it, each only an icon; the open menu
+   covers the button to get off. Left: the counter. All out of the notch and the rounded corners
+   (viewport-fit=cover in index.html). */
 #off,
 #menu,
 #counter,
 #panels {
   position: absolute;
   width: 96px;
+}
+#off,
+#menu {
+  width: 48px;
+}
+/* Three lines for the menu, a cross to get off; 20px tall with their margins, as a line of
+   text. */
+#off svg,
+#menu summary svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 2px auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
+  stroke-linecap: round;
 }
 #off,
 #menu {
@@ -166,21 +183,6 @@ p {
   opacity: 0.4;
   cursor: default;
 }
-/* The key to get off, only where there is a keyboard; less padding then, to fit in the same
-   width. */
-#off kbd {
-  display: none;
-  font: inherit;
-}
-@media (pointer: fine) {
-  #off {
-    padding-inline: 4px;
-    white-space: nowrap;
-  }
-  #off kbd {
-    display: inline;
-  }
-}
 #credits a,
 #about a {
   color: inherit;
@@ -191,11 +193,10 @@ p {
 #menu[open] {
   z-index: 1;
   width: auto;
-  min-width: 96px;
   text-align: left;
 }
-/* The title fills the closed menu, so all of it can be tapped; open, it stays as it was, in
-   the top right corner, so the title and the chevron do not move. */
+/* The icon fills the closed menu, so all of it can be tapped; open, it stays as it was, in
+   the top right corner, so it does not move. */
 #menu summary {
   display: block;
   box-sizing: border-box;
@@ -205,26 +206,12 @@ p {
   cursor: pointer;
 }
 #menu[open] summary {
-  width: 96px;
+  width: 48px;
   margin-left: auto;
   margin-bottom: 0;
 }
 #menu summary::-webkit-details-marker {
   display: none;
-}
-/* A chevron: down when closed, up when open. */
-#menu summary::after {
-  content: "";
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  margin-left: 8px;
-  border-right: 2px solid;
-  border-bottom: 2px solid;
-  transform: translateY(-3px) rotate(45deg);
-}
-#menu[open] summary::after {
-  transform: translateY(2px) rotate(-135deg);
 }
 /* A box close to its text. Each label only as wide as its box and text, so a tap beside it
    does not tick it. */

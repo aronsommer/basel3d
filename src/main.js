@@ -28,6 +28,7 @@ import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createZoo } from "./zoo.js";
 import { createRega } from "./rega.js";
+import { createJet } from "./jet.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
@@ -388,11 +389,13 @@ function deckOf(triangles) {
   };
 }
 // Blows up the building or bridge with this number (-1: none) and remembers it, if it was there;
-// vehicles vanish where a bridge was, people on its roof with it.
+// vehicles vanish where a bridge was, people on its roof with it, and the helipads and the jet on
+// it come down to the ground.
 function destroy(number) {
   const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
   scene.remove(...(onRoofs.get(number) ?? []));
+  for (const land of grounding.get(number) ?? []) land();
   if (deck) for (const mover of movers) mover.cut(deck);
   if (deck) rails?.cut(deck);
   if (deck) brokenDecks.push(deck);
@@ -522,7 +525,7 @@ scene.add(birds.mesh);
 
 // Two airliners circling over the city on an oval, one higher and the other way round, so they
 // are always in view. 1.5 times life size (and more far away, see boost), white with a blue tail,
-// no airline.
+// no airline. Each is a craft to fly (createFlight), back on its oval at once when let go.
 function createPlanes() {
   const SPEED = 80; // metres per second
   const SCALE = 1.5;
@@ -552,11 +555,33 @@ function createPlanes() {
     { height: 950 - 250, direction: -1 },
   ].map((flight) => {
     const mesh = new THREE.Mesh(geometry, material.clone()); // its own, highlighted under the mouse
-    mesh.rotation.order = "YXZ"; // heading, then bank in the plane's frame
-    return { ...flight, mesh };
+    mesh.rotation.order = "YXZ"; // heading, then pitch and bank in the plane's frame
+    // Riding along: from behind and above.
+    const ride = riders([
+      { object: mesh, materials: [mesh.material], eye: [0, 12, -70], ahead: [0, 0, 60] },
+    ]);
+    // Its engines low below its middle; a plane does not hover.
+    const craft = {
+      group: mesh,
+      ride,
+      speed: SPEED,
+      turn: 0.4,
+      low: 4.5,
+      nose: 30, // metres from its middle to its nose
+      unarmed: true,
+      plane: true,
+    };
+    return { ...flight, mesh, craft };
   });
-  const update = (seconds) => {
-    for (const { mesh, height, direction } of flights) {
+  // Each placed by flown (createFlight) while it is the one flown (flier), else on its oval.
+  const update = (seconds, flier, flown) => {
+    for (const { mesh, height, direction, craft } of flights) {
+      mesh.scale.setScalar(boost(mesh.position));
+      if (craft === flier) {
+        mesh.position.set(flown.x, flown.y, flown.z);
+        mesh.rotation.set(flown.nose - flight.LEVEL, flown.heading, -0.6 * flown.turn);
+        continue;
+      }
       const a = (direction * seconds * SPEED) / ((RADII[0] + RADII[1]) / 2);
       mesh.position.set(
         CENTRE[0] + RADII[0] * Math.cos(a),
@@ -568,20 +593,11 @@ function createPlanes() {
         -direction * RADII[0] * Math.sin(a),
         direction * RADII[1] * Math.cos(a),
       );
+      mesh.rotation.x = 0;
       mesh.rotation.z = 0.3 * direction; // banking into the turn
-      mesh.scale.setScalar(boost(mesh.position));
     }
   };
-  // Riding along: from behind and above.
-  const ride = riders(
-    flights.map(({ mesh }) => ({
-      object: mesh,
-      materials: [mesh.material],
-      eye: [0, 12, -70],
-      ahead: [0, 0, 60],
-    })),
-  );
-  return { meshes: flights.map((f) => f.mesh), update, ride };
+  return { meshes: flights.map((f) => f.mesh), crafts: flights.map((f) => f.craft), update };
 }
 
 // Flocks of birds circling above bridges, parks and squares all over the city (FLOCKS), flapping
@@ -1182,10 +1198,10 @@ const inside = (outline, x, z) =>
   }, false);
 for (const number of structures.within((x, z) => inside(ROCHE, x, z)))
   structures.paint(number, { wall: 0xf4f4f2 });
-// The standing building a ray from above first meets at LV95 east, north: its number and the
-// point hit (x, y, z); undefined if none.
-function roofAt(lv95) {
-  const { x, z } = fromLV95(lv95);
+// The standing building a ray from above first meets at LV95 east, north, or over a scene point:
+// its number and the point hit (x, y, z); undefined if none.
+const roofAt = (lv95) => roofOver(fromLV95(lv95));
+function roofOver({ x, z }) {
   fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
   const hit = fromAbove.intersectObject(buildings.scene)[0];
   return hit && { number: hit.object.geometry.attributes._building.getX(hit.face.a), ...hit.point };
@@ -1210,6 +1226,10 @@ function alongBuilding(number, near) {
   const [base, quarter] = [Math.atan2(s, c) / 4, Math.PI / 2];
   return base + Math.round((near - base) / quarter) * quarter;
 }
+// What stands on a roof comes down to the ground there when destroy() blows its building up.
+const grounding = new Map(); // building number → what to call then
+const landOn = (number, land, { x, z }) =>
+  grounding.set(number, [...(grounding.get(number) ?? []), () => land(heightAt(x, z))]);
 // The Rega's helicopters (src/rega.js), an H145 and the AW109 "Da Vinci", each on a helipad on
 // the roof of the Universitätsspital at an LV95 point, along its walls, else on the ground there.
 // The H's upright about from LV95 2610964.8, 1267835.8 towards 2610973.9, 1267829.9.
@@ -1221,9 +1241,19 @@ const regas = [
   const at = fromLV95(point);
   const roof = roofAt(point);
   const heading = roof ? alongBuilding(roof.number, HELIPADS_FACE) : HELIPADS_FACE;
-  return createRega({ ...at, y: heightAt(at.x, at.z), ...roof, heading }, model, boost);
+  const rega = createRega({ ...at, y: heightAt(at.x, at.z), ...roof, heading }, model, boost);
+  if (roof) landOn(roof.number, rega.land, at);
+  return rega;
 });
 scene.add(...regas.flatMap(({ pad, group }) => [pad, group]));
+// A fighter jet (src/jet.js) on the roof of the BIZ tower (WGS84 47.548078, 7.591792), else on
+// the ground there, its nose to the north.
+const [jetX, jetZ] = fromWGS84(47.548078, 7.591792);
+const jetAt = { x: jetX, y: heightAt(jetX, jetZ), z: jetZ };
+const jetRoof = roofOver(jetAt);
+const jet = createJet({ ...jetAt, ...jetRoof, heading: Math.PI }, boost, flight.LEVEL);
+if (jetRoof) landOn(jetRoof.number, jet.land, jetAt);
+scene.add(jet.group);
 // On each Roche tower's roof, four women dressed as the friends dancing 2 m around its middle,
 // each looking out another way (north-east, south-east, south-west, north-west). destroy()
 // removes them with their tower.
@@ -2205,20 +2235,33 @@ function createHelicopter(cx, cz, radius, height, scale) {
     beacon.visible = seconds % 1 < 0.15; // once a second
     strobe.visible = seconds % 1.5 < 0.06 || (seconds % 1.5 > 0.18 && seconds % 1.5 < 0.24); // double flash
   };
-  // Riding along: from behind and well above, looking down on it a little (before scaling).
+  // Riding along: from behind and above, looking down on it a little (before scaling), its
+  // crosshair (dip) just above the front of its rotor.
   const ride = riders([
-    { object: group, materials: [material], eye: [0, 6, -22], ahead: [0, -2, 14] },
+    { object: group, materials: [material], eye: [0, 4.5, -22], ahead: [0, -2, 14] },
   ]);
-  // Flown at speed metres per second, turning up to turn radians per second (createFlight).
-  return { group, update, ride, launchers, speed: 60, turn: 1.1 };
+  // Flown at speed metres per second, turning up to turn radians per second (createFlight); its
+  // skids low below its middle, its rotor reaching nose ahead of it (before scaling); it fires
+  // dip radians below its body.
+  return {
+    group,
+    update,
+    ride,
+    launchers,
+    speed: 60,
+    turn: 1.1,
+    low: 1.56,
+    nose: 4.1,
+    dip: 0.07,
+  };
 }
 
 // Flying the helicopter or the UFO while riding it (input { climb, turn, stop }, climb and turn
-// each -1, 0 or 1, from steering()), LOW above the terrain at least (where the ground rises, back
-// to it smoothly), at most HIGH, over the terrain's area. Holding climb tilts the nose by TILT
+// each -1, 0 or 1, from steering()), at most HIGH, over the terrain's area; nothing keeps it off
+// the ground (see fly). Holding climb tilts the nose by TILT
 // radians per second, and it stays when let go. Flying, it goes craft.speed (metres per second)
 // along the nose, from UP above level to DOWN below; tilting through level, it stops there until
-// pressed anew, and it levels out at LOW or HIGH. Stopped, it hovers and the nose only aims, from
+// pressed anew, and it levels out at HIGH. Stopped, it hovers and the nose only aims, from
 // level to AIM down. Speed, nose and turning (up to craft.turn radians per second) are eased. A
 // craft with lift (metres) first rises straight up that far at half its speed, then goes on from a
 // standstill. The state, flown: { x, y, z, heading, speed (0 to 1, times craft.speed), aim (where
@@ -2230,7 +2273,6 @@ function createFlight() {
   const DOWN = 0.8; // radians, about 45°
   const AIM = 1.2; // radians, about 70°
   const TILT = 1.2;
-  const LOW = 40; // metres
   const HIGH = 1000; // scene y
   return {
     LEVEL,
@@ -2256,11 +2298,9 @@ function createFlight() {
       if (input.climb !== flown.levelled) flown.levelled = 0;
       if (input.climb && !flown.levelled) {
         const next = flown.aim - input.climb * TILT * dt;
-        // Already at LOW or HIGH, flying, the nose does not tilt on towards it, so it does not
-        // dip for a moment before levelling out again.
-        const bound =
-          (next > LEVEL && flown.y <= heightAt(flown.x, flown.z) + LOW) ||
-          (next < LEVEL && flown.y >= HIGH);
+        // Already at HIGH, flying, the nose does not tilt on towards it, so it does not rise for
+        // a moment before levelling out again.
+        const bound = next < LEVEL && flown.y >= HIGH;
         if (!input.stop && ((next - LEVEL) * (flown.aim - LEVEL) < 0 || bound)) {
           flown.aim = LEVEL;
           flown.levelled = input.climb;
@@ -2279,18 +2319,12 @@ function createFlight() {
         flown.x + Math.sin(flown.heading) * Math.cos(down) * step,
         flown.z + Math.cos(flown.heading) * Math.cos(down) * step,
       );
-      const low = heightAt(flown.x, flown.z) + LOW;
       const y = flown.y - Math.sin(down) * step;
-      if (!input.stop && ((y < low && down > 0) || (y > HIGH && down < 0))) {
+      if (!input.stop && y > HIGH && down < 0) {
         flown.aim = LEVEL;
         flown.levelled = input.climb;
       }
-      // Below LOW it goes no lower and rises back smoothly, not at once, so it does not jolt with
-      // every bump of the ground it follows; never below half LOW.
-      flown.y = Math.min(
-        y < low ? Math.max(ease(Math.max(y, flown.y), low, 3), low - LOW / 2) : y,
-        HIGH,
-      );
+      flown.y = Math.min(y, HIGH);
     },
   };
 }
@@ -2830,6 +2864,60 @@ function heightAt(x, z) {
   );
 }
 
+// Flies the craft piloted, if any, on by dt seconds and returns it; but where its underside or
+// its front (craft.nose ahead of its middle, along its body) meets the ground or is below a
+// roof, a wall is between its middle and its front, or it sinks through a bridge's deck, it blows
+// up and one is off, the
+// camera staying where it is: the view's centre is where it looks at the ground, CENTRE above it
+// as updateOrbit keeps it, so nothing moves; only a camera looking less far down than the view
+// allows (maxPolarAngle) tilts down to that. Not while it still rises after boarding (lift).
+const looking = new THREE.Vector3();
+const flownFrom = new THREE.Vector3();
+const flownTo = new THREE.Vector3();
+const front = new THREE.Vector3();
+function fly(dt) {
+  const craft = pilot();
+  if (!craft) return;
+  flown ??= flight.start(craft);
+  const rising = flown.lift > 0;
+  flownFrom.copy(flown);
+  flight.step(flown, steering(), dt, craft);
+  const { x, y, z } = flownTo.copy(flown);
+  const { rotation, scale } = craft.group;
+  const under = y - craft.low * scale.y;
+  const level = Math.cos(rotation.x) * craft.nose * scale.y; // metres ahead, seen from above
+  front.set(
+    x + Math.sin(flown.heading) * level,
+    y - Math.sin(rotation.x) * craft.nose * scale.y,
+    z + Math.cos(flown.heading) * level,
+  );
+  const met =
+    under < heightAt(x, z) ||
+    front.y < heightAt(front.x, front.z) ||
+    structures.top(x, z, Infinity, under) > under ||
+    structures.top(front.x, front.z, Infinity, front.y) > front.y ||
+    structures.wall(flownTo, front, true) ||
+    bridgeDecks()
+      .heights(x, z)
+      .some((h) => under < h && h <= flownFrom.y);
+  if (rising || !met) return craft;
+  const velocity = flownTo.clone().sub(flownFrom).setY(0);
+  explosions.crash(flownTo, craft.group, velocity.divideScalar(dt || 1));
+  camera.getWorldDirection(looking);
+  looking.y = Math.min(
+    looking.y,
+    -Math.hypot(looking.x, looking.z) / Math.tan(orbit.maxPolarAngle - 0.01),
+  );
+  raycaster.set(camera.position, looking.normalize());
+  const ground = raycaster.intersectObject(terrain)[0]?.point;
+  before = {
+    position: camera.position.clone(),
+    target: ground?.addScaledVector(looking, CENTRE / looking.y) ?? flownTo.clone(),
+  };
+  fling.set(0, 0, 0);
+  getOff();
+}
+
 // Gets off: back to the view from before riding.
 function getOff() {
   riding = null;
@@ -2844,18 +2932,23 @@ function getOff() {
   document.body.dataset.mode = "orbit";
 }
 
-// --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the sea monster, the
-// UFO, a police car, a motorcycle, the tank, a boat or the drone to ride along; while
-// riding, but not steering, a click or tap on another one changes to it.
-// A finger also finds one up to FINGER beside it. The button or Esc gets off.
+// --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the jet, the sea
+// monster, the UFO, a police car, a motorcycle, the tank, a boat or the drone to ride along; while
+// riding, but not steering, a click or tap on another one changes to it. A finger also finds one
+// up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
-// The UFO from behind and above, looking down on it.
+// The UFO from behind and above, looking down on it, its crosshair (its dip) just above its rim.
 // The Rega's helicopters from behind and above, each its own ride.
 const regaRides = regas.map(({ group, material }) =>
   riders([{ object: group, materials: [material], eye: [0, 5, -20], ahead: [0, -1, 14] }]),
 );
 const ufoRide = riders([
-  { object: ufo.group, materials: [ufo.material], eye: [0, 30, -80], ahead: [0, 0, 30] },
+  { object: ufo.group, materials: [ufo.material], eye: [0, 22, -80], ahead: [0, 0, 30] },
+]);
+// The jet from behind and a little above, looking over it: below the middle of the screen, above
+// the steering buttons, its crosshair (its dip) in the middle, just above its nose.
+const jetRide = riders([
+  { object: jet.group, materials: [jet.material], eye: [0, 8, -48], ahead: [0, 2.6, 40] },
 ]);
 // What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the
 // motorcycles, the tanks, the dinosaur and the boats, from behind and above; the drones through their own
@@ -2863,7 +2956,7 @@ const ufoRide = riders([
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
-  [tanks, [0, 7, -16], [0, 2, 14]],
+  [tanks, [0, 5, -16], [0, 2, 14]],
   [dinos, [0, 30, -55], [0, 8, 20]],
   [fireboats, [0, 9, -24], [0, 3, 20]],
   [policeBoats, [0, 4, -14], [0, 1.5, 11]],
@@ -2879,21 +2972,25 @@ const drives = [
 const rides = [
   ...movers,
   ships.ride,
-  planes.ride,
+  ...planes.crafts.map(({ ride }) => ride),
   helicopter.ride,
   serpent.ride,
   ufoRide,
+  jetRide,
   ...regaRides,
   ...drives.map(([, ride]) => ride),
 ];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
-// The helicopter, the UFO or a Rega helicopter, each { group, speed, turn, lift?, unarmed? },
-// while riding and so steering it.
+// The helicopter, the UFO, the jet, a Rega helicopter or a plane, each { group, speed, turn, low,
+// nose, lift?, unarmed?, launchers? (it fires rockets from them), dip? (radians it fires below its
+// body), plane? (it does not hover) }, while riding and so steering it.
 const pilots = new Map([
   [helicopter.ride, helicopter],
   [ufoRide, ufo],
+  [jetRide, jet],
   ...regaRides.map((ride, k) => [ride, regas[k]]),
+  ...planes.crafts.map((craft) => [craft.ride, craft]),
 ]);
 const pilot = () => pilots.get(riding?.ride);
 const flying = () => pilot() !== undefined;
@@ -2944,7 +3041,8 @@ function stop(on) {
 }
 stopButton.addEventListener("click", () => stop(!stopped));
 addEventListener("keydown", (e) => {
-  if (e.code === "KeyQ" && (flying() || riding?.ride === droneRide) && !e.repeat) stop(!stopped);
+  const hovers = (flying() && !pilot().plane) || riding?.ride === droneRide;
+  if (e.code === "KeyQ" && hovers && !e.repeat) stop(!stopped);
 });
 function steering() {
   const held = (...codes) => (codes.some((code) => keys.has(code)) ? 1 : 0);
@@ -2956,14 +3054,16 @@ function steering() {
 }
 
 // Shooting while flying or in a tank: holding Space, the fire button or the left mouse button on
-// the scene ("Mouse" in keys) aims, from the camera through a point AHEAD metres along the nose, to
-// where that line first meets something (rockets.aim), which the crosshair shows. The helicopter
-// sends a rocket there every FIRE_GAP seconds, from its launchers in turn. The UFO sends a laser
+// the scene ("Mouse" in keys) aims, from the camera through a point AHEAD metres along the nose,
+// to where that line first meets something
+// (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every
+// FIRE_GAP seconds, the jet every MISSILE_GAP, from their launchers in turn. The UFO sends a laser
 // bolt there every BOLT_GAP seconds, from its cannons in turn, which on arriving destroys what it
 // meets: a building or bridge (destroy) or the ground (a small blast). The tank fires a shell along
 // its gun every SHELL_GAP seconds; its crosshair stays SIGHT metres ahead on that line, as what the
 // line first meets changes all the time while it drives and would make it jump.
 const FIRE_GAP = 0.1; // seconds
+const MISSILE_GAP = 0.8; // seconds
 const BOLT_GAP = 0.12; // seconds
 const SHELL_GAP = 1; // seconds
 const SIGHT = 200; // metres
@@ -2980,6 +3080,7 @@ const nose = new THREE.Vector3(); // which way
 const through = new THREE.Vector3(); // which way from the camera
 const start = new THREE.Vector3(); // where a craft's line of fire is looked along from
 const launcher = new THREE.Vector3();
+const carried = new THREE.Vector3(); // the velocity of the craft firing
 const crosshair = document.getElementById("crosshair");
 let nextShot = 0; // when the next may go (seconds)
 let side = 0; // the launcher the next rocket goes from
@@ -2992,7 +3093,10 @@ function shoot(seconds) {
   }
   if (tank) tank.aim(muzzle, nose);
   else {
-    const { heading, nose: pitch } = flown;
+    // Along its body as it is tilted, lower by its dip, so its crosshair stays in place in the
+    // view from it.
+    const { heading } = flown;
+    const pitch = flier.group.rotation.x + (flier.dip ?? 0);
     muzzle.copy(flier.group.position);
     nose.set(
       Math.sin(heading) * Math.cos(pitch),
@@ -3009,7 +3113,11 @@ function shoot(seconds) {
   else {
     through.copy(muzzle).addScaledVector(nose, AHEAD).sub(camera.position).normalize();
     const abreast = start.copy(muzzle).sub(camera.position).dot(through); // metres along it
-    target = rockets.aim(start.copy(camera.position).addScaledVector(through, abreast), through);
+    target = rockets.aim(
+      start.copy(camera.position).addScaledVector(through, abreast),
+      through,
+      !!flier.plane,
+    );
   }
   const { x, y, front } = onScreen(target);
   crosshair.hidden = !front;
@@ -3022,18 +3130,33 @@ function shoot(seconds) {
     rockets.fire(muzzle, target, true);
     return;
   }
+  // What it fires keeps its velocity, and so stays on its line of fire as seen from it.
   const { group } = flier;
-  if (flier === helicopter) {
-    nextShot = seconds + FIRE_GAP;
+  const down = flown.nose - flight.LEVEL;
+  carried
+    .set(
+      Math.sin(flown.heading) * Math.cos(down),
+      -Math.sin(down),
+      Math.cos(flown.heading) * Math.cos(down),
+    )
+    .multiplyScalar(flown.speed * flier.speed);
+  if (flown.lift > 0) carried.set(0, flier.speed / 2, 0); // still rising after boarding
+  if (flier.launchers) {
+    nextShot = seconds + (flier.plane ? MISSILE_GAP : FIRE_GAP);
     side = 1 - side;
-    rockets.fire(group.localToWorld(launcher.copy(helicopter.launchers[side])), target);
+    rockets.fire(
+      group.localToWorld(launcher.copy(flier.launchers[side])),
+      target,
+      false,
+      carried,
+      !!flier.plane,
+    );
     return;
   }
   nextShot = seconds + BOLT_GAP;
-  const number = structures.hit(group.position, target);
-  ufo.fire(target, () => {
-    if (number >= 0) destroy(number);
-    else if (target.y < heightAt(target.x, target.z)) explosions.burst(target);
+  ufo.fire(target, carried, rockets.meets, (met, at) => {
+    if (met === "ground") explosions.burst(at);
+    else if (met !== null) destroy(met);
   });
 }
 
@@ -3069,7 +3192,7 @@ function ride(found, clientX, clientY) {
   camera.updateProjectionMatrix();
   const driving = drives.some(([, ride]) => ride === found.ride);
   steerBox.hidden = !pilots.has(found.ride) && !driving;
-  stopButton.hidden = driving && found.ride !== droneRide;
+  stopButton.hidden = driving ? found.ride !== droneRide : !!pilots.get(found.ride)?.plane;
   fireButton.hidden = driving ? found.ride !== tankRide : !!pilots.get(found.ride)?.unarmed;
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
@@ -3148,7 +3271,7 @@ function hidden(point) {
   return behind;
 }
 // The { ride, vehicle } at a screen point, if visible: not in a tunnel under the terrain or
-// behind a building or bridge.
+// behind a building or bridge; not the one ridden.
 function vehicleOn(clientX, clientY) {
   const pointer = new THREE.Vector2(
     (clientX / innerWidth) * 2 - 1,
@@ -3157,12 +3280,13 @@ function vehicleOn(clientX, clientY) {
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObjects(rides.flatMap((r) => r.objects))[0];
   if (!hit) return null;
+  const ride = rides.find((r) => r.objects.some((o) => o.getObjectById(hit.object.id)));
+  const vehicle = ride.vehicleOf(hit);
+  if (ride === riding?.ride && vehicle === riding.vehicle) return null;
   raycaster.far = hit.distance;
   const hidden = raycaster.intersectObjects([terrain, buildings.scene, bridges.scene]).length > 0;
   raycaster.far = Infinity;
-  if (hidden) return null;
-  const ride = rides.find((r) => r.objects.some((o) => o.getObjectById(hit.object.id)));
-  return { ride, vehicle: ride.vehicleOf(hit) };
+  return hidden ? null : { ride, vehicle };
 }
 
 // The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
@@ -3173,8 +3297,7 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 });
 function updateHover() {
   if (!hover) return;
-  let found = pointers.size || steered() ? null : vehicleAt(hover.x, hover.y);
-  if (found?.ride === riding?.ride && found?.vehicle === riding?.vehicle) found = null;
+  const found = pointers.size || steered() ? null : vehicleAt(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
   renderer.domElement.style.cursor = found ? "pointer" : "";
@@ -3477,9 +3600,9 @@ renderer.setAnimationLoop((time) => {
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
   training.update(dt);
   serpent.update(time / 1000);
-  const flier = pilot();
-  if (flier) flight.step((flown ??= flight.start(flier)), steering(), dt, flier);
+  const flier = fly(dt);
   helicopter.update(time / 1000, flier === helicopter ? flown : null);
+  jet.update(time / 1000, flier === jet ? flown : null);
   for (const rega of regas) rega.update(time / 1000, flier === rega ? flown : null);
   ufo.update(time / 1000, dt, flier === ufo ? flown : null);
   for (const [vehicles, ride] of drives)
@@ -3496,7 +3619,7 @@ renderer.setAnimationLoop((time) => {
   zoo.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);
-  planes.update(time / 1000);
+  planes.update(time / 1000, flier, flown);
   birds.update(time / 1000);
   if (riding) {
     riding.ride.cab(riding.vehicle, camera); // after all that moves

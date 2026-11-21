@@ -11,7 +11,9 @@
     <div id="names"></div>
     <div id="badges"></div>
     <div id="loading">Loading <span id="progress">0%</span></div>
-    <button id="off">Get off<kbd> (Esc)</kbd></button>
+    <button id="off" aria-label="Get off" title="Get off (Esc)">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3 3 13" /></svg>
+    </button>
     <div id="counter">
       <p title="Buildings">
         <svg viewBox="4 3 16 18" aria-hidden="true">
@@ -39,7 +41,9 @@
       <button id="stop">Stop<kbd>Q</kbd></button>
     </div>
     <details id="menu">
-      <summary>Menu</summary>
+      <summary aria-label="Menu">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3h14M1 8h14M1 13h14" /></svg>
+      </summary>
       <div id="entries">
         <div class="pairs">
           <label><input type="radio" name="ground" value="map" /> <span>Map</span></label>

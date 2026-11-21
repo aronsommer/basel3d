@@ -90,7 +90,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   // Per mesh, per number, { walls, roofs }: its steep triangles as [x0, z0, x1, z1, bottom, top]
   // each (the two of its corners furthest apart seen from above and its height range), and those
   // not upright as their corners [x, y, z, x, y, z, x, y, z] each (some steep ones are both).
-  // Made when first needed; hide() forgets those of the meshes it changes.
+  // Made when first needed; hide() forgets those it hides, which are not looked up again.
   const surfaces = new Map(); // mesh → Map(number → { walls, roofs })
   const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
   function surfacesOf(mesh) {
@@ -245,8 +245,9 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       return false;
     },
     // The height of the highest roof (or other face not upright) of a building (not a bridge) at
-    // the point x, z, at most y; -Infinity if none. Hidden ones are left out.
-    top(x, z, y) {
+    // the point x, z, at most y; -Infinity if none. Hidden ones are left out, and those not
+    // reaching above `above`, unlooked at.
+    top(x, z, y, above = -Infinity) {
       if (!boxes) measure();
       let best = -Infinity;
       const [column] = cellRange(x, x);
@@ -255,6 +256,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         if (n >= count || !meshesOf[n].length) continue;
         const b = 6 * n;
         if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
+        if (boxes[b + 4] <= above) continue;
         for (const mesh of meshesOf[n]) {
           const list = surfacesOf(mesh).get(n)?.roofs ?? [];
           for (let i = 0; i < list.length; i += 9) {
@@ -373,7 +375,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     hide(numbers) {
       const wanted = new Set(numbers);
       for (const mesh of meshesWith(wanted)) {
-        surfaces.delete(mesh);
+        for (const n of wanted) surfaces.get(mesh)?.delete(n);
         const { position, _building } = mesh.geometry.attributes;
         const first = new Map(); // number → its first vertex in this mesh
         for (let i = 0; i < position.count; i++) {
