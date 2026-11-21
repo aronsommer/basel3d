@@ -531,7 +531,8 @@ function createPlanes() {
   const SCALE = 1.5;
   // Along +z, in metres: fuselage, nose, wings, tailplane, fin, engines.
   const WHITE = 0xf2f2f0;
-  const fuselage = new THREE.CylinderGeometry(2, 2, 30, 8).rotateX(Math.PI / 2);
+  const along = (g) => g.rotateX(Math.PI / 2); // its axis along z, its top ahead
+  const fuselage = along(new THREE.CylinderGeometry(2, 2, 30, 8));
   const nose = new THREE.ConeGeometry(2, 5, 8).rotateX(Math.PI / 2);
   const tailCone = new THREE.ConeGeometry(2, 6, 8).rotateX(-Math.PI / 2);
   const geometry = mergeGeometries([
@@ -541,9 +542,15 @@ function createPlanes() {
     part(new THREE.BoxGeometry(34, 0.5, 5), WHITE, [0, -0.8, 1]), // wings
     part(new THREE.BoxGeometry(12, 0.4, 3), WHITE, [0, 0.5, -17]), // tailplane
     part(new THREE.BoxGeometry(0.5, 7, 4), 0x1f4e9a, [0, 4, -18]), // fin
-    ...[-6, 6].map((x) =>
-      part(new THREE.CylinderGeometry(1, 1, 4, 8).rotateX(Math.PI / 2), 0x9aa0a6, [x, -2, 3]),
-    ),
+    // An engine under each wing: a nacelle wider at the front, a dark fan in it behind a
+    // spinner, a narrower exhaust behind and a pylon up to the wing.
+    ...[-6, 6].flatMap((x) => [
+      part(along(new THREE.CylinderGeometry(1.25, 0.95, 4, 12)), 0xc9cdd2, [x, -2, 3]),
+      part(along(new THREE.CylinderGeometry(1.05, 1.05, 0.1, 12)), 0x22262b, [x, -2, 5]),
+      part(along(new THREE.ConeGeometry(0.35, 0.8, 8)), WHITE, [x, -2, 5.3]),
+      part(along(new THREE.CylinderGeometry(0.65, 0.35, 1.4, 10)), 0x4a4f55, [x, -2, 0.3]),
+      part(new THREE.BoxGeometry(0.3, 0.8, 2.4), WHITE, [x, -1.1, 2.4]),
+    ]),
   ]).scale(SCALE, SCALE, SCALE);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   // Ovals over the city (scene metres), so the planes always stay in view: the second one higher
@@ -566,7 +573,7 @@ function createPlanes() {
       ride,
       speed: SPEED,
       turn: 0.4,
-      low: 4.5,
+      low: 4.9,
       nose: 30, // metres from its middle to its nose
       unarmed: true,
       plane: true,
@@ -770,6 +777,18 @@ try {
 namesBox.addEventListener("change", () => {
   try {
     localStorage.setItem(NAMES_KEY, namesBox.checked ? "1" : "0");
+  } catch {} // storage blocked
+});
+// "Mouse aim" in the menu (only where there is a mouse): what fires aims at what is under the
+// mouse (mouseRay), not ahead. As last chosen in this browser, else not.
+const AIM_KEY = "basel3d.aim"; // "1" (on) or "0"
+const aimBox = document.getElementById("aim-box");
+try {
+  aimBox.checked = localStorage.getItem(AIM_KEY) === "1";
+} catch {} // storage blocked
+aimBox.addEventListener("change", () => {
+  try {
+    localStorage.setItem(AIM_KEY, aimBox.checked ? "1" : "0");
   } catch {} // storage blocked
 });
 
@@ -2841,6 +2860,20 @@ function updateTerrain() {
   for (const mesh of rails.children) mesh.visible = distances.get(mesh.name) < far;
 }
 
+// Metres along a line (from a point along a unit direction) until it leaves the terrain's area,
+// seen from above; 0 from outside it.
+function within(from, direction) {
+  const { x0, z0, cell, nx, nz } = terrainInfo;
+  const edge = (at, d, low, high) => (d > 0 ? (high - at) / d : d < 0 ? (low - at) / d : Infinity);
+  return Math.max(
+    0,
+    Math.min(
+      edge(from.x, direction.x, x0, x0 + (nx - 1) * cell),
+      edge(from.z, direction.z, z0, z0 + (nz - 1) * cell),
+    ),
+  );
+}
+
 // A scene position moved into the terrain's area, as [x, z].
 function intoArea(x, z) {
   const { x0, z0, cell, nx, nz } = terrainInfo;
@@ -3054,19 +3087,19 @@ function steering() {
 }
 
 // Shooting while flying or in a tank: holding Space, the fire button or the left mouse button on
-// the scene ("Mouse" in keys) aims, from the camera through a point AHEAD metres along the nose,
-// to where that line first meets something
-// (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every
-// FIRE_GAP seconds, the jet every MISSILE_GAP, from their launchers in turn. The UFO sends a laser
-// bolt there every BOLT_GAP seconds, from its cannons in turn, which on arriving destroys what it
-// meets: a building or bridge (destroy) or the ground (a small blast). The tank fires a shell along
-// its gun every SHELL_GAP seconds; its crosshair stays SIGHT metres ahead on that line, as what the
-// line first meets changes all the time while it drives and would make it jump.
+// the scene ("Mouse" in keys) aims, from the camera through a point AHEAD metres along the nose
+// or the tank's gun, to where that line first meets something, as far as the terrain's area goes
+// (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every FIRE_GAP
+// seconds, the jet every MISSILE_GAP, from their launchers in turn. The UFO sends a laser bolt
+// there every BOLT_GAP seconds, from its cannons in turn, which destroys what it meets: a
+// building or bridge (destroy) or the ground (a small blast). The tank fires a shell there every
+// SHELL_GAP seconds. With "Mouse aim" ticked, all aim along the line from the camera through the
+// mouse instead, while it is over the scene: the craft fire at what it first meets, the tank's
+// turret turns towards it as far as it goes.
 const FIRE_GAP = 0.1; // seconds
 const MISSILE_GAP = 0.8; // seconds
 const BOLT_GAP = 0.12; // seconds
 const SHELL_GAP = 1; // seconds
-const SIGHT = 200; // metres
 const AHEAD = 900; // metres along a craft's nose, the point its crosshair is aimed through
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (armed() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
@@ -3075,24 +3108,41 @@ addEventListener("pointerup", (e) => {
   if (e.pointerType === "mouse") keys.delete("Mouse");
 });
 const muzzle = new THREE.Vector3(); // where shots leave
-const sight = new THREE.Vector3(); // where the tank's crosshair is
 const nose = new THREE.Vector3(); // which way
 const through = new THREE.Vector3(); // which way from the camera
 const start = new THREE.Vector3(); // where a craft's line of fire is looked along from
 const launcher = new THREE.Vector3();
-const carried = new THREE.Vector3(); // the velocity of the craft firing
+const carried = new THREE.Vector3(); // a plane's velocity
 const crosshair = document.getElementById("crosshair");
 let nextShot = 0; // when the next may go (seconds)
+// The direction (unit) from the camera through the mouse (mouseAt).
+const pointer = new THREE.Vector2();
+function mouseRay() {
+  pointer.set((mouseAt.x / innerWidth) * 2 - 1, -(mouseAt.y / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  return raycaster.ray.direction;
+}
 let side = 0; // the launcher the next rocket goes from
 function shoot(seconds) {
   const flier = pilot()?.unarmed ? undefined : pilot();
   const tank = gunner();
+  // The line from the camera through the mouse, if it is aimed with and over the scene (else all
+  // aim ahead, as without it); the crosshair is then where
+  // the mouse is (the tank's as far as its gun turns), so the mouse's own pointer is hidden
+  // (style.css).
+  const ray = (flier || tank) && aimBox.checked && mouseAt ? mouseRay() : null;
+  renderer.domElement.classList.toggle("aiming", !!ray);
   if (!flier && !tank) {
     crosshair.hidden = true;
     return;
   }
-  if (tank) tank.aim(muzzle, nose);
-  else {
+  if (tank) {
+    // Its gun towards the point AHEAD on the line through the mouse, as far as it turns; where it
+    // then points, its crosshair is on that line, as it is found below.
+    tank.aim(muzzle, nose);
+    if (ray)
+      tank.train(start.copy(camera.position).addScaledVector(ray, AHEAD).sub(muzzle).normalize());
+  } else {
     // Along its body as it is tilted, lower by its dip, so its crosshair stays in place in the
     // view from it.
     const { heading } = flown;
@@ -3104,21 +3154,16 @@ function shoot(seconds) {
       Math.cos(heading) * Math.cos(pitch),
     );
   }
-  // A craft aims along the line from the camera through a point far along its nose: from the
-  // craft itself, as the camera is above and behind it, near and far hits would show at different
-  // heights, so the crosshair would wander with whatever the line meets. Looked along from abreast
-  // of the craft, so a hill behind it, where the camera may be, is not met.
-  let target;
-  if (tank) target = sight.copy(muzzle).addScaledVector(nose, SIGHT);
-  else {
-    through.copy(muzzle).addScaledVector(nose, AHEAD).sub(camera.position).normalize();
-    const abreast = start.copy(muzzle).sub(camera.position).dot(through); // metres along it
-    target = rockets.aim(
-      start.copy(camera.position).addScaledVector(through, abreast),
-      through,
-      !!flier.plane,
-    );
-  }
+  // A craft or the tank aims along the line from the camera through a point far along its nose
+  // or gun: from itself, as the camera is above and behind it, near and far hits would show at
+  // different heights, so the crosshair would wander with whatever the line meets. Looked along
+  // from abreast of it, so a hill behind it, where the camera may be, is not met. A craft aimed
+  // with the mouse aims along the line through the mouse itself.
+  if (ray && flier) through.copy(ray);
+  else through.copy(muzzle).addScaledVector(nose, AHEAD).sub(camera.position).normalize();
+  const abreast = start.copy(muzzle).sub(camera.position).dot(through); // metres along it
+  start.copy(camera.position).addScaledVector(through, abreast);
+  const target = rockets.aim(start, through, within(start, through));
   const { x, y, front } = onScreen(target);
   crosshair.hidden = !front;
   crosshair.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
@@ -3130,31 +3175,30 @@ function shoot(seconds) {
     rockets.fire(muzzle, target, true);
     return;
   }
-  // What it fires keeps its velocity, and so stays on its line of fire as seen from it.
   const { group } = flier;
-  const down = flown.nose - flight.LEVEL;
-  carried
-    .set(
-      Math.sin(flown.heading) * Math.cos(down),
-      -Math.sin(down),
-      Math.cos(flown.heading) * Math.cos(down),
-    )
-    .multiplyScalar(flown.speed * flier.speed);
-  if (flown.lift > 0) carried.set(0, flier.speed / 2, 0); // still rising after boarding
   if (flier.launchers) {
     nextShot = seconds + (flier.plane ? MISSILE_GAP : FIRE_GAP);
     side = 1 - side;
+    // A plane's rockets drop from it at its velocity first (src/rockets.js).
+    const down = flown.nose - flight.LEVEL;
+    carried
+      .set(
+        Math.sin(flown.heading) * Math.cos(down),
+        -Math.sin(down),
+        Math.cos(flown.heading) * Math.cos(down),
+      )
+      .multiplyScalar(flown.speed * flier.speed);
+    if (flown.lift > 0) carried.set(0, flier.speed / 2, 0); // still rising after boarding
     rockets.fire(
       group.localToWorld(launcher.copy(flier.launchers[side])),
       target,
       false,
-      carried,
-      !!flier.plane,
+      flier.plane ? carried : null,
     );
     return;
   }
   nextShot = seconds + BOLT_GAP;
-  ufo.fire(target, carried, rockets.meets, (met, at) => {
+  ufo.fire(target, rockets.meets, (met, at) => {
     if (met === "ground") explosions.burst(at);
     else if (met !== null) destroy(met);
   });

@@ -11,8 +11,8 @@ const ABOVE = 7; // metres between its underside and what is below its place
 const NEAR = 60; // metres from its place within which it is drawn life size
 const GREEN = 0x39ff14; // neon green: the bolts, the guns' tips, strips and muzzle flashes
 const BOLT_SPEED = 900; // metres per second
-const BOLT_RANGE = 900; // metres
-const MAX_BOLTS = 32; // in flight at most, and as many flashes
+const PAST = 20; // metres a bolt flies on past where it was aimed, into what is there
+const MAX_BOLTS = 128; // in flight at most, and as many flashes
 const FLASH = 0.25; // seconds a flash lasts where a bolt ends
 
 // boost(position): how much larger to draw it far away (src/main.js); roof(x, z): the scene y of
@@ -220,20 +220,28 @@ export function createUfo(boost, roof) {
     dip: 0.14, // radians it fires below its tilt, so its crosshair shows just above its rim
     material,
     update,
-    // A bolt from the next cannon towards a scene point, with a zap, keeping the UFO's velocity
-    // (carried) besides its own, so seen from the UFO it stays on its line of fire. It ends
-    // where meets(from, to) is not null for a step of its flight, or after BOLT_RANGE of its own;
-    // then arrive(what it met, where) is called. None while MAX_BOLTS are flying.
-    fire(target, carried, meets, arrive) {
+    // A bolt from the next cannon towards a scene point, with a zap. It ends where
+    // meets(from, to) is not null for a step of its flight, or PAST the point; then arrive(what
+    // it met, where) is called. None while MAX_BOLTS are flying.
+    fire(target, meets, arrive) {
       if (flying.size >= MAX_BOLTS) return;
       const cannon = cannons[side];
       side = 1 - side;
       group.updateMatrixWorld(); // this frame's place
       const position = group.localToWorld(cannon.at.clone());
-      const direction = target.clone().sub(position).normalize();
-      const turn = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
-      const velocity = direction.multiplyScalar(BOLT_SPEED).add(carried);
-      flying.add({ position, velocity, turn, left: BOLT_RANGE / BOLT_SPEED, meets, arrive });
+      const velocity = target.clone().sub(position).setLength(BOLT_SPEED);
+      const turn = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 0, 1),
+        velocity.clone().normalize(),
+      );
+      flying.add({
+        position,
+        velocity,
+        turn,
+        left: (position.distanceTo(target) + PAST) / BOLT_SPEED,
+        meets,
+        arrive,
+      });
       cannon.muzzle.scale.setScalar(2);
       zap();
     },

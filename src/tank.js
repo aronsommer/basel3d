@@ -1,6 +1,7 @@
 // Battle tanks: olive green, a hull between two tracks that show their whole length and width,
-// the links running round as it drives, seven road wheels a side, a wedged turret with a thick gun
-// fixed forward and kept level; driven as in src/drive.js, turning on the spot. The gun recoils,
+// the links running round as it drives, seven road wheels a side, a wedged turret with a thick gun,
+// ahead and level, or turned (at most SIDE either way) and raised (at most UP, lowered DOWN)
+// towards where it is told to point (train), by at most TURN and RAISE a second; driven as in src/drive.js, turning on the spot. The gun recoils,
 // flashes and booms when it fires (fire); where it points: aim.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -21,6 +22,12 @@ const LOOP = 4 * END + 2 * Math.PI * BEND; // metres round
 // seem to stand or run back, as wheels in films.
 const SLIDE = 0.12;
 const GUN = [0, 2.05, 2]; // where the gun turns (its mantlet), metres
+const PIVOT = -0.4; // z the turret turns about
+const TURN = 3; // radians per second the turret turns
+const RAISE = 2; // radians per second the gun rises and sinks
+const SIDE = 1.2; // radians the turret turns from ahead at most, either way
+const UP = 0.35; // radians the gun rises above level at most
+const DOWN = 0.1; // and sinks below it
 const MUZZLE = 5.5; // metres along the gun from there
 const RECOIL = 0.45; // metres the gun slides back when it fires
 const SPEC = {
@@ -51,8 +58,8 @@ function link(u) {
   return [END + BEND * Math.sin(front), 0.45 + BEND * Math.cos(front), front];
 }
 
-// One per place ({ x, y, z, heading }), each { group, material, update, aim, fire }; they share
-// their geometries and all materials but their own (so one is highlighted alone).
+// One per place ({ x, y, z, heading }), each { group, material, update, train, aim, fire }; they
+// share their geometries and all materials but their own (so one is highlighted alone).
 // boost(position): how much larger to draw one far away; world: as for createDriving
 // (src/drive.js).
 export function createTanks(places, boost, world) {
@@ -91,23 +98,23 @@ export function createTanks(places, boost, world) {
       OLIVE,
       [0, 0, 0],
     ),
-    // Turret, wedged at the front.
-    part(
-      profile(
-        [
-          [-2.2, 1.7],
-          [1.7, 1.7],
-          [2.4, 1.95],
-          [1.6, 2.45],
-          [-2.3, 2.45],
-          [-2.6, 2.0],
-        ],
-        2.0, // narrower than the hull (GAP)
-      ),
-      OLIVE,
-      [0, 0, -0.3],
-    ),
   ]);
+  // The turret, wedged at the front, about where it turns.
+  const turretGeometry = part(
+    profile(
+      [
+        [-2.2, 1.7],
+        [1.7, 1.7],
+        [2.4, 1.95],
+        [1.6, 2.45],
+        [-2.3, 2.45],
+        [-2.6, 2.0],
+      ],
+      2.0, // narrower than the hull (GAP)
+    ),
+    OLIVE,
+    [0, 0, -0.3 - PIVOT],
+  );
   // Mantlet, barrel, fume extractor and muzzle, from where the gun turns along +z.
   const gun = mergeGeometries([
     box([0.85, 0.6, 0.5], OLIVE, [0, 0, 0.1]),
@@ -167,14 +174,16 @@ export function createTanks(places, boost, world) {
     const group = new THREE.Group();
     group.rotation.order = "YXZ"; // heading first, then pitch
     const barrel = new THREE.Group();
-    barrel.position.fromArray(GUN);
+    barrel.position.set(GUN[0], GUN[1], GUN[2] - PIVOT);
+    const turret = new THREE.Group().add(new THREE.Mesh(turretGeometry, material), barrel);
+    turret.position.z = PIVOT;
     const flash = new THREE.Sprite(flashMaterial);
     flash.position.z = MUZZLE + 0.6;
     flash.scale.setScalar(3); // metres across
     barrel.add(new THREE.Mesh(gun, material), flash);
     // The links of both tracks: the left track's first.
     const links = new THREE.InstancedMesh(linkGeometry, material, 2 * LINKS);
-    group.add(new THREE.Mesh(hull, material), new THREE.Mesh(lamps, lampMaterial), barrel, links);
+    group.add(new THREE.Mesh(hull, material), new THREE.Mesh(lamps, lampMaterial), turret, links);
     // Seven a side, from the back to the front, on the bottom of the loop.
     const wheels = [-1, 1].flatMap((x) =>
       [...Array(7)].map((_, k) => {
@@ -189,6 +198,10 @@ export function createTanks(places, boost, world) {
     const shown = [0, 0]; // metres each track (left, right) is shown to have moved
     let gone = [0, 0]; // metres each track has moved, at the last frame
     let recoil = 0; // 1 when it fires, down to 0 in half a second
+    const wanted = new THREE.Vector3(); // where the gun is to point (train)
+    let trained = false; // whether train was called since the last frame
+    let yaw = 0; // radians the turret is turned from ahead
+    let lift = 0; // radians the gun is raised above level
     const matrix = new THREE.Matrix4();
     const turned = new THREE.Euler();
 
@@ -212,10 +225,19 @@ export function createTanks(places, boost, world) {
         links.setMatrixAt(i, matrix.setPosition((k ? -1 : 1) * TRACK, y, z));
       }
       links.instanceMatrix.needsUpdate = true;
-      // The gun stays level, whichever way the hull tilts.
-      barrel.rotation.x = -s.pitch;
+      // The turret and the gun towards where they were told to point this frame, else ahead and
+      // level, whichever way the hull tilts (about, while the turret is turned).
+      const { clamp } = THREE.MathUtils;
+      const off = trained ? Math.atan2(wanted.x, wanted.z) - s.heading : 0;
+      const side = clamp(Math.atan2(Math.sin(off), Math.cos(off)), -SIDE, SIDE); // from ahead
+      yaw += clamp(side - yaw, -TURN * dt, TURN * dt);
+      const rise = (trained ? clamp(Math.asin(wanted.y), -DOWN, UP) : 0) - lift;
+      lift += clamp(rise, -RAISE * dt, RAISE * dt);
+      trained = false;
+      turret.rotation.y = yaw;
+      barrel.rotation.x = -lift - s.pitch * Math.cos(yaw);
       recoil = Math.max(0, recoil - dt * 2);
-      barrel.position.z = GUN[2] - RECOIL * recoil;
+      barrel.position.z = GUN[2] - PIVOT - RECOIL * recoil;
       flash.visible = recoil > 0.85;
     }
     update(0, 0, null); // in place before the first frame
@@ -224,12 +246,16 @@ export function createTanks(places, boost, world) {
       group,
       material,
       update,
-      // Sets origin to the muzzle and direction to where the gun points (level, ahead), in the
-      // scene.
+      // The gun is to point along a scene direction (unit); to be called every frame it is.
+      train(direction) {
+        wanted.copy(direction);
+        trained = true;
+      },
+      // Sets origin to the muzzle and direction to where the gun points, in the scene.
       aim(origin, direction) {
         group.updateMatrixWorld();
         barrel.localToWorld(origin.set(0, 0, MUZZLE));
-        direction.set(Math.sin(s.heading), 0, Math.cos(s.heading));
+        barrel.getWorldDirection(direction);
       },
       fire() {
         recoil = 1;

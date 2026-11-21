@@ -22,6 +22,10 @@ canvas {
   -webkit-user-select: none; /* Safari */
   user-select: none;
 }
+/* While aiming with the mouse (shoot in src/main.js), the crosshair is the pointer. */
+canvas.aiming {
+  cursor: none !important; /* over the cursor src/main.js sets */
+}
 p {
   margin: 0;
 }
@@ -239,15 +243,22 @@ p {
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.3);
 }
-/* "All" neutral, as it stands for lines of all colours; the ground, "Names", "Fullscreen" and
-   the panels neutral, as they show none. */
+/* "All" neutral, as it stands for lines of all colours; the ground, "Names", "Fullscreen",
+   "Mouse aim" and the panels neutral, as they show none. */
 #menu input[name="ground"],
 #menu #trams,
 #menu #names-box,
 #menu #fullscreen-box,
+#menu #aim-box,
 #menu #points-box,
 #menu #dev-box {
   accent-color: #f1f5f9;
+}
+/* "Mouse aim" only where there is a mouse. */
+@media not (pointer: fine) {
+  #menu #aim {
+    display: none;
+  }
 }
 /* One grid for all entries, five columns: "Trams", "All", then the tram lines one by one,
    five in a row, each pair of box and number well apart from the next. The lines across all
