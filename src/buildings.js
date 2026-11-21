@@ -34,7 +34,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
 
   // Per number its bounding box in scene coordinates (min x, y, z, max x, y, z), and per
   // GRID-metre square of the ground ("column,row") the numbers whose boxes reach into it; worked
-  // out on the first hit(), not while loading.
+  // out when first needed.
   const GRID = 100;
   let boxes = null;
   const cells = new Map();
@@ -87,46 +87,71 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     return t0;
   };
 
-  // Per mesh, per number, { walls, roofs }: its steep triangles as [x0, z0, x1, z1, bottom, top]
-  // each (the two of its corners furthest apart seen from above and its height range), and those
-  // not upright as their corners [x, y, z, x, y, z, x, y, z] each (some steep ones are both).
-  // Made when first needed; hide() forgets those it hides, which are not looked up again.
-  const surfaces = new Map(); // mesh → Map(number → { walls, roofs })
-  const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
-  function surfacesOf(mesh) {
-    if (surfaces.has(mesh)) return surfaces.get(mesh);
+  // Per number { walls, roofs }: its steep triangles as [x0, z0, x1, z1, bottom, top] each (the
+  // two of its corners furthest apart seen from above and its height range), and those not
+  // upright as their corners [x, y, z, x, y, z, x, y, z] each (some steep ones are both). Made
+  // when first needed, from its triangles in its meshes (runsOf); hide() forgets those it hides.
+  const surfaces = new Map(); // number → { walls, roofs }
+  // Per mesh, per number, where its triangles are in the mesh's order: the runs of them as
+  // [from, to, from, to, ...] (offsets of their first corners; to: past the last). Made when first
+  // needed, so a number's triangles are found without going through the whole mesh again.
+  const runs = new Map(); // mesh → Map(number → runs)
+  function runsOf(mesh) {
+    if (runs.has(mesh)) return runs.get(mesh);
     const found = new Map();
     const { index, attributes } = mesh.geometry;
-    const { position, _building } = attributes;
-    const at = (i) => (index ? index.getX(i) : i);
-    const corners = [...Array(3)].map(() => new THREE.Vector3());
-    const normal = new THREE.Vector3();
-    mesh.updateWorldMatrix(true, false);
-    for (let t = 0; t < (index ?? position).count; t += 3) {
-      corners.forEach((c, k) =>
-        c.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
-      );
-      const [a, b, c] = corners;
-      const n = _building.getX(at(t));
-      if (!found.has(n)) found.set(n, { walls: [], roofs: [] });
-      const { walls, roofs } = found.get(n);
-      const up = Math.abs(THREE.Triangle.getNormal(a, b, c, normal).y);
-      if (up > 0.3) roofs.push(...a, ...b, ...c);
-      if (up > 0.7) continue; // flat
-      const [p, q] = [
-        [a, b],
-        [b, c],
-        [c, a],
-      ].reduce((far, pair) =>
-        Math.hypot(pair[0].x - pair[1].x, pair[0].z - pair[1].z) >
-        Math.hypot(far[0].x - far[1].x, far[0].z - far[1].z)
-          ? pair
-          : far,
-      );
-      walls.push(p.x, p.z, q.x, q.z, Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y));
+    const number = attributes._building;
+    const count = (index ?? number).count;
+    let [last, list] = [-1, null];
+    for (let t = 0; t < count; t += 3) {
+      const n = number.getX(index ? index.getX(t) : t);
+      if (n === last) continue;
+      list?.push(t);
+      if (!found.has(n)) found.set(n, []);
+      list = found.get(n);
+      list.push(t);
+      last = n;
     }
-    surfaces.set(mesh, found);
+    list?.push(count);
+    runs.set(mesh, found);
     return found;
+  }
+  const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+  const corners = [...Array(3)].map(() => new THREE.Vector3());
+  const normal = new THREE.Vector3();
+  function surfacesOf(n) {
+    if (surfaces.has(n)) return surfaces.get(n);
+    const [walls, roofs] = [[], []];
+    const [a, b, c] = corners;
+    for (const mesh of meshesOf[n]) {
+      const { index, attributes } = mesh.geometry;
+      const { position } = attributes;
+      const at = (i) => (index ? index.getX(i) : i);
+      const list = runsOf(mesh).get(n) ?? [];
+      mesh.updateWorldMatrix(true, false);
+      for (let r = 0; r < list.length; r += 2)
+        for (let t = list[r]; t < list[r + 1]; t += 3) {
+          corners.forEach((p, k) =>
+            p.fromBufferAttribute(position, at(t + k)).applyMatrix4(mesh.matrixWorld),
+          );
+          const up = Math.abs(THREE.Triangle.getNormal(a, b, c, normal).y);
+          if (up > 0.3) roofs.push(...a, ...b, ...c);
+          if (up > 0.7) continue; // flat
+          const [p, q] = [
+            [a, b],
+            [b, c],
+            [c, a],
+          ].reduce((far, pair) =>
+            Math.hypot(pair[0].x - pair[1].x, pair[0].z - pair[1].z) >
+            Math.hypot(far[0].x - far[1].x, far[0].z - far[1].z)
+              ? pair
+              : far,
+          );
+          walls.push(p.x, p.z, q.x, q.z, Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y));
+        }
+    }
+    surfaces.set(n, { walls, roofs });
+    return surfaces.get(n);
   }
 
   // The one shown in HIGHLIGHT (its number; -1 for none).
@@ -226,20 +251,18 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           for (const n of cells.get(`${x},${z}`) ?? []) {
             if ((n >= count && !bridges) || !meshesOf[n].length || enter(from, to, n) === Infinity)
               continue;
-            for (const mesh of meshesOf[n]) {
-              const list = surfacesOf(mesh).get(n)?.walls ?? [];
-              for (let i = 0; i < list.length; i += 6) {
-                const [ax, az, bx, bz] = [list[i], list[i + 1], list[i + 2], list[i + 3]];
-                if (
-                  list[i + 4] < from.y &&
-                  from.y < list[i + 5] &&
-                  side(ax, az, bx, bz, from.x, from.z) * side(ax, az, bx, bz, to.x, to.z) < 0 &&
-                  side(from.x, from.z, to.x, to.z, ax, az) *
-                    side(from.x, from.z, to.x, to.z, bx, bz) <
-                    0
-                )
-                  return true;
-              }
+            const list = surfacesOf(n).walls;
+            for (let i = 0; i < list.length; i += 6) {
+              const [ax, az, bx, bz] = [list[i], list[i + 1], list[i + 2], list[i + 3]];
+              if (
+                list[i + 4] < from.y &&
+                from.y < list[i + 5] &&
+                side(ax, az, bx, bz, from.x, from.z) * side(ax, az, bx, bz, to.x, to.z) < 0 &&
+                side(from.x, from.z, to.x, to.z, ax, az) *
+                  side(from.x, from.z, to.x, to.z, bx, bz) <
+                  0
+              )
+                return true;
             }
           }
       return false;
@@ -257,27 +280,24 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         const b = 6 * n;
         if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
         if (boxes[b + 4] <= above) continue;
-        for (const mesh of meshesOf[n]) {
-          const list = surfacesOf(mesh).get(n)?.roofs ?? [];
-          for (let i = 0; i < list.length; i += 9) {
-            const [ax, az, bx, bz, cx, cz] = [
-              list[i],
-              list[i + 2],
-              list[i + 3],
-              list[i + 5],
-              list[i + 6],
-              list[i + 8],
-            ];
-            const [ay, by, cy] = [list[i + 1], list[i + 4], list[i + 7]];
-            const d1 = side(ax, az, bx, bz, x, z);
-            const d2 = side(bx, bz, cx, cz, x, z);
-            const d3 = side(cx, cz, ax, az, x, z);
-            const sum = d1 + d2 + d3;
-            if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)))
-              continue;
-            const h = (ay * d2 + by * d3 + cy * d1) / sum; // barycentric
-            if (h <= y && h > best) best = h;
-          }
+        const list = surfacesOf(n).roofs;
+        for (let i = 0; i < list.length; i += 9) {
+          const [ax, az, bx, bz, cx, cz] = [
+            list[i],
+            list[i + 2],
+            list[i + 3],
+            list[i + 5],
+            list[i + 6],
+            list[i + 8],
+          ];
+          const [ay, by, cy] = [list[i + 1], list[i + 4], list[i + 7]];
+          const d1 = side(ax, az, bx, bz, x, z);
+          const d2 = side(bx, bz, cx, cz, x, z);
+          const d3 = side(cx, cz, ax, az, x, z);
+          const sum = d1 + d2 + d3;
+          if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
+          const h = (ay * d2 + by * d3 + cy * d1) / sum; // barycentric
+          if (h <= y && h > best) best = h;
         }
       }
       return best;
@@ -375,7 +395,6 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     hide(numbers) {
       const wanted = new Set(numbers);
       for (const mesh of meshesWith(wanted)) {
-        for (const n of wanted) surfaces.get(mesh)?.delete(n);
         const { position, _building } = mesh.geometry.attributes;
         const first = new Map(); // number → its first vertex in this mesh
         for (let i = 0; i < position.count; i++) {
@@ -387,7 +406,10 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         }
         position.needsUpdate = true;
       }
-      for (const n of wanted) if (meshesOf[n]) meshesOf[n] = [];
+      for (const n of wanted) {
+        surfaces.delete(n);
+        if (meshesOf[n]) meshesOf[n] = [];
+      }
     },
   };
 }

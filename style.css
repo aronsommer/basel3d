@@ -66,8 +66,8 @@ p {
   -webkit-user-select: none; /* Safari */
   user-select: none;
 }
-/* Right: the closed menu and the button to get off below it, each only an icon; the open menu
-   covers the button to get off. Left: the counter. All out of the notch and the rounded corners
+/* Right: the closed menu and the button to get off below it, each only an icon in a square, as
+   the steering buttons; the open menu covers the button to get off. Left: the counter. All out of the notch and the rounded corners
    (viewport-fit=cover in index.html). */
 #off,
 #menu,
@@ -78,7 +78,10 @@ p {
 }
 #off,
 #menu {
-  width: 48px;
+  width: 36px;
+}
+#off {
+  padding-inline: 10px;
 }
 /* Three lines for the menu, a cross to get off; 20px tall with their margins, as a line of
    text. */
@@ -201,12 +204,12 @@ p {
   display: block;
   box-sizing: border-box;
   margin: -8px -14px;
-  padding: 8px 14px;
+  padding: 8px 10px;
   text-align: center;
   cursor: pointer;
 }
 #menu[open] summary {
-  width: 48px;
+  width: 36px;
   margin-left: auto;
   margin-bottom: 0;
 }
