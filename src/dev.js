@@ -4,7 +4,8 @@
 // refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
 // and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
-// part hides and shows it, to see what it costs. All of it lives here, the menu entry in index.html
+// part hides and shows it, to see what it costs; at the bottom "Aerial" shows the aerial photo as
+// the ground, not ticked at first. All of it lives here, the menu entry in index.html
 // and the styles in style.css (#dev-box, #dev), so it can be taken out whole.
 import { copy } from "./copy.js";
 
@@ -12,8 +13,9 @@ const KEY = "basel3d.devPanel"; // "1" (on) or "0"
 const SAMPLE = 5;
 const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 
-// A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …].
-export function createDev(renderer, render, parts) {
+// A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
+// aerial(on): shows the aerial photo or the map again, its promise done when it does.
+export function createDev(renderer, render, parts, aerial) {
   const box = document.getElementById("dev-box");
   try {
     box.checked = localStorage.getItem(KEY) === "1";
@@ -43,6 +45,14 @@ export function createDev(renderer, render, parts) {
       for (const object of objects) object.visible = input.checked;
     });
     return input;
+  });
+  const photoLabel = add("label");
+  const photo = photoLabel.appendChild(element("input", { type: "checkbox" }));
+  photoLabel.append("Aerial");
+  photo.addEventListener("change", async () => {
+    photo.disabled = true; // until it is shown
+    await aerial(photo.checked);
+    photo.disabled = false;
   });
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.

@@ -155,13 +155,8 @@ async function groundTextures(paths, buffers) {
 
 // Load the buildings (tools/buildings.mjs), the bridges (tools/bridges.mjs), the terrain
 // (tools/terrain.mjs), the trees (tools/trees.mjs), the water mask (tools/map.mjs), the names
-// (tools/names.mjs) and the ground shown first: the one last chosen in this browser, else the
-// map.
-const GROUND_KEY = "basel3d.ground";
-let groundKind = "map";
-try {
-  if (localStorage.getItem(GROUND_KEY) === "photo") groundKind = "photo";
-} catch {} // storage blocked
+// (tools/names.mjs) and the map, the ground shown first.
+let groundKind = "map"; // or "photo" (showGround)
 // The buildings: basel.bin (tools/compact.mjs), or with ?glb in the address the model it was made
 // from, to compare.
 const CITY = new URLSearchParams(location.search).has("glb") ? "basel.glb" : "basel.bin";
@@ -191,7 +186,7 @@ const [
     "names.json",
     "walks.bin",
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
-    ...groundPaths(groundKind),
+    ...MAP_FILES,
   ],
   (percent) => (progress.textContent = `${percent}%`),
 );
@@ -225,18 +220,16 @@ function startMap([shapes, soft, railsFile]) {
   );
   ground.map = map.tiles;
 }
-if (groundKind === "map") startMap(groundBuffers);
+startMap(groundBuffers);
 const heights = Float32Array.from(unpackHeights(heightsBuffer, terrainInfo.nx), (cm) => cm / 100);
 const treePositions = new Uint16Array(treesBuffer);
 const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-const [glb, bridges, waterMask, photo] = await Promise.all([
+const [glb, bridges, waterMask] = await Promise.all([
   CITY === "basel.glb" && gltfLoader.parseAsync(cityBuffer, ""),
   gltfLoader.parseAsync(bridgesGlb, ""),
   new Promise((resolve, reject) => ktx2.parse(waterBuffer, resolve, reject)),
-  groundKind === "photo" && groundTextures(groundPaths("photo"), groundBuffers),
 ]);
-if (photo) ground.photo = photo;
 
 // Water on the ground wherever the mask (tools/map.mjs) is red: two blues with light patches,
 // carried downstream along the flow stored in the mask's green and blue, the same from every
@@ -411,40 +404,24 @@ function destroy(number) {
 }
 const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy);
 
-// At the top of the menu the ground, map or aerial photo, each loaded on first use (meanwhile its
-// percentage beside its name, and neither can be chosen). Only the shown textures stay in GPU
-// memory: the photo's are re-uploaded when shown again, the map's drawn again.
-const groundBoxes = [...document.querySelectorAll('#menu input[name="ground"]')];
-for (const box of groundBoxes) {
-  box.checked = box.value === groundKind;
-  box.addEventListener("change", async () => {
-    const kind = box.value;
-    for (const other of groundBoxes) other.disabled = true;
-    if (!ground[kind]) {
-      const name = box.nextElementSibling;
-      const text = name.textContent;
-      const paths = groundPaths(kind);
-      const buffers = await load(paths, (percent) => (name.textContent = `${text} ${percent}%`));
-      if (kind === "map") {
-        startMap(buffers);
-        map.changed = mapChanged;
-        addRails();
-      } else ground[kind] = await groundTextures(paths, buffers);
-      name.textContent = text;
-    } else if (kind === "map") map.show();
-    if (kind === "map") await map.ready;
-    for (const other of groundBoxes) other.disabled = false;
-    const before = groundKind;
-    groundKind = kind;
-    for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
-    for (const [name, deck] of deckMaps) deck.value = deckTexture(kind, name);
-    if (before === "map") map.hide();
-    else for (const texture of ground[before].values()) texture.dispose();
-    rails.visible = kind === "map";
-    try {
-      localStorage.setItem(GROUND_KEY, kind);
-    } catch {} // storage blocked
-  });
+// Shows the map or the aerial photo ("Aerial" in the Dev panel, src/dev.js) as the ground; the
+// photo is loaded on first use. Only the shown textures stay in GPU memory: the photo's are
+// re-uploaded when shown again, the map's drawn again.
+async function showGround(kind) {
+  if (kind === "map") {
+    map.show();
+    await map.ready;
+  } else if (!ground.photo) {
+    const paths = groundPaths("photo");
+    ground.photo = await groundTextures(paths, await load(paths, () => {}));
+  }
+  const before = groundKind;
+  groundKind = kind;
+  for (const mesh of terrain.children) mesh.material.map = ground[kind].get(mesh.name);
+  for (const [name, deck] of deckMaps) deck.value = deckTexture(kind, name);
+  if (before === "map") map.hide();
+  else for (const texture of ground[before].values()) texture.dispose();
+  rails.visible = kind === "map";
 }
 const tree = createTrees(treePositions, canopyTrees);
 scene.add(...tree.meshes);
@@ -3530,7 +3507,7 @@ if (!readView()) {
   orbit.target.set(537, heightAt(537, 99) + CENTRE, 99);
   camera.position.copy(orbit.target).add(new THREE.Vector3(-1500, 1400, 2200));
 }
-if (groundKind === "map") await map.ready;
+await map.ready;
 document.body.dataset.mode = "orbit";
 
 // While a tram line is shown, the scene but the trams is drawn in light grey under the check
@@ -3603,11 +3580,16 @@ render(false);
 for (const object of culled) object.frustumCulled = true;
 
 // Draws a frame, with the Dev panel (src/dev.js) while it is ticked.
-const drawFrame = createDev(renderer, render, [
-  ["Buildings", [buildings.scene, bridges.scene]],
-  ["Trees", tree.meshes],
-  ["Terrain", [terrain]],
-]);
+const drawFrame = createDev(
+  renderer,
+  render,
+  [
+    ["Buildings", [buildings.scene, bridges.scene]],
+    ["Trees", tree.meshes],
+    ["Terrain", [terrain]],
+  ],
+  (on) => showGround(on ? "photo" : "map"),
+);
 // Moves the view over the middle of scene points, looking the same way, out as far as shows them
 // all with FIT around them (as seen from above), but not nearer.
 const FIT = 1.2;

@@ -88,7 +88,11 @@ p {
   padding-inline: 10px;
 }
 /* Three lines for the menu, a cross to get off; 20px tall with their margins, as a line of
-   text. */
+   text. Open, the menu shows the same cross instead, to close it. */
+#menu:not([open]) summary path:last-child,
+#menu[open] summary path:first-child {
+  display: none;
+}
 #off svg,
 #menu summary svg {
   display: block;
@@ -213,9 +217,16 @@ p {
   cursor: pointer;
 }
 #menu[open] summary {
+  position: relative; /* over the entries beside it, so it can be tapped */
+  z-index: 1;
   width: 36px;
   margin-left: auto;
   margin-bottom: 0;
+}
+/* The entries start beside the icon: their first row (28px) in the middle of its height (36px),
+   so 32px higher than below it. */
+#menu[open] #entries {
+  margin-top: -32px;
 }
 #menu summary::-webkit-details-marker {
   display: none;
@@ -237,15 +248,14 @@ p {
   accent-color: #ff00ff;
   cursor: pointer;
 }
-/* The ground, the names, the lines and the panels apart from each other. */
+/* The settings, the names, the lines and the panels apart from each other. */
 #menu hr {
   margin: 4px 0;
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.3);
 }
-/* "All" neutral, as it stands for lines of all colours; the ground, "Names", "Fullscreen",
-   "Mouse aim" and the panels neutral, as they show none. */
-#menu input[name="ground"],
+/* "All" neutral, as it stands for lines of all colours; "Names", "Fullscreen", "Mouse aim" and
+   the panels neutral, as they show none. */
 #menu #trams,
 #menu #names-box,
 #menu #fullscreen-box,
@@ -254,7 +264,7 @@ p {
 #menu #dev-box {
   accent-color: #f1f5f9;
 }
-/* "Mouse aim" only where there is a mouse. */
+/* "Mouse aim" not where the steering buttons are for thumbs (#steer below, by the same rule). */
 @media not (pointer: fine) {
   #menu #aim {
     display: none;
@@ -276,9 +286,11 @@ p {
 #credits {
   grid-column: 1 / -1;
 }
-/* As tall as a row of boxes. */
+/* As tall as a row of boxes, apart from the rows above and below without lines: it sets itself
+   apart. */
 #reset {
   min-height: 28px;
+  margin: 4px 0;
 }
 /* Last rows, small: the link left, the version right; below them the credits. */
 #about,

@@ -42,14 +42,12 @@
     </div>
     <details id="menu">
       <summary aria-label="Menu">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3h14M1 8h14M1 13h14" /></svg>
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M1 3h14M1 8h14M1 13h14" />
+          <path d="M3 3l10 10M13 3 3 13" />
+        </svg>
       </summary>
       <div id="entries">
-        <div class="pairs">
-          <label><input type="radio" name="ground" value="map" /> <span>Map</span></label>
-          <label><input type="radio" name="ground" value="photo" /> <span>Aerial</span></label>
-        </div>
-        <hr />
         <div class="pairs">
           <label><input type="checkbox" id="names-box" /> Names</label>
           <label><input type="checkbox" id="fullscreen-box" /> Fullscreen</label>
@@ -71,9 +69,7 @@
           <label><input type="checkbox" id="points-box" /> Points</label>
           <label><input type="checkbox" id="dev-box" /> Dev</label>
         </div>
-        <hr />
         <button id="reset" title="Rebuild all that was blown up" disabled>Rebuild Basel</button>
-        <hr />
         <!-- The deploy workflow replaces this with the UTC time of the deploy. -->
         <div id="about">
           <a href="https://github.com/aronsommer/basel3d" target="_blank" rel="noopener">GitHub</a>
