@@ -28,6 +28,7 @@ import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createZoo } from "./zoo.js";
 import { createRega } from "./rega.js";
+import { createSky } from "./sky.js";
 import { createJet } from "./jet.js";
 import { createPeople, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
@@ -48,7 +49,7 @@ const TREE_FAR = 1500;
 // Metres from a terrain chunk beyond which it has only every TERRAIN_STEP-th height each way.
 const TERRAIN_DETAIL = 2000;
 const TERRAIN_STEP = 4;
-const SKY = 0xbfd8ea;
+const SKY = 0xbcdcf2; // at the horizon, and the fog's
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
 // Far from the camera, moving things grow so they can be seen from above: from BOOST_FROM metres
 // on, linearly up to BOOST_MAX times. Up close they have their real size. Vehicles on tracks and
@@ -62,18 +63,28 @@ const boost = (p) =>
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
-renderer.toneMapping = THREE.NeutralToneMapping; // keeps the aerial photo's colours
-renderer.toneMappingExposure = 1.15; // a bright, friendly day
+// Neutral tone mapping keeps the aerial photo's colours; on top, a little more saturation,
+// warmth and contrast for a crisp, sunny look. In every material's shader, so no extra pass.
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
+  "vec3 CustomToneMapping( vec3 color ) { return color; }",
+  /* glsl */ `vec3 CustomToneMapping( vec3 color ) {
+    color = NeutralToneMapping( color );
+    float l = dot( color, vec3( 0.2126, 0.7152, 0.0722 ) );
+    color = clamp( mix( vec3( l ), color, 1.04 ) * vec3( 1.015, 1.0, 0.98 ), 0.0, 1.0 );
+    return mix( color, color * color * ( 3.0 - 2.0 * color ), 0.05 );
+  }`,
+);
+renderer.toneMapping = THREE.CustomToneMapping;
+renderer.toneMappingExposure = 1.2; // a bright, friendly day
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 3000, 9000);
 // Strong sky light keeps the sides facing away from the sun bright; the sun is warm.
-scene.add(new THREE.HemisphereLight(0xdfeaf5, 0xb5ab95, 2));
-const sun = new THREE.DirectionalLight(0xffe9c8, 2.6);
+scene.add(new THREE.HemisphereLight(0xe2eaf2, 0xbaa88c, 2));
+const sun = new THREE.DirectionalLight(0xffdfb4, 2.7);
 sun.position.set(-1, 1, 1); // from the south-west
-scene.add(sun);
+scene.add(sun, createSky(SKY, sun.position.clone().normalize()));
 
 // Nothing beyond the fog's end is visible anyway.
 const FOV = 55; // degrees, top to bottom; FPV_FOV through a drone's camera, which is wide
