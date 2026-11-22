@@ -1,7 +1,5 @@
 // Writes what src/pack.js reads: whole numbers packed into bytes, seven bits each and the eighth
 // set while more follow.
-import { guess } from "../src/pack.js";
-
 export class Bytes {
   list = [];
   number(n) {
@@ -25,13 +23,5 @@ export function packPoints(points) {
     step[i % 3] = tenths - last[i % 3];
     last[i % 3] = tenths;
   });
-  return Buffer.from(bytes.list);
-}
-
-// Heights (Int16 in cm, nx per row) for unpackHeights.
-export function packHeights(heights, nx) {
-  const bytes = new Bytes();
-  bytes.number(heights.length);
-  heights.forEach((v, i) => bytes.signed(v - guess(heights, i, nx)));
   return Buffer.from(bytes.list);
 }

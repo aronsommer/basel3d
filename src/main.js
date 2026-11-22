@@ -13,7 +13,8 @@ import { createBuildings } from "./buildings.js";
 import { createCity } from "./city.js";
 import { createGround } from "./ground.js";
 import { createRails } from "./rails.js";
-import { unpackHeights, unpackPoints } from "./pack.js";
+import { unpackPoints } from "./pack.js";
+import { readTerrain } from "./terrain.js";
 import { PASSAGE } from "./passage.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
@@ -55,9 +56,9 @@ const FOLLOW = 4; // per second: how fast the view's centre follows the terrain'
 const TREE_DETAIL = 300; // metres from a chunk within which its trees get a trunk and a rounder crown
 // Metres from a chunk beyond which its trees are only a three-sided cone, and fewer further away.
 const TREE_FAR = 1500;
-// Metres from a terrain chunk beyond which it has only every TERRAIN_STEP-th height each way.
+// Metres from a terrain chunk beyond which it is a grid of heights TERRAIN_COARSE metres apart.
 const TERRAIN_DETAIL = 2000;
-const TERRAIN_STEP = 4;
+const TERRAIN_COARSE = 40;
 const SKY = 0xbcdcf2; // at the horizon, and the fog's
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
 // Far from the camera, moving things grow so they can be seen from above: from BOOST_FROM metres
@@ -184,7 +185,7 @@ const CITY = new URLSearchParams(location.search).has("glb") ? "basel.glb" : "ba
 const progress = document.getElementById("progress");
 const [
   terrainJson,
-  heightsBuffer,
+  terrainBuffer,
   cityBuffer,
   bridgesGlb,
   treesBuffer,
@@ -197,7 +198,7 @@ const [
 ] = await load(
   [
     "terrain/terrain.json",
-    "terrain/heights.bin",
+    "terrain/terrain.bin",
     CITY,
     "bridges.glb",
     "trees.bin",
@@ -242,7 +243,9 @@ function startMap([shapes, soft, railsFile]) {
   ground.map = map.tiles;
 }
 startMap(groundBuffers);
-const heights = Float32Array.from(unpackHeights(heightsBuffer, terrainInfo.nx), (cm) => cm / 100);
+// The terrain (src/terrain.js): its tiles' meshes and its height at a scene position.
+const land = readTerrain(terrainBuffer, terrainInfo);
+const terrainAt = land.heightAt;
 // The passage (src/passage.js) in scene metres, whose ground (passageGround) replaces the terrain
 // (addWater, createPassage): its first end's middle a, its direction (ux, uz) and length, the
 // terrain's heights y0 and y1 at its ends, per bank point [along, metres from the middle towards
@@ -259,8 +262,8 @@ const passage = (() => {
     const [t, s] = local(...fromWGS84(lat, lon));
     return [t, Math.max(-s, half)];
   });
-  const [y0, y1] = [a, b].map(([x, z]) => gridAt(x, z));
-  const river = gridAt(...point(length / 2, -PASSAGE.reach));
+  const [y0, y1] = [a, b].map(([x, z]) => terrainAt(x, z));
+  const river = terrainAt(...point(length / 2, -PASSAGE.reach));
   return { a, ux, uz, length, half, bank, y0, y1, river, local, point };
 })();
 const treePositions = new Uint16Array(treesBuffer);
@@ -972,7 +975,7 @@ const bridgeDecks = () =>
 scene.add(...createPassage());
 // The map's rails (src/rails.js), on the ground and on the decks, but those of destroyed bridges.
 function addRails() {
-  rails = createRails(tracks, terrainInfo, heights, (x, z) =>
+  rails = createRails(tracks, terrainInfo, terrainAt, (x, z) =>
     Math.max(-Infinity, ...[bridgeDecks(), ...brokenDecks].flatMap((deck) => deck.heights(x, z))),
   );
   for (const deck of brokenDecks) rails.cut(deck);
@@ -1562,12 +1565,7 @@ scene.add(...bike.objects);
 // "PUMA" mown into the grass (src/lawn.js), reading from WGS84 47.571836, 7.600411 to 47.572127,
 // 7.600549.
 scene.add(
-  createLawn(
-    "PUMA",
-    [fromWGS84(47.571836, 7.600411), fromWGS84(47.572127, 7.600549)],
-    terrainInfo,
-    heights,
-  ),
+  createLawn("PUMA", [fromWGS84(47.571836, 7.600411), fromWGS84(47.572127, 7.600549)], terrainAt),
 );
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 // The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west.
@@ -3099,55 +3097,82 @@ function deckShader(shader) {
     );
 }
 
-// One mesh per chunk, named column_row like its ground texture.
-function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
-  water.waterArea.value.set(x0, z0, (nx - 1) * cell, (nz - 1) * cell);
+// One mesh per tile, named column_row like its ground texture: the terrain's own (src/terrain.js),
+// and a grid of heights TERRAIN_COARSE metres apart for when it is far (updateTerrain).
+function createTerrain({ x0, z0, chunk, columns, rows }) {
+  water.waterArea.value.set(x0, z0, columns * chunk, rows * chunk);
   const group = new THREE.Group();
-  const segments = chunk / cell;
-  // A chunk with every step-th height. A coarse one gets a skirt hanging SKIRT metres down from
-  // its edges, both ways round, so no gaps show where it meets a finer one.
+  // A tile's geometry from its points (x, z on the tile from its north-west corner, flat, and their
+  // heights) and triangles, with a skirt hanging SKIRT metres down from its edge (ring: the points
+  // there, once round), both ways round, so no gaps show where it meets another tile.
   const SKIRT = 50;
-  function chunkGeometry(ix, iz, step) {
-    const n = segments / step;
-    const geometry = new THREE.PlaneGeometry(chunk, chunk, n, n);
-    geometry.rotateX(-Math.PI / 2); // rows now run north → south, like heights
-    geometry.translate(x0 + (ix + 0.5) * chunk, 0, z0 + (iz + 0.5) * chunk);
-    const position = geometry.attributes.position;
-    for (let row = 0, i = 0; row <= n; row++)
-      for (let col = 0; col <= n; col++, i++)
-        position.setY(i, heights[(iz * segments + row * step) * nx + ix * segments + col * step]);
-    geometry.computeVertexNormals();
-    geometry.computeBoundingBox();
-    if (step === 1) return geometry;
-    const ring = []; // the edge's vertices, once round
-    for (let col = 0; col < n; col++) ring.push(col);
-    for (let row = 0; row < n; row++) ring.push(row * (n + 1) + n);
-    for (let col = n; col > 0; col--) ring.push(n * (n + 1) + col);
-    for (let row = n; row > 0; row--) ring.push(row * (n + 1));
-    const count = position.count;
-    for (const name of ["position", "normal", "uv"]) {
-      const { array, itemSize } = geometry.attributes[name];
-      const grown = new Float32Array(array.length + ring.length * itemSize);
-      grown.set(array);
-      ring.forEach((v, k) => {
-        for (let j = 0; j < itemSize; j++)
-          grown[(count + k) * itemSize + j] =
-            array[v * itemSize + j] - (name === "position" && j === 1 ? SKIRT : 0);
-      });
-      geometry.setAttribute(name, new THREE.BufferAttribute(grown, itemSize));
+  function tileGeometry(ix, iz, places, heights, index, ring) {
+    const [left, top] = [x0 + ix * chunk, z0 + iz * chunk];
+    const count = heights.length;
+    const position = new Float32Array((count + ring.length) * 3);
+    const uv = new Float32Array((count + ring.length) * 2);
+    for (let i = 0; i < count; i++) {
+      position[3 * i] = left + places[2 * i];
+      position[3 * i + 1] = heights[i];
+      position[3 * i + 2] = top + places[2 * i + 1];
+      uv[2 * i] = places[2 * i] / chunk;
+      uv[2 * i + 1] = 1 - places[2 * i + 1] / chunk;
     }
-    const index = [...geometry.index.array];
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(position, 3));
+    geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    geometry.computeVertexNormals();
+    const normal = geometry.attributes.normal.array;
+    const all = new Uint32Array(index.length + ring.length * 12);
+    all.set(index);
     ring.forEach((a, k) => {
+      const c = count + k;
+      position.set([position[3 * a], position[3 * a + 1] - SKIRT, position[3 * a + 2]], 3 * c);
+      uv.set(uv.subarray(2 * a, 2 * a + 2), 2 * c);
+      normal.set(normal.subarray(3 * a, 3 * a + 3), 3 * c);
       const b = ring[(k + 1) % ring.length];
-      const [c, d] = [count + k, count + ((k + 1) % ring.length)];
-      index.push(a, b, c, b, d, c, a, c, b, b, c, d);
+      const d = count + ((k + 1) % ring.length);
+      all.set([a, b, c, b, d, c, a, c, b, b, c, d], index.length + 12 * k);
     });
-    geometry.setIndex(index);
+    geometry.setIndex(new THREE.BufferAttribute(all, 1));
+    geometry.computeBoundingBox();
     return geometry;
   }
-  for (let iz = 0; iz < (nz - 1) / segments; iz++)
-    for (let ix = 0; ix < (nx - 1) / segments; ix++) {
-      const fine = chunkGeometry(ix, iz, 1);
+  const side = land.step;
+  const GRID_SIDE = chunk / side + 1; // points a side of the terrain's own grid
+  // The far grid's points, triangles and edge, n cells a side.
+  const n = chunk / TERRAIN_COARSE;
+  const places = new Float32Array((n + 1) * (n + 1) * 2);
+  for (let k = 0; k < (n + 1) * (n + 1); k++)
+    places.set([(k % (n + 1)) * TERRAIN_COARSE, Math.floor(k / (n + 1)) * TERRAIN_COARSE], 2 * k);
+  const far = new Uint32Array(n * n * 6);
+  for (let row = 0; row < n; row++)
+    for (let col = 0; col < n; col++) {
+      const k = row * (n + 1) + col;
+      far.set([k, k + n + 1, k + 1, k + 1, k + n + 1, k + n + 2], 6 * (row * n + col));
+    }
+  const farRing = [];
+  for (let k = 0; k < 4 * n; k++) {
+    const s = k % n;
+    farRing.push([s, n + s * (n + 1), n * (n + 1) + n - s, (n - s) * (n + 1)][(k / n) | 0]);
+  }
+  for (let iz = 0; iz < rows; iz++)
+    for (let ix = 0; ix < columns; ix++) {
+      const { keys, heights, index, ring } = land.tiles[iz * columns + ix];
+      const grid = new Float32Array(keys.length * 2);
+      keys.forEach((key, i) => {
+        grid[2 * i] = (key % GRID_SIDE) * side;
+        grid[2 * i + 1] = Math.floor(key / GRID_SIDE) * side;
+      });
+      const fine = tileGeometry(ix, iz, grid, heights, index, ring);
+      const farHeights = new Float32Array(places.length / 2);
+      for (let k = 0; k < farHeights.length; k++)
+        farHeights[k] = terrainAt(
+          x0 + ix * chunk + places[2 * k],
+          z0 + iz * chunk + places[2 * k + 1],
+        );
+      const coarse = tileGeometry(ix, iz, places, farHeights, far, farRing);
       const material = new THREE.MeshLambertMaterial({
         map: ground[groundKind].get(`${ix}_${iz}`),
       });
@@ -3155,7 +3180,7 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
       material.customProgramCacheKey = () => "water"; // all chunks share one program
       const mesh = new THREE.Mesh(fine, material);
       mesh.name = `${ix}_${iz}`;
-      mesh.userData.levels = [fine, chunkGeometry(ix, iz, TERRAIN_STEP)]; // for updateTerrain
+      mesh.userData.levels = [fine, coarse]; // for updateTerrain
       group.add(mesh);
     }
   return group;
@@ -3180,7 +3205,7 @@ function createPassage() {
       const s = half - ((half + reach + UNDER) * j) / ns;
       const [x, z] = point(t, s);
       const inside = t >= 0 && t <= length && s >= -reach;
-      position.push(x, inside ? passageGround(t, s) : gridAt(x, z) - DROP, z);
+      position.push(x, inside ? passageGround(t, s) : terrainAt(x, z) - DROP, z);
       uv.push((x - x0) / chunk - ix, 1 - ((z - z0) / chunk - iz));
     }
   const index = [];
@@ -3201,7 +3226,7 @@ function createPassage() {
   for (let i = 1; i <= steps; i++) {
     const [[xa, za], [xb, zb]] = [i - 1, i].map((k) => point((length * k) / steps, half));
     const [ya, yb] = [i - 1, i].map((k) => passageGround((length * k) / steps, half));
-    const [ta, tb] = [gridAt(xa, za), gridAt(xb, zb)];
+    const [ta, tb] = [terrainAt(xa, za), terrainAt(xb, zb)];
     walls.push(xa, ya, za, xb, yb, zb, xa, ta, za, xb, yb, zb, xb, tb, zb, xa, ta, za);
   }
   const wall = new THREE.BufferGeometry();
@@ -3281,22 +3306,22 @@ function updateTerrain() {
 // Metres along a line (from a point along a unit direction) until it leaves the terrain's area,
 // seen from above; 0 from outside it.
 function within(from, direction) {
-  const { x0, z0, cell, nx, nz } = terrainInfo;
+  const { x0, z0, chunk, columns, rows } = terrainInfo;
   const edge = (at, d, low, high) => (d > 0 ? (high - at) / d : d < 0 ? (low - at) / d : Infinity);
   return Math.max(
     0,
     Math.min(
-      edge(from.x, direction.x, x0, x0 + (nx - 1) * cell),
-      edge(from.z, direction.z, z0, z0 + (nz - 1) * cell),
+      edge(from.x, direction.x, x0, x0 + columns * chunk),
+      edge(from.z, direction.z, z0, z0 + rows * chunk),
     ),
   );
 }
 
 // A scene position moved into the terrain's area, as [x, z].
 function intoArea(x, z) {
-  const { x0, z0, cell, nx, nz } = terrainInfo;
+  const { x0, z0, chunk, columns, rows } = terrainInfo;
   const { clamp } = THREE.MathUtils;
-  return [clamp(x, x0, x0 + (nx - 1) * cell), clamp(z, z0, z0 + (nz - 1) * cell)];
+  return [clamp(x, x0, x0 + columns * chunk), clamp(z, z0, z0 + rows * chunk)];
 }
 
 // The ground's height at a scene position: the passage's (passageGround) in its area, else the
@@ -3305,7 +3330,7 @@ function heightAt(x, z) {
   const [t, s] = passage.local(x, z);
   return t >= 0 && t <= passage.length && s <= passage.half && s >= -PASSAGE.reach
     ? passageGround(t, s)
-    : gridAt(x, z);
+    : terrainAt(x, z);
 }
 
 // The passage's ground at [along, across] (passage.local): level from the street's wall to the
@@ -3324,23 +3349,7 @@ function passageGround(t, s) {
   const y =
     level + (river - level) * Math.min(Math.max((-s - edge) / (PASSAGE.water - edge), 0), 1);
   const blend = Math.max(0, 1 - Math.min(t, length - t, s + PASSAGE.reach) / PASSAGE.blend);
-  return blend ? y + (gridAt(...point(t, s)) - y) * blend : y;
-}
-
-// The terrain's height at a scene position as its mesh has it: each cell's two triangles meet
-// along the line from its south-west to its north-east corner.
-function gridAt(x, z) {
-  const { x0, z0, cell, nx, nz } = terrainInfo;
-  const fx = THREE.MathUtils.clamp((x - x0) / cell, 0, nx - 1.001);
-  const fz = THREE.MathUtils.clamp((z - z0) / cell, 0, nz - 1.001);
-  const tx = fx % 1;
-  const tz = fz % 1;
-  const i = Math.floor(fz) * nx + Math.floor(fx);
-  const ne = heights[i + 1];
-  const sw = heights[i + nx];
-  if (tx + tz <= 1) return heights[i] + (ne - heights[i]) * tx + (sw - heights[i]) * tz;
-  const se = heights[i + nx + 1];
-  return se + (sw - se) * (1 - tx) + (ne - se) * (1 - tz);
+  return blend ? y + (terrainAt(...point(t, s)) - y) * blend : y;
 }
 
 // Flies the craft piloted, if any, on by dt seconds and returns it; but where its underside or

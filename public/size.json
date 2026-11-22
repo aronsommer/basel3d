@@ -1,11 +1,11 @@
 {
  "basel.bin": {
-  "size": 15000417,
-  "hash": "7c5042a1"
+  "size": 15001083,
+  "hash": "69e8d01e"
  },
  "basel.glb": {
-  "size": 19310564,
-  "hash": "523a171f"
+  "size": 19315064,
+  "hash": "ce57ff62"
  },
  "bridges.glb": {
   "size": 304100,
@@ -16,8 +16,8 @@
   "hash": "0be08548"
  },
  "cars.bin": {
-  "size": 269342,
-  "hash": "25ea855e"
+  "size": 269341,
+  "hash": "5310e0a3"
  },
  "cars.json": {
   "size": 13330,
@@ -297,19 +297,19 @@
  },
  "ships.bin": {
   "size": 30672,
-  "hash": "8463425c"
+  "hash": "b156a9a5"
  },
- "terrain/heights.bin": {
-  "size": 740152,
-  "hash": "40175ea8"
+ "terrain/terrain.bin": {
+  "size": 749842,
+  "hash": "a551777d"
  },
  "terrain/terrain.json": {
-  "size": 64,
-  "hash": "3fcf3721"
+  "size": 57,
+  "hash": "57d51411"
  },
  "trains.bin": {
   "size": 142087,
-  "hash": "15d3f962"
+  "hash": "832641c1"
  },
  "trains.json": {
   "size": 2606,
@@ -317,7 +317,7 @@
  },
  "trams.bin": {
   "size": 141031,
-  "hash": "98d94b4f"
+  "hash": "f16b013e"
  },
  "trams.json": {
   "size": 1469,

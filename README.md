@@ -29,7 +29,8 @@ basel3d/
 ├── src/buildings.js   buildings and bridges as single objects: picking, hits, highlight, hide
 ├── src/city.js        the buildings' meshes from basel.bin
 ├── src/cityfile.js    reads basel.bin
-├── src/pack.js        reads the packed numbers of heights.bin, the routes and basel.bin
+├── src/pack.js        reads the packed numbers of the routes and basel.bin
+├── src/terrain.js     reads terrain.bin: the terrain's meshes and its height at a point, for the viewer and the converters
 ├── src/ground.js      the map as the terrain's textures: each tile as sharp as its distance needs and finer squares round the view, drawn by the worker
 ├── src/ground-worker.js  draws the map's squares off the page's thread
 ├── src/groundmap.js   draws a square of the map from map.bin, soft.bin and the buildings' roofs (the shadows round them)
@@ -44,7 +45,7 @@ basel3d/
 │   ├── basel.glb      buildings (for Unity/Blender; the viewer loads it only with ?glb, to compare)
 │   ├── basel.bin      the same buildings packed smaller, loaded by the viewer
 │   ├── bridges.glb    bridges in 3D (canton Basel-Stadt + swissTLM3D, tools/bridges.mjs)
-│   ├── terrain/       terrain: heights.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
+│   ├── terrain/       terrain: terrain.bin, terrain.json (swissALTI3D, tools/terrain.mjs)
 │   ├── ground/        the ground, shown per 1 km tile (named column_row)
 │   │   ├── map.bin    the map's shapes (OpenStreetMap, tools/map.mjs), drawn by the viewer, shown at start unless the aerial photo was chosen
 │   │   ├── soft.bin   what the aerial photo adds to the map, coarsely: lawn in gardens, the green areas' patches (tools/map.mjs)
@@ -79,7 +80,7 @@ basel3d/
 │   ├── walks.mjs      OSM street network → loops around its blocks in the inner city → walks.bin
 │   ├── names.mjs      OSM places + landmarks chosen by OSM id → names.json
 │   ├── heights.mjs    terrain height at a point, for the converters
-│   ├── pack.mjs       packs whole numbers into few bytes, for heights.bin, the routes and basel.bin (read by src/pack.js)
+│   ├── pack.mjs       packs whole numbers into few bytes, for terrain.bin, the routes and basel.bin (read by src/pack.js)
 │   └── size.mjs       → size.json, runs after every converter
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
@@ -107,7 +108,7 @@ Run out of order, a script stops with an error where a file it reads is missing 
 **Which data.** OpenStreetMap (cached in `data/osm.json`, `osm-churches.json`, `osm-trams.json`, `osm-trains.json`, `osm-names.json`), the aerial photo, the swissTLM3D layers and the canton's bridge models are downloaded once into `data/` and then reused, so they stay as they are until deleted. swissALTI3D and swissBUILDINGS3D are looked up in the STAC catalogue on every run: when swisstopo publishes a newer version of a tile, it is downloaded and used. Downloaded anew, everything comes in its current state, so the result can differ a little from the one in the repo. `data/reference/buildings.json` is not shared; without it the buildings take their roof colours from the aerial photo and guessed wall colours (see 2.).
 
 1. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
-   - swissALTI3D from the STAC catalogue, as a grid with 10 m spacing (in cm, packed by `tools/pack.mjs`: each height as its difference from what its neighbours suggest),
+   - swissALTI3D from the STAC catalogue, per 1 km tile as a mesh at most 1 m off it (about 750,000 triangles in all, `terrain.bin`, 0.75 MB): on a grid of 513 points a side (about 2 m apart), right-angled triangles halved along their longest side only where the ground needs it (as in mapbox/martini), stored as one bit per triangle and each new point's height in cm as how it differs from the middle of the side it halves. So quay walls, bridge ends, embankments and the roads under bridges keep their shape. The viewer draws it within 2 km of the camera, further away a grid of heights 40 m apart. Where swissALTI3D has no data (outside Switzerland) a 10 m grid filled from its edge stands in,
    - SWISSIMAGE from the WMTS service `wmts.geo.admin.ch` at 1 m per pixel, cut into 1 km tiles and stored as GPU-compressed KTX2 textures (ETC1S, 1024 px). This takes about 6 minutes.
 2. **Buildings:** `npm run buildings` takes swissBUILDINGS3D 3.0 as CityGML from the STAC catalogue `data.geo.admin.ch`, the newest version per map sheet (about 480 MB). The script:
    - takes only roof and wall surfaces,
@@ -132,7 +133,7 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js))
   - Each path is a closed loop on which the vehicles run endlessly. They follow the network of OSM ways (one-way roads and roundabouts only in their direction), never turn back, and turn from one way segment to the next by at most 60° (trams, shallow switches), 45° (trains) or 120° (cars).
   - Trams and trains run their real lines from OpenStreetMap (raw data in `data/osm-trams.json`, `data/osm-trains.json`): per line the longest pair of relations there and back that can be closed, in the order of the relation. At the end of the line, and where the line leaves the area and comes back in, it continues over the network (turning loop); where OSM has none, straight across a gap of up to 100 m. Lines whose trams run on as another line (`through` in `KINDS`: 1 and 14 at Dreirosenbrücke, 15 and 16 at Bruderholz) share one loop, and the number changes at their shared terminal. The tram line colours are those of the TNW network map (`colours` in `KINDS`), the train line colours those of OSM. The tracks include all ways of the relations, also tracks under construction. All 13 tram lines run, in 11 loops; of the train lines, 13 that cannot be closed this way are dropped, 19 run.
   - Cars on circuits along motorways down to neighbourhood connector roads from `data/osm.json`, 1.8 m right of the way's centre. Each starts on a road not yet driven and continues at random, mostly straight ahead and preferably onto roads not yet driven, until it comes back to a stretch already driven; from there it is a loop (at least 1.5 km). As many circuits as needed until 90% of the roads are driven (at most 3000 attempts; today about 70%).
-  - Height: the terrain; on bridges the 3D bridges, if their deck differs from the previous height by at most 3 m; over OSM bridges without a matching 3D deck straight from end to end; in tunnels of 100 m or more 20 m below the terrain (shorter underpasses, which the 10 m terrain fills in, and passages through buildings at road level); smoothed. Each way decides bridge and tunnel by its own OSM tags (so the road on the Dreirosenbrücke stays on top and the motorway in the box below). Only for tracks does a bridge track up to 5 m beside also count, because OSM does not mark every track on a bridge.
+  - Height: the terrain; on bridges the 3D bridges, if their deck differs from the previous height by at most 3 m; over OSM bridges without a matching 3D deck straight from end to end; in tunnels of 100 m or more 20 m below the terrain (shorter underpasses, as the terrain has the ground under bridges, and passages through buildings at road level); smoothed. Each way decides bridge and tunnel by its own OSM tags (so the road on the Dreirosenbrücke stays on top and the motorway in the box below). Only for tracks does a bridge track up to 5 m beside also count, because OSM does not mark every track on a bridge.
   - Vehicles (values in `KINDS`): trams 4 cars of 8 m each, BVB green, BLT yellow. Trains 5 cars, white with a red band, a quarter of them blue goods trains (green and yellow only for trams). Cars in strong colours (easy to see), 15% lorries. Evenly spread, one tram per 1.5 km of loop, one train per 5 km, one car per 100 m: on circuits per 100 m of their share of the roads (a road shared by three circuits counts one third for each), so shared roads are not more crowded. Each car of a vehicle follows the path on its own.
   - Spacing rule: a vehicle stops if another one stands shortly ahead on its own path, checked in short steps up to 25 m (tram), 60 m (train), 9 m (car) ahead, so nothing runs into each other at switches and junctions either. Oncoming traffic on the other side does not count. Trams and trains have priority: they wait only for trams and trains, cars for all. At the start none is placed on another. If vehicles wait for each other in a ring, the first one moves on.
   - Vehicles more than 1.5 km from the camera check the spacing only every third frame, which saves computing time.

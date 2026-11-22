@@ -52,9 +52,8 @@ const LETTERS = {
 };
 
 // word (of LETTERS) written from one point to the other ([x, z] each), reading along, its top on
-// the left seen from above; on the terrain (its x0, z0, cell, nx, nz and heights, row by row from
-// north). A mesh.
-export function createLawn(word, [from, to], { x0, z0, cell, nx, nz }, heights) {
+// the left seen from above; on the ground (ground(x, z): its height). A mesh.
+export function createLawn(word, [from, to], ground) {
   const [dx, dz] = [to[0] - from[0], to[1] - from[1]];
   const length = Math.hypot(dx, dz);
   const across = (length * HEIGHT) / WIDTH;
@@ -113,28 +112,21 @@ export function createLawn(word, [from, to], { x0, z0, cell, nx, nz }, heights) 
   brush.clearRect(0, 0, EDGE, HEIGHT);
   brush.clearRect(WIDTH - EDGE, 0, EDGE, HEIGHT);
 
-  // The terrain's own cells under it, so it lies exactly on the ground: their corners row by row
-  // from north, each cell's two triangles as in the terrain's mesh, each corner where it is on the
-  // drawing.
+  // A grid of points CELL metres apart on the ground under it, each where it is on the drawing.
+  const CELL = 2;
   const [ax, az] = [dx / length, dz / length]; // along; the top is towards az, -ax
   const [mx, mz] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-  const reach = Math.hypot(length, across) / 2;
-  const span = (m, origin, n) => [
-    Math.max(0, Math.floor((m - reach - origin) / cell)),
-    Math.min(n - 1, Math.ceil((m + reach - origin) / cell)),
-  ];
-  const [[c0, c1], [r0, r1]] = [span(mx, x0, nx), span(mz, z0, nz)];
+  const n = Math.ceil(Math.hypot(length, across) / CELL); // cells a side
   const [position, uv, index] = [[], [], []];
-  const cols = c1 - c0 + 1;
-  for (let row = r0; row <= r1; row++)
-    for (let col = c0; col <= c1; col++) {
-      const [x, z] = [x0 + col * cell, z0 + row * cell];
-      position.push(x, heights[row * nx + col], z);
+  for (let row = 0; row <= n; row++)
+    for (let col = 0; col <= n; col++) {
+      const [x, z] = [mx + (col - n / 2) * CELL, mz + (row - n / 2) * CELL];
+      position.push(x, ground(x, z), z);
       const [rx, rz] = [x - mx, z - mz];
       uv.push(0.5 + (rx * ax + rz * az) / length, 0.5 + (rx * az - rz * ax) / across);
-      if (row > r0 && col > c0) {
-        const b = (row - r0) * cols + col - c0; // south-east
-        index.push(b - cols - 1, b - 1, b - cols, b - 1, b, b - cols);
+      if (row && col) {
+        const b = row * (n + 1) + col; // south-east
+        index.push(b - n - 2, b - 1, b - n - 1, b - 1, b, b - n - 1);
       }
     }
   const geometry = new THREE.BufferGeometry()

@@ -4,31 +4,18 @@
 import * as THREE from "three";
 import { Packed } from "./pack.js";
 
-const STEP = 5; // metres between a strip's points at most, so it follows the ground
+const STEP = 2; // metres between a strip's points at most, so it follows the ground's grid
 const LIFT = 0.04; // metres above the ground
 // Per kind (tram, railway): metres from a track's middle to a rail's and to the strip's edge.
 const GAUGE = [0.5, 0.7175];
 const EDGE = [0.75, 0.95];
 const HEAD = 0.12; // metres a rail is wide, wider than a real one, to show from further
 
-// buffer: the file; the terrain's x0, z0, chunk, cell, nx, nz and its heights (row by row from
-// north); deck(x, z): the height of the highest bridge deck there, -Infinity if none.
+// buffer: the file; the terrain's x0, z0 and chunk; ground(x, z): the terrain's height as its
+// mesh has it; deck(x, z): the height of the highest bridge deck there, -Infinity if none.
 // Gives a group of one mesh per terrain tile ("column_row") with the tracks starting on it, and
 // cut(deck): takes the rails off a bridge's deck (deckOf in src/main.js) for good.
-export function createRails(buffer, { x0, z0, chunk, cell, nx, nz }, heights, deck) {
-  // The terrain's height as its mesh has it: each cell's two triangles meet along the line from
-  // its south-west to its north-east corner.
-  const ground = (x, z) => {
-    const fx = Math.min(Math.max((x - x0) / cell, 0), nx - 1.001);
-    const fz = Math.min(Math.max((z - z0) / cell, 0), nz - 1.001);
-    const [tx, tz] = [fx % 1, fz % 1];
-    const i = Math.floor(fz) * nx + Math.floor(fx);
-    const [nw, ne, sw, se] = [heights[i], heights[i + 1], heights[i + nx], heights[i + nx + 1]];
-    return tx + tz <= 1
-      ? nw + (ne - nw) * tx + (sw - nw) * tz
-      : se + (sw - se) * (1 - tx) + (ne - se) * (1 - tz);
-  };
-
+export function createRails(buffer, { x0, z0, chunk }, ground, deck) {
   const packed = new Packed(new Uint8Array(buffer));
   // Per tile: position; track: per vertex the metres across from the track's middle and its
   // kind; index.

@@ -12,13 +12,13 @@ const SQUARES = [64, 128, 256, 512];
 const SETTLE = [300, 150, 0]; // ms a square must stay wanted before it is drawn, the finest first
 
 // files: { map, soft, city } (src/groundmap.js; map and soft are handed over); the terrain's
-// x0, z0, chunk, cell, nx, nz; script: the worker's address; squares: { maps, rects, deckMaps,
+// x0, z0, chunk, columns, rows; script: the worker's address; squares: { maps, rects, deckMaps,
 // deckRects }, three uniforms each for the squares' textures and where they lie (x, z of the
 // north-west corner, metres across, 1 if shown), the finest first, and the same for the decks.
 // Gives { tiles, decks: the textures by tile name ("column_row"; decks only where there are
 // some), ready: a promise until every tile is drawn, changed: set it to be called with a tile's
 // name when its textures were replaced, update, hide, show }.
-export function createGround(files, { x0, z0, chunk, cell, nx, nz }, renderer, script, squares) {
+export function createGround(files, { x0, z0, chunk, columns, rows }, renderer, script, squares) {
   const worker = new Worker(script, { type: "module" });
   worker.postMessage({ files, origin: [x0, z0] }, [files.map, files.soft]);
   const coarse = matchMedia("(pointer: coarse)").matches;
@@ -31,8 +31,8 @@ export function createGround(files, { x0, z0, chunk, cell, nx, nz }, renderer, s
   // Per tile: level: the index in SIZES it is drawn with (-1: not yet), want: the one it needs,
   // keep: the one it would need KEEP times nearer.
   const states = [];
-  for (let row = 0; row < ((nz - 1) * cell) / chunk; row++)
-    for (let column = 0; column < ((nx - 1) * cell) / chunk; column++) {
+  for (let row = 0; row < rows; row++)
+    for (let column = 0; column < columns; column++) {
       const name = `${column}_${row}`;
       states.push({ name, column, row, level: -1, want: 0, keep: 0, distance: 0 });
       ground.tiles.set(name, blank);

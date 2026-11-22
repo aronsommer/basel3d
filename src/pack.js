@@ -34,20 +34,3 @@ export function unpackPoints(buffer) {
   }
   return points;
 }
-
-// The heights of public/terrain/heights.bin (tools/terrain.mjs) as Int16 in cm, nx per row:
-// stored as how each differs from what its neighbours to the west, north and north-west suggest.
-export function unpackHeights(buffer, nx) {
-  const packed = new Packed(new Uint8Array(buffer));
-  const heights = new Int16Array(packed.number());
-  for (let i = 0; i < heights.length; i++) heights[i] = guess(heights, i, nx) + packed.signed();
-  return heights;
-}
-
-// The height at i suggested by its neighbours read so far.
-export function guess(heights, i, nx) {
-  const west = i % nx ? heights[i - 1] : null;
-  const north = i >= nx ? heights[i - nx] : null;
-  if (west === null) return north ?? 0;
-  return north === null ? west : west + north - heights[i - nx - 1];
-}

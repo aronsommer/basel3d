@@ -426,8 +426,8 @@ function sample(ring) {
     }
     carry -= length;
   }
-  // Short tunnels (underpasses, which the terrain grid fills) stay on the terrain, so nothing
-  // vanishes in them.
+  // Short tunnels (underpasses, the terrain having the ground under bridges) stay on the
+  // terrain, so nothing vanishes in them.
   for (let k = 0; k < tunnels.length;) {
     let j = k + 1;
     while (j < tunnels.length && tunnels[j] === tunnels[j - 1] + 1) j++;
