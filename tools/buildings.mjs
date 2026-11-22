@@ -23,6 +23,7 @@ import {
   toX,
   toZ,
 } from "./area.mjs";
+import { heightAt } from "./heights.mjs";
 import { overpass, toLV95 } from "./osm.mjs";
 import { newestTiles, download, WMTS_E, WMTS_N, TILE, photoFile } from "./swisstopo.mjs";
 
@@ -79,7 +80,7 @@ function addTriangle(kind, v) {
 // roof becomes part of that building, so both are one object in the viewer.
 const loose = []; // { number, building, key }
 
-// Adds the building b under this number to the chunk `key`; foot: its lowest height.
+// Adds the building b under this number to the chunk `key`; foot: the lowest terrain under it.
 function place(key, number, b, foot) {
   let c = chunks.get(key);
   if (!c) {
@@ -167,7 +168,7 @@ function addBuilding() {
     )
   )
     kaserne.add(number);
-  if (b.wall.length) place(key, number, b, y0);
+  if (b.wall.length) place(key, number, b, ground(b.wall));
   else loose.push({ number, building: b, key });
 }
 
@@ -234,9 +235,17 @@ function touches(b, px, py, pz) {
   return false;
 }
 
-// Per wall vertex the heights of its wall's bottom and top and of its building's foot (y0), in
-// whole metres + 100 (so neighbouring walls mostly agree and their vertices stay shared), and a 0
-// (vertex attributes align to 4 bytes). A wall: the triangles facing the same way (to 1°) at the
+// The lowest terrain under the corners of the walls w: swissBUILDINGS3D lets them reach about
+// 3 m below it.
+function ground(w) {
+  let low = Infinity;
+  for (let i = 0; i < w.length; i += 3) low = Math.min(low, heightAt(w[i], w[i + 2]));
+  return low;
+}
+
+// Per wall vertex the heights of its wall's bottom (raised to the foot, at most to its top) and
+// top and of its building's foot (y0), in whole metres + 100 (so neighbouring walls mostly agree
+// and their vertices stay shared), and a 0 (vertex attributes align to 4 bytes). A wall: the triangles facing the same way (to 1°) at the
 // same distance (to 10 cm).
 function wallRanges(w, y0) {
   const walls = new Map(); // key -> [bottom, top]
@@ -255,7 +264,8 @@ function wallRanges(w, y0) {
     keys.push(key);
   }
   return keys.flatMap((key) => {
-    const [bottom, top, foot] = [...walls.get(key), y0].map((y) => Math.round(y) + 100);
+    const [low, top, foot] = [...walls.get(key), y0].map((y) => Math.round(y) + 100);
+    const bottom = Math.min(Math.max(low, foot), top);
     return [bottom, top, foot, 0, bottom, top, foot, 0, bottom, top, foot, 0];
   });
 }
