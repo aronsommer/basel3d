@@ -238,17 +238,18 @@ material.onBeforeCompile = (shader) => {
 // The crowds whose figures flee from traffic (dodge).
 const fleeing = [];
 // Fleeing: running RUN metres per second, at most REACH metres from its place, back after CALM
-// seconds of no danger at BACK metres per second; STRIDE radians of the walk per metre.
+// seconds calm at its way's end, at BACK metres per second; STRIDE radians of the walk per metre.
 const RUN = 7;
-const REACH = 8;
+const REACH = 15;
 const CALM = 2.5;
 const BACK = 1.3;
 const STRIDE = 4.5;
 const [WALK, STAND] = ["walk", "stand"].map((pose) => POSES.indexOf(pose));
 
 // count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
-// tilt: radians about its own x after the heading), hide(i) }; a look's head is short hair unless
-// given. Its figures flee from traffic (dodge) unless flee is false.
+// tilt: radians about its own x after the heading), hide(i), away(i): whether off its place
+// (dodge) }; a look's head is short hair unless given. Its figures flee from traffic (dodge)
+// unless flee is false.
 export function createCrowd(body, count, flee = true) {
   const geometry = new THREE.BufferGeometry();
   for (const name of ["position", "piece"])
@@ -272,10 +273,10 @@ export function createCrowd(body, count, flee = true) {
     mesh.instanceMatrix.needsUpdate = phases.needsUpdate = true;
   };
   // Per figure: as placed, x, y, z, heading, phase, size, tilt and its pose; fleeing, how far it
-  // is off that place (x, z), its heading, its phase beyond the placed one and the seconds since
-  // its last danger.
+  // is off that place (x, z), its heading, its phase beyond the placed one, the seconds it has
+  // been calm (0 while fleeing) and where off that place it goes (x, z).
   const home = new Float32Array(8 * count);
-  const off = new Float32Array(5 * count);
+  const off = new Float32Array(7 * count);
   if (flee) fleeing.push({ count, home, off, put, poses: more });
   return {
     mesh,
@@ -291,46 +292,48 @@ export function createCrowd(body, count, flee = true) {
     },
     // Out of sight, no longer fleeing.
     hide(i) {
-      off.fill(0, 5 * i, 5 * i + 5);
+      off.fill(0, 7 * i, 7 * i + 7);
       more.array[4 * i + 3] = home[8 * i + 7];
       more.needsUpdate = true;
       this.place(i, 0, -1000, 0, 0, 0);
     },
+    away: (i) => off[7 * i] !== 0 || off[7 * i + 1] !== 0,
   };
 }
 
-// Moves the figures of all crowds dt seconds on, after their own moves: one in danger runs across
-// the way of what comes (danger(x, y, z): [x, z] of unit length, or null), unless a wall is there
-// (blocked(x, y, z, toX, toZ)); calm again, it walks back. Off its place it stands on
-// ground(x, z, y) upright, running or walking, else standing.
-export function dodge(dt, danger, ground, blocked) {
+// Moves the figures of all crowds dt seconds on, after their own moves: one in danger
+// (danger(x, y, z, reach): null if none, else its way out [x, z] within reach metres, [0, 0] if
+// none, so always for reach 0) runs that way out, sought anew once there or when its end is in
+// danger too; calm again, it walks back. Off its place it stands on ground(x, z, y) upright,
+// running or walking, else standing.
+export function dodge(dt, danger, ground) {
   for (const { count, home, off, put, poses } of fleeing)
     for (let i = 0; i < count; i++) {
-      const [h, o] = [8 * i, 5 * i];
-      let [ox, oz] = [off[o], off[o + 1]];
+      const [h, o] = [8 * i, 7 * i];
+      let [ox, oz, calm, tx, tz] = [off[o], off[o + 1], off[o + 4], off[o + 5], off[o + 6]];
       const [x, y, z] = [home[h] + ox, home[h + 1], home[h + 2] + oz];
-      const away = danger(x, y, z);
-      if (!away && !ox && !oz) continue;
-      let step = 0;
-      if (away) {
-        off[o + 2] = Math.atan2(away[0], away[1]);
-        off[o + 4] = 0;
-        const [tx, tz] = [ox + away[0] * RUN * dt, oz + away[1] * RUN * dt];
-        if (Math.hypot(tx, tz) < REACH && !blocked(x, y, z, home[h] + tx, home[h + 2] + tz)) {
-          step = RUN * dt;
-          [ox, oz] = [tx, tz];
+      const inDanger = danger(x, y, z, 0);
+      if (!inDanger && !ox && !oz) continue;
+      const there = tx === ox && tz === oz;
+      if (inDanger) {
+        if (calm || there || danger(home[h] + tx, y, home[h + 2] + tz, 0)) {
+          const [ax, az] = danger(x, y, z, REACH - Math.hypot(ox, oz));
+          [tx, tz] = [ox + ax, oz + az];
         }
-      } else if ((off[o + 4] += dt) > CALM) {
-        const left = Math.hypot(ox, oz);
-        step = Math.min(left, BACK * dt);
-        off[o + 2] = Math.atan2(-ox, -oz);
-        [ox, oz] = step < left ? [ox - (ox / left) * step, oz - (oz / left) * step] : [0, 0];
+        calm = 0;
+      } else if (there && (calm += dt) > CALM) [tx, tz] = [0, 0];
+      const [dx, dz] = [tx - ox, tz - oz];
+      const left = Math.hypot(dx, dz);
+      const step = Math.min(left, (calm ? BACK : RUN) * dt);
+      if (step) {
+        off[o + 2] = Math.atan2(dx, dz);
+        [ox, oz] = step < left ? [ox + (dx / left) * step, oz + (dz / left) * step] : [tx, tz];
       }
-      [off[o], off[o + 1]] = [ox, oz];
+      off.set([ox, oz], o);
+      off.set([calm, tx, tz], o + 4);
       const back = !ox && !oz;
-      if (back) off[o + 3] = 0;
-      const walking = home[h + 7] === WALK; // on its own, as the pedestrians
-      const pose = back ? home[h + 7] : step || walking ? WALK : STAND;
+      if (back) off[o + 3] = off[o + 4] = 0;
+      const pose = back ? home[h + 7] : step ? WALK : STAND;
       if (poses.array[4 * i + 3] !== pose) {
         poses.array[4 * i + 3] = pose;
         poses.needsUpdate = true;
@@ -338,9 +341,8 @@ export function dodge(dt, danger, ground, blocked) {
       if (back) put(i, ...home.subarray(h, h + 7));
       else {
         const [fx, fz] = [home[h] + ox, home[h + 2] + oz];
-        const heading = step || !walking ? off[o + 2] : home[h + 3];
         off[o + 3] += step * STRIDE;
-        put(i, fx, ground(fx, fz, y), fz, heading, home[h + 4] + off[o + 3], home[h + 5], 0);
+        put(i, fx, ground(fx, fz, y), fz, off[o + 2], home[h + 4] + off[o + 3], home[h + 5], 0);
       }
     }
 }

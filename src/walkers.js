@@ -86,6 +86,7 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground) {
   for (const crowd of crowds.values()) crowd.mesh.frustumCulled = false; // they move
   const dress = ({ look, me: [body, i] }) => crowds.get(body).dress(i, look, "walk");
   const hide = ({ me: [body, i] }) => crowds.get(body).hide(i);
+  const dodging = (one) => one && crowds.get(one.me[0]).away(one.me[1]);
   walkers.forEach((w, i) => {
     Object.assign(w, { loop: null, at: 0, step: 1, along: 0, right: 0, pace: 0, phase: i });
     Object.assign(w, { x: 0, y: 0, z: 0, heading: 0 });
@@ -159,8 +160,11 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground) {
             return;
           }
         }
-        w.along += w.pace * dt;
-        w.phase += w.pace * dt * STRIDE;
+        // It waits while it, its child or dog is off its way, fleeing from traffic (dodge).
+        if (!dodging(w) && !dodging(w.child) && !dodging(w.dog)) {
+          w.along += w.pace * dt;
+          w.phase += w.pace * dt * STRIDE;
+        }
         const { points } = w.loop;
         let length;
         while (

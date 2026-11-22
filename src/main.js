@@ -476,16 +476,19 @@ const overlay = new THREE.Scene();
 
 const CELL = 20; // metres of the grids of the traffic's car points
 const cell = (x, z) => (Math.floor(x / CELL) + 1000) * 4096 + Math.floor(z / CELL) + 1000;
+const WARN = 1.2; // seconds of a vehicle's way ahead that people flee from (traffic, danger)
+const STRETCH = 15; // metres, at most, of a stretch of the way ahead (traffic)
 const CELLS = 512; // cells each way of the grid of the cars noted, the scene's origin in its middle
 const carCell = (x, z) =>
   (Math.floor(x / CELL) + CELLS / 2) * CELLS + Math.floor(z / CELL) + CELLS / 2;
 
 // Trams, trains and cars on their loops (tools/paths.mjs, createMovers), sharing the traffic.
 const traffic = {
-  // Each car's front, back and centre, noted anew each frame in that order: x, z per point (xz);
-  // its height (y); its vehicle, rail and the next point in its cell, -1 if none (of); per cell its
-  // first and last point, in the order noted (head: -1 if none, tail). Each kind makes room for
-  // its own.
+  // Each car's front, back and centre, noted anew each frame in that order, and so of each
+  // stretch of a vehicle's way within WARN seconds ahead: x, z per point (xz); its height (y); its
+  // vehicle, rail (-1 on a stretch ahead) and the next point in its cell, -1 if none (of); per cell
+  // its first and last point, in the order noted (head: -1 if none, tail). Each kind makes room
+  // for its own.
   noted: 0,
   xz: new Float64Array(0),
   y: new Float32Array(0),
@@ -494,6 +497,7 @@ const traffic = {
   tail: new Int32Array(CELLS * CELLS),
   taken: new Map(), // cell -> flat [x, z, …] of the starting vehicles and the space ahead
   blockers: [], // per vehicle (of all kinds): the vehicle it waits for, or -1
+  halves: [], // per vehicle: metres, half its width
   walks: new Int32Array(0), // per vehicle: 1 + the vehicle whose walk reached it (drive)
 };
 const movers = MOVER_KINDS.map((kind, i) =>
@@ -1897,6 +1901,7 @@ function createMovers({ routes }, points, kind, traffic) {
       LOOK: 25, // metres
       ALONG: 8, // metres; at least half the distance between a car's front, centre and back
       SIDE: 2, // metres; less than the distance to the track of the other direction (3.5 m)
+      HALF: 1.15, // metres, half the width (tramCar)
       EYE: 2.4, // metres above the path, when riding
       models: () => [tramCar()],
       variant: ({ operator }) => ({
@@ -1913,6 +1918,7 @@ function createMovers({ routes }, points, kind, traffic) {
       LOOK: 60,
       ALONG: 15,
       SIDE: 2, // tracks of the other direction are about 4.5 m away
+      HALF: 1.5,
       EYE: 2.6,
       models: () => [trainCar(false), trainCar(true)],
       // White passenger trains, a quarter blue goods trains (green and yellow only for trams).
@@ -1929,6 +1935,7 @@ function createMovers({ routes }, points, kind, traffic) {
       LOOK: 9,
       ALONG: 2.5,
       SIDE: 1.2, // the lane of the other direction is 3.6 m away
+      HALF: 1, // of most (ROAD)
       EYE: 1.2,
       models: () => ROAD.map(({ shape }) => shape()),
       // A model of ROAD by its share, in one of its colours.
@@ -1941,7 +1948,7 @@ function createMovers({ routes }, points, kind, traffic) {
       },
     },
   };
-  const { CARS, GAP, SPACING, SPEED, LOOK, ALONG, SIDE, EYE, models, variant } = KINDS[kind];
+  const { CARS, GAP, SPACING, SPEED, LOOK, ALONG, SIDE, HALF, EYE, models, variant } = KINDS[kind];
   // Far away the cars grow higher, but at most this much wider, so that cars on neighbouring tracks
   // and lanes never overlap.
   const MAX_WIDER = 1.4;
@@ -2102,13 +2109,16 @@ function createMovers({ routes }, points, kind, traffic) {
   // Vehicles by their index in traffic.blockers.
   const first = blockers.length;
   blockers.push(...vehicles.map(() => -1));
+  traffic.halves.push(...vehicles.map(() => HALF));
   const rail = kind === "car" ? 0 : 1;
-  // Room for its cars' points among the traffic's.
-  const room = 3 * CARS * vehicles.length;
+  const stretches = Math.ceil((SPEED * WARN) / STRETCH);
+  const stretch = (SPEED * WARN) / stretches; // metres
+  // Room for the points of its cars and stretches ahead among the traffic's.
+  const room = 3 * (CARS + stretches) * vehicles.length;
   traffic.xz = new Float64Array(traffic.xz.length + 2 * room);
   traffic.y = new Float32Array(traffic.y.length + room);
   traffic.of = new Int32Array(traffic.of.length + 3 * room);
-  const note = (p, v) => {
+  const note = (p, v, r = rail) => {
     const { xz, y, of, head, tail } = traffic;
     const n = traffic.noted++;
     const c = carCell(p.x, p.z);
@@ -2116,7 +2126,7 @@ function createMovers({ routes }, points, kind, traffic) {
     xz[2 * n + 1] = p.z;
     y[n] = p.y;
     of[3 * n] = first + v;
-    of[3 * n + 1] = rail;
+    of[3 * n + 1] = r;
     of[3 * n + 2] = -1;
     if (head[c] < 0) head[c] = n;
     else of[3 * tail[c] + 2] = n;
@@ -2155,11 +2165,19 @@ function createMovers({ routes }, points, kind, traffic) {
   const FAR = 1500; // metres
   const SLOW = 3;
   let frame = 0;
-  // Places the cars and notes their points; those of a vehicle away are hidden.
+  // Places the cars and notes their points and those of the stretches ahead; those of a vehicle
+  // away are hidden.
   const place = () => {
     vehicles.forEach((vehicle, v) => {
       const { line, d, length, height, away, model, slot } = vehicle;
       const matrices = meshes[model].instanceMatrix.array;
+      for (let s = 0; s < stretches && away === undefined; s++) {
+        at(line, d + (s + 1) * stretch, front);
+        at(line, d + s * stretch, back);
+        note(front, v, -1);
+        note(back, v, -1);
+        note(front.add(back).multiplyScalar(0.5), v, -1);
+      }
       for (let c = 0; c < CARS; c++) {
         const m = 16 * (slot * CARS + c);
         if (away !== undefined) {
@@ -3192,52 +3210,119 @@ const drives = [
   return [vehicles, ride];
 });
 // People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
-// cars of trams, trains and road vehicles that go, and the vehicles above (but the drones) while
-// they move faster than slow. In danger is one that one would pass within near metres of or
-// reach within ahead metres, at most level metres above or below it.
-const DANGER = { near: 4, ahead: 30, level: 3, slow: 0.5 }; // metres, slow per second
+// cars of trams, trains and road vehicles that go and their ways WARN seconds ahead (traffic), and
+// the vehicles above (but the drones) while they move faster than slow, with their ways WARN
+// seconds ahead along their heading. In danger is one up to margin metres beside these (steered
+// metres more beside the vehicles above, as they may turn), at most level metres above or below.
+const DANGER = { margin: 0.5, steered: 4, level: 3, slow: 0.5 }; // metres, metres per second
+const CLEAR = 0.5; // metres one flees beyond a danger
+const TRY = 0.25; // metres between the spots tried on a way out
+// Metres a way out counts more that crosses another danger, or that leads into one.
+const [CROSS, TRAPPED] = [100, 1000];
 // The vehicles above, each with where it was the frame before.
 const driven = drives
   .flatMap(([vehicles]) => vehicles)
   .filter(({ half }) => half)
   .map((vehicle) => ({ vehicle, ...vehicle.group.position, speed: 0 }));
-const fleeFrom = [0, 0];
-let nearest = DANGER.near;
-// Notes a way across that of what is back at bx, bz, going along ux, uz (unit) with its front
-// length metres on, if x, z is in its way nearer than any yet.
-function across(x, z, bx, bz, ux, uz, length) {
-  const [dx, dz] = [x - bx, z - bz];
+// The dangers within SPAN metres of the spot last asked (asked), at most MOST, each back x, z,
+// way x, z (unit), length and half width, with the car or stretch (its first point) or driven
+// vehicle (-1 - its index) it is of.
+const [SPAN, MOST] = [20, 32]; // metres, more than any way out (src/people.js)
+const zones = new Float64Array(6 * MOST);
+const zoneOf = new Int32Array(MOST);
+let zoneCount = 0;
+const asked = [0, 0];
+function zone(of, bx, bz, ux, uz, length, half) {
+  const [dx, dz] = [asked[0] - bx, asked[1] - bz];
   const along = dx * ux + dz * uz;
-  const side = dx * uz - dz * ux;
-  if (along < 0 || along > length + DANGER.ahead || Math.abs(side) >= nearest) return;
-  nearest = Math.abs(side);
-  const s = side < 0 ? -1 : 1;
-  [fleeFrom[0], fleeFrom[1]] = [uz * s, -ux * s];
+  if (along < -SPAN || along > length + SPAN || Math.abs(dx * uz - dz * ux) > half + SPAN) return;
+  if (zoneCount === MOST || zoneOf.subarray(0, zoneCount).includes(of)) return;
+  zoneOf[zoneCount] = of;
+  zones.set([bx, bz, ux, uz, length, half], 6 * zoneCount++);
 }
-function danger(x, y, z) {
-  nearest = DANGER.near;
-  const { xz, y: ys, of, head, blockers } = traffic;
+// How far x, z is beside the danger at k (of zones), to its right; NaN if not along it.
+function beside(k, x, z) {
+  const [dx, dz] = [x - zones[k], z - zones[k + 1]];
+  const along = dx * zones[k + 2] + dz * zones[k + 3];
+  return along >= 0 && along <= zones[k + 4] ? dx * zones[k + 3] - dz * zones[k + 2] : NaN;
+}
+const inDanger = (x, z) => {
+  for (let k = 0; k < 6 * zoneCount; k += 6)
+    if (Math.abs(beside(k, x, z)) < zones[k + 5]) return true;
+  return false;
+};
+const [wallFrom, wallTo] = [new THREE.Vector3(), new THREE.Vector3()];
+// Whether one at x, y, z may go straight to tx, tz: ground all the way, at each metre at most STEP
+// up or down from the one before (not off a bridge's edge), and no wall of a building or bridge.
+function open(x, y, z, tx, tz) {
+  const n = Math.ceil(Math.hypot(tx - x, tz - z));
+  let h = walkGround(x, z, y);
+  for (let i = 1; i <= n; i++) {
+    const g = walkGround(x + ((tx - x) * i) / n, z + ((tz - z) * i) / n, h);
+    if (Math.abs(g - h) > STEP) return false;
+    h = g;
+  }
+  return !structures.wall(wallFrom.set(x, y + 1, z), wallTo.set(tx, y + 1, tz), true);
+}
+const way = [0, 0];
+// Null if x, y, z is in no danger, else the shortest way out ([x, z]) within reach metres, open
+// all the way (open): across one of the dangers there, to either side, CLEAR beyond it and on
+// until out of all, rather not across another (CROSS); only if there is none, as far out of one
+// on its own side as it may; [0, 0] if not even that.
+function danger(x, y, z, reach) {
+  zoneCount = 0;
+  [asked[0], asked[1]] = [x, z];
+  const { xz, y: ys, of, head, blockers, halves } = traffic;
   for (let i = -1; i <= 1; i++)
     for (let j = -1; j <= 1; j++)
       for (let q = head[carCell(x + i * CELL, z + j * CELL)]; q >= 0; q = of[3 * q + 2]) {
-        if (blockers[of[3 * q]] >= 0 || Math.abs(ys[q] - y) > DANGER.level) continue;
-        const f = 2 * (q - (q % 3)); // its car's front, then back (traffic)
-        const [fx, fz, bx, bz] = [xz[f], xz[f + 1], xz[f + 2], xz[f + 3]];
+        const v = of[3 * q];
+        if (blockers[v] >= 0 || Math.abs(ys[q] - y) > DANGER.level) continue;
+        const p = q - (q % 3);
+        const [fx, fz, bx, bz] = xz.subarray(2 * p, 2 * p + 4); // its front, then back (traffic)
         const length = Math.hypot(fx - bx, fz - bz) || 1;
-        across(x, z, bx, bz, (fx - bx) / length, (fz - bz) / length, length);
+        const [ux, uz] = [(fx - bx) / length, (fz - bz) / length];
+        zone(p, bx, bz, ux, uz, length, halves[v] + DANGER.margin);
       }
-  for (const { vehicle, speed } of driven) {
+  driven.forEach(({ vehicle, speed }, d) => {
     const { position, rotation, scale } = vehicle.group;
-    if (Math.abs(speed) < DANGER.slow || Math.abs(position.y - y) > DANGER.level) continue;
+    if (Math.abs(speed) < DANGER.slow || Math.abs(position.y - y) > DANGER.level) return;
     // Along its heading, or back in reverse.
     const s = Math.sign(speed);
     const [ux, uz] = [s * Math.sin(rotation.y), s * Math.cos(rotation.y)];
-    const half = vehicle.half * scale.x;
-    across(x, z, position.x - ux * half, position.z - uz * half, ux, uz, 2 * half);
+    const [half, width] = [vehicle.half * scale.x, (vehicle.width / 2) * scale.x];
+    const [bx, bz] = [position.x - ux * half, position.z - uz * half];
+    const side = width + DANGER.margin + DANGER.steered;
+    zone(-1 - d, bx, bz, ux, uz, 2 * half + Math.abs(speed) * WARN, side);
+  });
+  if (!inDanger(x, z)) return null;
+  let best = Infinity;
+  way[0] = way[1] = 0;
+  for (let k = 0; k < 6 * zoneCount; k += 6) {
+    const side = beside(k, x, z);
+    if (!(Math.abs(side) < zones[k + 5])) continue;
+    for (const s of [-1, 1]) {
+      const [ax, az] = [s * zones[k + 3], -s * zones[k + 2]];
+      const out = zones[k + 5] - s * side + CLEAR;
+      let t = out;
+      while (t <= reach && inDanger(x + ax * t, z + az * t)) t += TRY;
+      // Else just out of this danger; but only as far as reach, walls and edges let.
+      let full = t <= reach;
+      let length = full ? t : Math.min(out, reach);
+      while (length > TRY && !open(x, y, z, x + ax * length, z + az * length)) {
+        length /= 2;
+        full = false;
+      }
+      // Not out, it stays on its own side, at a wall rather than running back across.
+      if (!full && s * side < 0) continue;
+      const cost = full ? t + (t > out ? CROSS : 0) : TRAPPED + out - length;
+      if (length <= TRY || cost >= best) continue;
+      best = cost;
+      [way[0], way[1]] = [ax * length, az * length];
+    }
   }
-  return nearest < DANGER.near ? fleeFrom : null;
+  return way;
 }
-const [wallFrom, wallTo] = [new THREE.Vector3(), new THREE.Vector3()];
 // Figures flee after all has moved this frame, from the vehicles above at their speed along
 // their heading.
 function flee(dt) {
@@ -3247,9 +3332,7 @@ function flee(dt) {
     d.speed = dt && (dx * Math.sin(rotation.y) + dz * Math.cos(rotation.y)) / dt;
     [d.x, d.z] = [position.x, position.z];
   }
-  dodge(dt, danger, walkGround, (x, y, z, toX, toZ) =>
-    world.blocked(wallFrom.set(x, y + 1, z), wallTo.set(toX, y + 1, toZ)),
-  );
+  dodge(dt, danger, walkGround);
 }
 // The ferries seated on the open deck before the hut, looking upstream.
 const ferryRide = riders(

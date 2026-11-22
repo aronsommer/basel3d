@@ -53,8 +53,8 @@ function limb(from, to, r0, r1, color) {
 // Parts merged and moved so that pivot is their origin.
 const around = (parts, [x, y, z]) => mergeGeometries(parts).translate(-x, -y, -z);
 
-// One dinosaur per place ({ x, y, z, heading }), each { group, material, update, half }; boost and
-// world as for the police cars (src/police.js).
+// One dinosaur per place ({ x, y, z, heading }), each { group, material, update, half, width };
+// boost and world as for the police cars (src/police.js).
 export function createDinos(places, boost, world) {
   const body = mergeGeometries([
     part(
@@ -140,6 +140,6 @@ export function createDinos(places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update, half: SPEC.half };
+    return { group, material, update, half: SPEC.half, width: SPEC.width };
   });
 }

@@ -41,9 +41,9 @@ function lean(geometry) {
   return geometry;
 }
 
-// One van per place ({ x, y, z, heading, unmarked }), each { group, material, update, half }; they
-// share their geometries and all materials but the body's (so one is highlighted alone).
-// boost(position): how much larger to draw one far away; world: as for createDriving
+// One van per place ({ x, y, z, heading, unmarked }), each { group, material, update, half,
+// width }; they share their geometries and all materials but the body's (so one is highlighted
+// alone). boost(position): how much larger to draw one far away; world: as for createDriving
 // (src/drive.js).
 export function createPolice(places, boost, world) {
   const WHITE = 0xf4f6f8;
@@ -307,6 +307,6 @@ export function createPolice(places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update, half: SPEC.half };
+    return { group, material, update, half: SPEC.half, width: SPEC.width };
   }
 }
