@@ -1,5 +1,5 @@
-// Driving on the ground, shared by the police cars, motorcycles, tanks and boats (whose ground
-// is the water and banks their walls, see src/main.js): up speeds up, down brakes
+// Driving on the ground, shared by the police cars, motorcycles, tanks, boats (whose ground
+// is the water and banks their walls, see src/main.js) and walking oneself: up speeds up, down brakes
 // and then reverses, left and right steer; it rolls over the ground and bridge decks, falls where
 // there is none, and slides along or stops at walls. Let go, it is back in its place at once.
 import * as THREE from "three";

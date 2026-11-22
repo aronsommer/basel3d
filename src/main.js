@@ -20,6 +20,7 @@ import { createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
+import { createDriving } from "./drive.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
 import { createBike } from "./bike.js";
@@ -2956,6 +2957,7 @@ function fly(dt) {
 // Gets off: back to the view from before riding.
 function getOff() {
   riding = null;
+  onFoot = null;
   stop(false);
   steerBox.hidden = true;
   camera.position.copy(before.position);
@@ -3036,13 +3038,69 @@ const gunner = () => (riding?.ride === tankRide ? tanks[riding.vehicle] : null);
 // looking around.
 const armed = () => (flying() && !pilot().unarmed) || gunner() !== null;
 const droneRide = drives.find(([vehicles]) => vehicles === drones)[1];
+// Walking oneself: after the button with the figure, a click or tap on the ground or a bridge
+// (not a building or the water) sets one down there, facing as the camera; walked as driven in
+// src/drive.js, at most a run, the water a wall; seen from EYE_HEIGHT, looking level ahead.
+// Getting off takes one away.
+const ON_FOOT = {
+  max: 7,
+  back: 3,
+  accelerate: 14,
+  brake: 20,
+  roll: 12,
+  steer: 0,
+  grip: 1,
+  spin: 2,
+  react: 10,
+  axles: 0.6,
+  half: 0.3,
+  width: 0.5,
+};
+const EYE_HEIGHT = 1.65; // metres
+const footWorld = {
+  ...world,
+  blocked: (from, to) => world.ground(to.x, to.z, from.y - 1) <= WATER || structures.wall(from, to),
+};
+let onFoot = null; // createDriving's, while walking
+const footRide = {
+  cab(v, view) {
+    const { x, y, z, heading } = onFoot.state;
+    view.position.set(x, y + EYE_HEIGHT, z);
+    view.lookAt(x + Math.sin(heading), y + EYE_HEIGHT, z + Math.cos(heading));
+  },
+};
+const walkButton = document.getElementById("walk");
+const where = document.getElementById("where");
+let placing = false; // the next click or tap sets one down, as #where says meanwhile
+function setPlacing(on) {
+  placing = on;
+  walkButton.setAttribute("aria-pressed", on);
+  where.hidden = !on;
+}
+walkButton.addEventListener("click", () => setPlacing(!placing));
+// Sets one down at a screen point, if there.
+function setDown(clientX, clientY) {
+  raycaster.setFromCamera(
+    new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1),
+    camera,
+  );
+  const hit = raycaster.intersectObjects([buildings.scene, bridges.scene, terrain])[0];
+  if (!hit || buildings.scene.getObjectById(hit.object.id) || hit.point.y <= WATER) return;
+  const looking = camera.getWorldDirection(new THREE.Vector3());
+  const heading = Math.atan2(looking.x, looking.z);
+  onFoot = createDriving({ ...hit.point, heading }, ON_FOOT, footWorld);
+  setPlacing(false);
+  ride({ ride: footRide, vehicle: 0 }, clientX, clientY);
+}
 // Whether what is ridden is steered (in drives or pilots); then clicks do not change to another
-// and dragging does not look around.
+// and dragging does not look around (both do while walking, as in a tram).
 const steered = () => flying() || drives.some(([, ride]) => ride === riding?.ride);
 let flown = null; // the state of flying it (createFlight)
 document.getElementById("off").addEventListener("click", getOff);
 addEventListener("keydown", (e) => {
-  if (e.code === "Escape" && riding) getOff();
+  if (e.code !== "Escape") return;
+  if (riding) getOff();
+  else if (placing) setPlacing(false);
 });
 // Steering the helicopters, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
 // ←/→ turn; the buttons at the bottom hold the arrow keys while pressed. Q or the stop button
@@ -3221,6 +3279,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
+  if (placing) return setDown(e.clientX, e.clientY);
   if (pointsPanel.click(e.clientX, e.clientY)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
@@ -3236,7 +3295,7 @@ function ride(found, clientX, clientY) {
   riding = found;
   camera.fov = found.ride === droneRide ? FPV_FOV : FOV;
   camera.updateProjectionMatrix();
-  const driving = drives.some(([, ride]) => ride === found.ride);
+  const driving = found.ride === footRide || drives.some(([, ride]) => ride === found.ride);
   steerBox.hidden = !pilots.has(found.ride) && !driving;
   stopButton.hidden = driving ? found.ride !== droneRide : !!pilots.get(found.ride)?.plane;
   fireButton.hidden = driving ? found.ride !== tankRide : !!pilots.get(found.ride)?.unarmed;
@@ -3246,7 +3305,7 @@ function ride(found, clientX, clientY) {
 }
 // Looking around while riding, but not while steering (steered): dragging turns the head, up to PITCH up or
 // down and sideways as far as no view ray points behind the camera, so the front of a tram, train
-// or car (just behind it) stays out of view.
+// or car (just behind it) stays out of view; walking, sideways it turns oneself instead.
 const PITCH = 0.25; // radians
 const head = { yaw: 0, pitch: 0 }; // radians, left and up
 let dragged = null; // { x, y } of the primary pointer while dragging
@@ -3261,7 +3320,9 @@ addEventListener("pointermove", (e) => {
   // The widest ray, at a corner pitched by PITCH.
   const wide = Math.atan((up * camera.aspect) / (Math.cos(PITCH) - up * Math.sin(PITCH)));
   const yaw = Math.max(0, Math.PI / 2 - wide);
-  head.yaw = THREE.MathUtils.clamp(head.yaw + (e.clientX - dragged.x) * turn, -yaw, yaw);
+  const sideways = (e.clientX - dragged.x) * turn;
+  if (riding?.ride === footRide) onFoot.state.heading += sideways;
+  else head.yaw = THREE.MathUtils.clamp(head.yaw + sideways, -yaw, yaw);
   head.pitch = THREE.MathUtils.clamp(head.pitch + (e.clientY - dragged.y) * turn, -PITCH, PITCH);
   dragged = { x: e.clientX, y: e.clientY };
 });
@@ -3343,10 +3404,10 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 });
 function updateHover() {
   if (!hover) return;
-  const found = pointers.size || steered() ? null : vehicleAt(hover.x, hover.y);
+  const found = pointers.size || steered() || placing ? null : vehicleAt(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  renderer.domElement.style.cursor = found ? "pointer" : "";
+  renderer.domElement.style.cursor = placing ? "crosshair" : found ? "pointer" : "";
 }
 
 // The roof, bridge or ground at a screen point (px), or null.
@@ -3665,6 +3726,7 @@ renderer.setAnimationLoop((time) => {
         riding?.ride === ride && riding.vehicle === v ? steering() : null,
       ),
     );
+  if (riding?.ride === footRide) onFoot.step(dt, steering());
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   ships.update(time / 1000);

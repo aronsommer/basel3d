@@ -33,10 +33,12 @@ p {
    sizes stay. */
 #loading,
 #off,
+#walk,
 #menu,
 #dev,
 #points,
 #copied,
+#where,
 #steer button {
   background: rgba(10, 15, 40, 0.5);
   -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
@@ -56,6 +58,7 @@ p {
 /* The buttons and the menu look alike: 36px tall (8px + 20px + 8px) like the
    steering buttons on desktop. */
 #off,
+#walk,
 #menu,
 #dev,
 #points {
@@ -70,10 +73,11 @@ p {
   -webkit-user-select: none; /* Safari */
   user-select: none;
 }
-/* Right: the closed menu and the button to get off below it, each only an icon in a square, as
-   the steering buttons; the open menu covers the button to get off. Left: the counter. All out of the notch and the rounded corners
+/* Right: the closed menu and below it the button to get off (riding) or to walk (else), each
+   only an icon in a square, as the steering buttons; the open menu covers them. Left: the counter. All out of the notch and the rounded corners
    (viewport-fit=cover in index.html). */
 #off,
+#walk,
 #menu,
 #counter,
 #panels {
@@ -81,10 +85,12 @@ p {
   width: 96px;
 }
 #off,
+#walk,
 #menu {
   width: 36px;
 }
-#off {
+#off,
+#walk {
   padding-inline: 10px;
 }
 /* Three lines for the menu, a cross to get off; 20px tall with their margins, as a line of
@@ -94,6 +100,7 @@ p {
   display: none;
 }
 #off svg,
+#walk svg,
 #menu summary svg {
   display: block;
   width: 16px;
@@ -105,6 +112,7 @@ p {
   stroke-linecap: round;
 }
 #off,
+#walk,
 #menu {
   right: calc(env(safe-area-inset-right) + 12px);
 }
@@ -119,9 +127,14 @@ p {
 #counter {
   top: calc(env(safe-area-inset-top) + 6px);
 }
-#off {
+#off,
+#walk {
   top: calc(env(safe-area-inset-top) + 56px);
   cursor: pointer;
+}
+/* Pressed: the next click or tap sets one down. */
+#walk[aria-pressed="true"] {
+  color: #0ff;
 }
 /* Below the counter, the panels ticked in the menu, 8px apart: "Dev"
    (src/dev.js) above "Points" (src/points.js). */
@@ -402,6 +415,19 @@ p {
   border-radius: 8px;
   pointer-events: none;
 }
+/* At the top in the middle, between the counter and the menu, while the button to walk waits
+   for where (src/main.js). */
+#where {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  border-radius: 10px;
+  pointer-events: none;
+}
 /* Where the helicopter's rockets would hit (shoot in src/main.js): a ring with a dot, white
    in a dark halo, to be seen on any ground. */
 #crosshair {
@@ -550,6 +576,7 @@ p {
 body:not([data-mode="loading"]) #loading,
 body[data-mode="loading"] #menu,
 body:not([data-mode="ride"]) #off,
+body:not([data-mode="orbit"]) #walk,
 body[data-mode="loading"] #counter {
   display: none;
 }

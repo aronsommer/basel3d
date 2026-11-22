@@ -14,6 +14,12 @@
     <button id="off" aria-label="Get off" title="Get off (Esc)">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3 3 13" /></svg>
     </button>
+    <button id="walk" aria-label="Walk" aria-pressed="false" title="Walk: then click where">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="2.5" r="1.5" />
+        <path d="M8 6v4.5l-2.5 4M8 10.5l2.5 4M4 8l4-2 4 2" />
+      </svg>
+    </button>
     <div id="counter">
       <p title="Buildings">
         <svg viewBox="4 3 16 18" aria-hidden="true">
@@ -29,6 +35,7 @@
     </div>
     <div id="panels"></div>
     <div id="crosshair" hidden></div>
+    <div id="where" hidden>Where to walk?</div>
     <div id="copied" hidden>Coordinates<br />copied</div>
     <div id="steer" hidden>
       <button data-key="ArrowLeft" aria-label="Turn left">←<kbd>A</kbd></button>
