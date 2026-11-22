@@ -31,7 +31,12 @@ const FORWARD = 0.2;
 // with the legs far ahead, as to a tricycle's pedals on its front wheel; sit, on the ground with
 // the legs straight ahead, leaning back LEAN radians, propped on the left hand, the right arm
 // tossing food ahead; run, as walking with longer strides, bouncing; scoot, standing on an
-// e-scooter, the left foot a little ahead, the arms ahead to its handlebar.
+// e-scooter, the left foot a little ahead, the arms ahead to its handlebar; swim, upright in the
+// water, the arms stretched straight ahead, reaching far onto what it holds, the legs treading water; crawl, the arms
+// stretched over the head (ahead, tilted to lie in the water) and turning round in turn, the legs
+// kicking; pipe, drum and major, marching (the legs as walking): the upper arms a little ahead,
+// the forearms up to a piccolo held out to the right under the mouth; the arms beating a drum fast
+// in turn; the right arm ahead to a staff and the left swinging.
 const POSES = [
   "stand",
   "walk",
@@ -45,16 +50,29 @@ const POSES = [
   "sit",
   "run",
   "scoot",
+  "swim",
+  "crawl",
+  "pipe",
+  "drum",
+  "major",
 ];
 // Lying on the back: tilted about its own x after the heading, its back on the ground (LIE metres
 // up), turned round, so it lies from its place along the heading, the head furthest.
 const LYING = new Set(["lie", "up", "angel"]);
 const LIE = 0.12;
 // Metres up where they turn, by limb: legs, arms, a dog's legs.
-const PIVOTS = [0.9, 1.47, 0.34];
+export const PIVOTS = [0.9, 1.47, 0.34];
 // Metres a body sits lower than it stands: its legs, turned ahead, on the ground.
 const SEAT = 0.81;
 const LEAN = 0.45;
+// How much longer the arms reach while swimming upright (pose swim), to the bag ahead.
+const REACH_ARMS = 1.4;
+// Piping (pose pipe): metres up where the arms bend (the elbow), the forearms' radians up there,
+// and per metre of forearm metres to the right, the left arm's and the right's, onto the piccolo.
+const PIPE_ARMS = [1.17, -2.12, 0.73, 0.07];
+// Drumming: the arms' radians (as a), at rest and beating either way, and the beat (radians a
+// second), the arms in turn.
+export const DRUM_ARMS = [-0.9, 0.25, 14];
 // Radians a second of the sitting one's tossing arm, furthest ahead at 1.5708 (+ its phase).
 export const TOSS = 1.5;
 
@@ -274,8 +292,24 @@ material.onBeforeCompile = (shader) => {
           : pose == 8 ? (limb == 2 ? -1.0 : -1.1 + 0.25 * sin(phase) * side)
           : pose == 9 && limb == 2 ? (side < 0.0 ? -1.0 - 0.5 * sin(t * ${TOSS} + phase) : -0.3)
           : pose == 9 ? -1.5708
+          : pose == 12 ? (limb == 2 ? -1.5708 : 0.2 * sin(t * 2.0 + phase) * side)
+          : pose == 13 ? (limb == 2 ? mod(t * 2.4 + phase + side * 1.5708, 6.2832)
+            : 0.25 * sin(t * 5.0 + phase) * side)
+          : pose >= 14 && limb != 2 ? -${LEG} * sin(phase) * side
+          : pose == 14 ? -0.85
+          : pose == 15 ? ${DRUM_ARMS[0]} + ${DRUM_ARMS[1]} * sin(t * float(${DRUM_ARMS[2]}) + side * 1.5708)
+          : pose == 16 ? (side < 0.0 ? -0.5 : ${ARM} * sin(phase) * side)
           : 0.0;
+        if (pose == 14 && limb == 2 && transformed.y < ${PIPE_ARMS[0]}) {
+          // Piping: the forearm turned up at the elbow and to the right, onto the piccolo.
+          float down = ${PIPE_ARMS[0]} - transformed.y, b = ${PIPE_ARMS[1]};
+          transformed.x -= (side > 0.0 ? ${PIPE_ARMS[2]} : ${PIPE_ARMS[3]}) * down;
+          vec2 e = vec2(-down, transformed.z);
+          transformed.yz = vec2(e.x * cos(b) - e.y * sin(b), e.x * sin(b) + e.y * cos(b))
+            + vec2(${PIPE_ARMS[0]}, 0.0);
+        }
         vec2 p = transformed.yz - vec2(pivot, 0.0);
+        if (pose == 12 && limb == 2) p *= ${REACH_ARMS}; // swimming: reaching far to the bag
         transformed.yz = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))
           + vec2(pivot, 0.0);
         if (pose == 6) {

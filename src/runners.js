@@ -1,8 +1,6 @@
-// Joggers, cyclists and e-scooter riders to and fro along routes on the Rhine's banks: joggers
-// alone, in pairs or in groups of men, women and children in sports kit; men and women on bikes
-// (src/bike.js) and e-scooters in other colours. Each keeps to the right and passes one slower
-// ahead on the left when that is clear, else keeps behind it; joggers flee from traffic
-// (src/people.js), the others brake for it and wait.
+// Cyclists and e-scooter riders to and fro along routes on the Rhine's banks: men and women on
+// bikes (src/bike.js) and e-scooters. Each keeps to the right and passes one slower ahead on the
+// left when that is clear, else keeps behind it; they brake for traffic and wait.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BIKE, bikeFrame, PEDAL } from "./bike.js";
@@ -21,15 +19,6 @@ const [BRAKE, START] = [5, 1.5];
 // Out of traffic's way: metres across at most, metres a second they move across, seconds calm till
 // they move back.
 const [DODGE, DASH, CALM] = [6, 4, 2];
-// Joggers: how many, metres a second, radians of the run per metre, their lean forward (radians),
-// a child's and a woman's size, the metres right of the path's middle and behind each other in a
-// group.
-const JOGGERS = 50;
-const PACE = [2.4, 3.4];
-const STRIDE = 2.6;
-const LEAN = 0.12;
-const [CHILD, WOMAN] = [0.6, 0.93];
-const [RIGHT, BEHIND] = [[0.6, 1.4], 1.6];
 // Bikes SCALE times the girl's (her rider's body scaled with it).
 const SCALE = 1.6;
 
@@ -37,12 +26,6 @@ const random = (a, b) => a + Math.random() * (b - a);
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a, 0xc58c5c, 0x8a5634, 0x6b4128, 0x4a2c1a];
 const HAIR = [0x2a1d14, 0x111111, 0xe2c46e, 0x7a3a1a, 0x8a8a8a];
-// Sports kit: a shirt (top), shorts (bottom), bare arms and lower legs (hat: sleeves and socks of
-// the body "player", as the skin), trainers (shoes).
-const SHIRTS = [0xff6f00, 0x1e88e5, 0xe91e63, 0x76ff03, 0xffffff, 0x111111, 0xffd600, 0x00bcd4];
-const SHORTS = [0x111111, 0x1b2333, 0x3a3a3a, 0x1e3a8a, 0x6b6b6b];
-const TRAINERS = [0xffffff, 0xff5722, 0x111111, 0x00e5ff, 0xc6ff00];
-
 // An e-scooter, facing +z, its rear on the ground at the origin: a deck, two small wheels, a stem
 // with a handlebar; white where it takes its colour.
 const DECK = 0.14; // metres, the deck's top
@@ -193,7 +176,7 @@ function move(m, wanted, dt, ground) {
   Object.assign(m, { x, y: ground(x, z), z });
 }
 
-// The joggers, cyclists and e-scooter riders on these routes (each [x, z] points); ground(x, z):
+// The cyclists and e-scooter riders on these routes (each [x, z] points); ground(x, z):
 // the height there; danger(x, y, z, reach): null if no traffic is there, else the shortest way out
 // of it ([x, z]) within reach metres (src/main.js). { meshes, update(dt) }.
 export function createRunners(routes, ground, danger) {
@@ -205,41 +188,6 @@ export function createRunners(routes, ground, danger) {
     const stretch = stretches.find(({ length }) => (r -= length) < 0) ?? stretches[0];
     return [stretch, Math.random() * stretch.length];
   };
-
-  // Joggers: groups of one to five, a child only beside an adult.
-  const joggers = [];
-  while (joggers.length < JOGGERS) {
-    const [stretch, s] = somewhere();
-    const size = pick([1, 1, 1, 2, 2, 3, 4, 5]);
-    const [way, pace] = [pick([-1, 1]), random(...PACE)];
-    for (let k = 0; k < size; k++) {
-      const kind = k && Math.random() < 0.2 ? "child" : pick(["man", "woman"]);
-      const keep = (k % 2 ? RIGHT[1] : RIGHT[0]) + random(-0.1, 0.1);
-      const behind = Math.floor(k / 2) * BEHIND;
-      joggers.push({ ...mover(stretch, s - way * behind, way, pace, keep, ground), kind });
-    }
-  }
-  const runners = createCrowd("player", joggers.length);
-  joggers.forEach((j, i) => {
-    const woman = j.kind === "woman" || (j.kind === "child" && Math.random() < 0.5);
-    const skin = pick(SKIN);
-    runners.dress(
-      i,
-      {
-        skin,
-        hair: pick(HAIR),
-        top: pick(SHIRTS),
-        bottom: pick(SHORTS),
-        shoes: pick(TRAINERS),
-        hat: skin,
-        head: woman ? "long" : pick(["hair", "hair", "cap", "backcap"]),
-        face: Math.random() < 0.2 ? "shades" : null,
-      },
-      "run",
-    );
-    j.size = j.kind === "child" ? CHILD : j.kind === "woman" ? WOMAN : 1;
-    j.phase = random(0, 6);
-  });
 
   // Riders, men and women in turn, on each kind of vehicle (RIDES); its frames in one mesh, for the
   // bikes their wheels in another.
@@ -279,9 +227,9 @@ export function createRunners(routes, ground, danger) {
     const meshes = [frames, crowds.man.mesh, crowds.woman.mesh, ...(wheels ? [wheels] : [])];
     return { ride, riders, frames, wheels, meshes };
   });
-  const meshes = [runners.mesh, ...kinds.flatMap((kind) => kind.meshes)];
+  const meshes = kinds.flatMap((kind) => kind.meshes);
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
-  const all = [...joggers, ...kinds.flatMap(({ riders }) => riders)];
+  const all = kinds.flatMap(({ riders }) => riders);
 
   const [matrix, wheel, spin] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
   const [turn, seat, position, scale] = [
@@ -294,14 +242,6 @@ export function createRunners(routes, ground, danger) {
   return {
     meshes,
     update(dt) {
-      joggers.forEach((j, i) => {
-        // It waits while off its way, fleeing from traffic (dodge).
-        if (!runners.away(i)) {
-          move(j, among(j, all, j.top), dt, ground);
-          j.phase += (j.pace * dt * STRIDE) / j.size;
-        }
-        runners.place(i, j.x, j.y, j.z, j.heading, j.phase, j.size, LEAN);
-      });
       for (const { ride, riders, frames, wheels } of kinds) {
         const { size, base, seat: at, rider, lean } = ride;
         scale.setScalar(size);

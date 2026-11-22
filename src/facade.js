@@ -2,14 +2,18 @@
 // of each building (the alpha of its wall colour, tools/buildings.mjs): bits 0–2 the style, 3 shop
 // windows on the ground floor, 4 balconies, 5–7 a seed. A grid of bays in metres runs along each
 // wall, whole storeys fill its height (_wall: its bottom and top, its building's foot). Far away,
-// where they would flicker, a wall takes their average colour.
+// where they would flicker, a wall takes their average colour. At night (src/daylight.js) some
+// windows glow, all shopfronts.
 // All colours are linear; none is black.
+import { night } from "./daylight.js";
 const SETTINGS = {
   cell: "vec2(3.1, 3.3)", // metres of a bay and a storey
   churchCell: "vec2(3.1, 4.6)",
   glass: "vec3(0.16, 0.19, 0.23)",
   frame: "vec3(0.72, 0.70, 0.64)",
   dark: "vec3(0.12, 0.125, 0.13)", // frames of modern windows, shopfronts
+  glow: "vec3(1.6, 1.15, 0.67)", // a lit window's light
+  lit: 0.42, // of the windows, lit at night
 };
 
 // GLSL helpers: a box's signed distance; 1 inside a distance below 0, smoothed over aa; a hash.
@@ -17,6 +21,7 @@ const HELPERS = `
 varying vec3 vFacade;
 varying vec3 vNearby;
 varying vec3 vWall;
+uniform float facadeNight;
 float facadeBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return max(d.x, d.y); }
 float facadeFill(float d, float aa) { return 1.0 - smoothstep(-aa, aa, d); }
 float facadeHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -147,12 +152,16 @@ const FACADE = `
     // Too far to resolve the windows: the facade's average.
     float share = style == 3 ? 0.75 : style == 2 ? 0.42 : style == 4 || style == 7 ? 0.0 : 0.2;
     diffuseColor.rgb = mix(col, mix(wall, ${SETTINGS.glass}, share * 0.6), far);
+    // Lit at night: some windows, every shopfront; far away their share of the facade.
+    float lit = gf > 0.5 && (bits & 8) != 0 ? 1.0 : step(fract(wid * 7.31), ${SETTINGS.lit});
+    facadeGlow = mix(glass * lit, share * ${SETTINGS.lit}, far);
   }
 }
 `;
 
 // Adds the facades to a Lambert shader with vertex colours (onBeforeCompile).
 export function facadeShader(shader) {
+  shader.uniforms.facadeNight = night;
   shader.vertexShader = shader.vertexShader
     .replace(
       "#include <common>",
@@ -167,5 +176,12 @@ export function facadeShader(shader) {
     );
   shader.fragmentShader = shader.fragmentShader
     .replace("#include <common>", `#include <common>\n${HELPERS}`)
-    .replace("#include <color_fragment>", `#include <color_fragment>\n${FACADE}`);
+    .replace(
+      "#include <color_fragment>",
+      `float facadeGlow = 0.0;\n#include <color_fragment>\n${FACADE}`,
+    )
+    .replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>\ntotalEmissiveRadiance += ${SETTINGS.glow} * facadeGlow * facadeNight;`,
+    );
 }

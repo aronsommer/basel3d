@@ -2,6 +2,7 @@
 // by the shader on strips lying on the ground or on a bridge's deck, so they are sharp from any
 // distance. Far away, thinner than a pixel, they fade.
 import * as THREE from "three";
+import { daylight } from "./daylight.js";
 import { Packed } from "./pack.js";
 
 const STEP = 2; // metres between a strip's points at most, so it follows the ground's grid
@@ -65,7 +66,7 @@ export function createRails(buffer, { x0, z0, chunk }, ground, deck) {
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
     fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog]),
+    uniforms: { ...THREE.UniformsUtils.merge([THREE.UniformsLib.fog]), daylight },
     vertexShader: /* glsl */ `
       attribute vec2 track;
       varying vec2 vTrack;
@@ -78,6 +79,7 @@ export function createRails(buffer, { x0, z0, chunk }, ground, deck) {
       }`,
     fragmentShader: /* glsl */ `
       varying vec2 vTrack;
+      uniform float daylight;
       #include <fog_pars_fragment>
       void main() {
         float pixel = fwidth(vTrack.x); // metres a pixel spans across the track
@@ -86,7 +88,7 @@ export function createRails(buffer, { x0, z0, chunk }, ground, deck) {
         float alpha = clamp((min(${HEAD / 2}, from + 0.5 * pixel) - max(-${HEAD / 2}, from - 0.5 * pixel)) / pixel, 0.0, 1.0)
           * (1.0 - smoothstep(0.8, 1.6, pixel));
         if (alpha < 0.004) discard;
-        gl_FragColor = vec4(0.2, 0.2, 0.21, alpha);
+        gl_FragColor = vec4(vec3(0.2, 0.2, 0.21) * daylight, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>

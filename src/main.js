@@ -16,6 +16,9 @@ import { createRails } from "./rails.js";
 import { unpackPoints } from "./pack.js";
 import { readTerrain } from "./terrain.js";
 import { PASSAGE } from "./passage.js";
+import { RHEINWEG, RHEINRUNDE } from "./rheinweg.js";
+import { createSwimmers } from "./swimmers.js";
+import { createClique } from "./fasnacht.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
@@ -39,6 +42,7 @@ import { createSwans, createZoo } from "./zoo.js";
 import { createRunners } from "./runners.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
+import { createDaylight, night } from "./daylight.js";
 import { createJet } from "./jet.js";
 import { TOSS, createPeople, dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
@@ -91,11 +95,13 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(SKY, 3000, 9000);
-// Strong sky light keeps the sides facing away from the sun bright; the sun is warm.
-scene.add(new THREE.HemisphereLight(0xe2eaf2, 0xbaa88c, 2));
+// Strong sky light keeps the sides facing away from the sun bright; the sun is warm. Both, and the
+// sky, change with the time of day (createDaylight).
+const hemisphere = new THREE.HemisphereLight(0xe2eaf2, 0xbaa88c, 2);
 const sun = new THREE.DirectionalLight(0xffdfb4, 2.7);
 sun.position.set(-1, 1, 1); // from the south-west
-scene.add(sun, createSky(SKY, sun.position.clone().normalize()));
+const sky = createSky(SKY, sun.position.clone().normalize());
+scene.add(hemisphere, sun, sky);
 
 // Nothing beyond the fog's end is visible anyway.
 const FOV = 55; // degrees, top to bottom; FPV_FOV through a drone's camera, which is wide
@@ -590,59 +596,23 @@ const basilisks = BASILISKS.map(([lat, lon], k) => {
 scene.add(createBasilisks(basilisks));
 const ships = createShips(new Float32Array(shipsBuffer), ferries.ferries);
 scene.add(...ships.meshes);
-// Joggers (src/runners.js) along the Rhine's Kleinbasel bank, from the Unterer
-// Rheinweg by the Dreirosenbrücke up to the Schaffhauserrheinweg (WGS84 points); also cyclists and
-// e-scooter riders, who brake for what the people flee from (danger).
-const runners = createRunners(
-  [
-    [
-      [47.569116, 7.586471],
-      [47.568795, 7.58646],
-      [47.568347, 7.586464],
-      [47.567868, 7.586493],
-      [47.567246, 7.5866],
-      [47.566715, 7.586722],
-      [47.566198, 7.586894],
-      [47.565404, 7.587183],
-      [47.564827, 7.587496],
-      [47.564298, 7.587806],
-      [47.563756, 7.588174],
-      [47.563085, 7.588593],
-      [47.562739, 7.588849],
-      [47.562109, 7.589342],
-      [47.561837, 7.589635],
-      [47.561363, 7.590089],
-      ...PASSAGE.ends, // through the passage, between its walls
-      [47.559974, 7.5917],
-      [47.559655, 7.592087],
-      [47.559514, 7.592332],
-      [47.559229, 7.592729],
-      [47.559053, 7.593029],
-      [47.558801, 7.593468],
-      [47.558428, 7.594155],
-      [47.558205, 7.594643],
-      [47.557972, 7.595168],
-      [47.557796, 7.595554],
-      [47.557648, 7.595999],
-      [47.557478, 7.596442],
-      [47.557335, 7.596826],
-      [47.557235, 7.597123],
-      [47.55715, 7.597558],
-      [47.55706, 7.598561],
-      [47.557015, 7.59915],
-      [47.557026, 7.600412],
-      [47.557048, 7.601241],
-      [47.557063, 7.601894],
-      [47.557103, 7.602674],
-      [47.557174, 7.603441],
-      [47.557263, 7.604338],
-      [47.557347, 7.605095],
-    ].map(([lat, lon]) => fromWGS84(lat, lon)),
-  ],
-  heightAt,
-  danger,
-);
+// Cyclists and e-scooter riders (src/runners.js) along the Rhine's Kleinbasel bank
+// (src/rheinweg.js), braking for what the people flee from (danger).
+const rheinweg = RHEINWEG.map(([lat, lon]) => fromWGS84(lat, lon));
+const runners = createRunners([rheinweg], heightAt, danger);
 scene.add(...runners.meshes);
+// Passers-by and joggers who swim down the Rhine (src/swimmers.js) on their round
+// (src/rheinweg.js), waiting for the ferries and swimming aside from them.
+const rheinrunde = RHEINRUNDE.map(([lat, lon]) => fromWGS84(lat, lon));
+const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries);
+scene.add(...swimmers.meshes);
+// A Fasnacht clique (src/fasnacht.js) marching round the Marktplatz, along its middle east of the
+// tram tracks, 8 m or more from them.
+const clique = createClique(
+  [fromWGS84(47.558424, 7.58759), fromWGS84(47.557929, 7.58797)],
+  heightAt,
+);
+scene.add(...clique.meshes);
 overlay.add(ships.route);
 const planes = createPlanes();
 scene.add(...planes.meshes);
@@ -1349,6 +1319,22 @@ kindLines.walk = Object.assign(
   { visible: false },
 );
 overlay.add(kindLines.walk);
+// The riders' way and the swimmers' round in the layers "Bikes" and "Swimmers", on the ground or
+// water.
+const wayLines = (points, closed) =>
+  Object.assign(
+    checkLines(
+      points
+        .slice(0, closed ? points.length : -1)
+        .flatMap((a, i) =>
+          [a, points[(i + 1) % points.length]].flatMap(([x, z]) => [x, heightAt(x, z) + 0.3, z]),
+        ),
+    ),
+    { visible: false },
+  );
+kindLines.bike = wayLines(rheinweg, false);
+kindLines.swim = wayLines(rheinrunde, true);
+overlay.add(kindLines.bike, kindLines.swim);
 // The St. Jakob-Park in FC Basel's colours, blue walls and a red roof: the widest building whose
 // middle is within STADIUM of its pitch's (the model joins the block behind its south stand to it).
 // On the pitch a training game (src/football.js) between goals at LV95 2613704.8, 1265649.7 and
@@ -1564,9 +1550,12 @@ const bike = createBike([fromWGS84(47.571822, 7.599996), fromWGS84(47.57154, 7.6
 scene.add(...bike.objects);
 // "PUMA" mown into the grass (src/lawn.js), reading from WGS84 47.571836, 7.600411 to 47.572127,
 // 7.600549.
-scene.add(
-  createLawn("PUMA", [fromWGS84(47.571836, 7.600411), fromWGS84(47.572127, 7.600549)], terrainAt),
+const lawn = createLawn(
+  "PUMA",
+  [fromWGS84(47.571836, 7.600411), fromWGS84(47.572127, 7.600549)],
+  terrainAt,
 );
+scene.add(lawn);
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 // The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west.
 const dinos = createDinos(
@@ -2155,7 +2144,7 @@ function createMovers({ routes }, points, kind, traffic) {
   // vehicles (fleet; a vehicle's slot is its place there) and their cars as instances of one mesh,
   // in one draw call. Of each fleet's material, the uniforms that show the cars of the vehicle
   // under the mouse, instances highlightFrom to highlightTo - 1, and the shader that keeps the parts
-  // of a car meant for the first or last one only (piece) and lights its lamps.
+  // of a car meant for the first or last one only (piece) and lights its lamps, the more at night.
   const geometries = models();
   const fleets = geometries.map(() => []);
   vehicles.forEach((vehicle, v) => {
@@ -2167,7 +2156,7 @@ function createMovers({ routes }, points, kind, traffic) {
     const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     material.customProgramCacheKey = () => kind; // the shader depends on CARS
     material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, ranges[m]);
+      Object.assign(shader.uniforms, ranges[m], { lampNight: night });
       highlightShader(
         shader,
         "gl_InstanceID >= highlightFrom && gl_InstanceID < highlightTo",
@@ -2191,10 +2180,14 @@ function createMovers({ routes }, points, kind, traffic) {
           if (part == 1 && car != 0 || part == 2 && car != ${CARS - 1}) transformed = vec3(0.0);`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace("#include <common>", "#include <common>\nvarying float vLamp;")
+        .replace(
+          "#include <common>",
+          "#include <common>\nvarying float vLamp;\nuniform float lampNight;",
+        )
         .replace(
           "#include <opaque_fragment>",
-          "if (vLamp > 0.5) outgoingLight = diffuseColor.rgb;\n#include <opaque_fragment>",
+          // Lit, the more at night.
+          "if (vLamp > 0.5) outgoingLight = diffuseColor.rgb * (1.0 + 2.0 * lampNight);\n#include <opaque_fragment>",
         );
     };
     const mesh = new THREE.InstancedMesh(geometry, material, fleets[m].length * CARS);
@@ -3461,8 +3454,9 @@ const drives = [
 // People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
 // cars of trams, trains and road vehicles that go and their ways WARN seconds ahead (traffic), and
 // the vehicles above (but the drones) while they move faster than slow, with their ways WARN
-// seconds ahead along their heading. In danger is one up to margin metres beside these (steered
-// metres more beside the vehicles above, as they may turn), at most level metres above or below.
+// seconds ahead along their heading; and the Fasnacht clique's rows (src/fasnacht.js, its zones).
+// In danger is one up to margin metres beside the vehicles (steered metres more beside the vehicles
+// above, as they may turn) or in a row's zone, at most level metres above or below.
 const DANGER = { margin: 0.5, steered: 4, level: 3, slow: 0.5 }; // metres, metres per second
 const CLEAR = 0.5; // metres one flees beyond a danger
 const TRY = 0.25; // metres between the spots tried on a way out
@@ -3475,7 +3469,7 @@ const driven = drives
   .map((vehicle) => ({ vehicle, ...vehicle.group.position, speed: 0 }));
 // The dangers within SPAN metres of the spot last asked (asked), at most MOST, each back x, z,
 // way x, z (unit), length and half width, with the car or stretch (its first point) or driven
-// vehicle (-1 - its index) it is of.
+// vehicle (-1 - its index) or clique row (-1 - driven vehicles - its index) it is of.
 const [SPAN, MOST] = [20, 32]; // metres, more than any way out (src/people.js)
 const zones = new Float64Array(6 * MOST);
 const zoneOf = new Int32Array(MOST);
@@ -3544,6 +3538,11 @@ function danger(x, y, z, reach) {
     const side = width + DANGER.margin + DANGER.steered;
     zone(-1 - d, bx, bz, ux, uz, 2 * half + Math.abs(speed) * WARN, side);
   });
+  for (let r = 0; r < clique.zones.length; r++) {
+    const c = clique.zones[r];
+    if (Math.abs(c[6] - y) <= DANGER.level)
+      zone(-1 - driven.length - r, c[0], c[1], c[2], c[3], c[4], c[5]);
+  }
   if (!inDanger(x, z)) return null;
   let best = Infinity;
   way[0] = way[1] = 0;
@@ -4286,6 +4285,29 @@ function showPoints(points) {
 }
 const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints);
 
+// Day or night (src/daylight.js) by "Night" in the menu, as last chosen in this browser, else day;
+// the mown lawn darkening with the light, as no light shines on it.
+const daylight = createDaylight({
+  sun,
+  hemisphere,
+  sky,
+  fog: scene.fog,
+  water,
+  dim: [lawn.material],
+});
+const NIGHT_KEY = "basel3d.night"; // "1" (on) or "0"
+const nightBox = document.getElementById("night-box");
+try {
+  nightBox.checked = localStorage.getItem(NIGHT_KEY) === "1";
+} catch {} // storage blocked
+daylight.set(nightBox.checked);
+nightBox.addEventListener("change", () => {
+  daylight.set(nightBox.checked);
+  try {
+    localStorage.setItem(NIGHT_KEY, nightBox.checked ? "1" : "0");
+  } catch {} // storage blocked
+});
+
 let last = performance.now();
 let afloat = 0; // seconds the ferries and ships have moved, so they keep in step
 renderer.setAnimationLoop((time) => {
@@ -4298,12 +4320,15 @@ renderer.setAnimationLoop((time) => {
   updateTrees();
   updateTerrain();
   water.waterTime.value = time / 1000;
+  daylight.update(dt);
   pavilionTime.value = time / 1000;
   peopleTime.value = time / 1000;
   const now = new Date();
   clockTime.value = (now / 1000 - now.getTimezoneOffset() * 60) % 86400;
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
   runners.update(dt);
+  swimmers.update(dt);
+  clique.update(dt);
   training.update(dt);
   bike.update(dt);
   serpent.update(time / 1000);
