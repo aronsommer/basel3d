@@ -29,8 +29,7 @@ canvas.aiming {
 p {
   margin: 0;
 }
-/* Glass: dark, translucent, blurring the scene behind it; the edge an inset line, so the
-   sizes stay. */
+/* Glass: dark, translucent, blurring the scene behind it. */
 #loading,
 #off,
 #walk,
@@ -43,7 +42,6 @@ p {
   background: rgba(10, 15, 40, 0.5);
   -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
   backdrop-filter: blur(32px) saturate(200%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
 #loading {
   position: absolute;
