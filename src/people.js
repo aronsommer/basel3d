@@ -21,8 +21,10 @@ const FORWARD = 0.2;
 // back, still; yoga, raising the arms slowly over the head and lowering them; dancing, waving the
 // arms, stepping, bouncing and twisting; up, lying on the back with arms and legs straight up,
 // spreading them apart and closing them slowly; angel, lying on the back sweeping the arms along
-// the ground up over the head and back and opening and closing the legs, as making a snow angel.
-const POSES = ["stand", "walk", "lie", "yoga", "dance", "up", "angel"];
+// the ground up over the head and back and opening and closing the legs, as making a snow angel;
+// ride, on a bike: the arms ahead to the handlebar, the legs pedalling by phase; trike, the same
+// with the legs far ahead, as to a tricycle's pedals on its front wheel.
+const POSES = ["stand", "walk", "lie", "yoga", "dance", "up", "angel", "ride", "trike"];
 // Lying on the back: tilted about its own x after the heading, its back on the ground (BACK metres
 // up), turned round, so it lies from its place along the heading, the head furthest.
 const LYING = new Set(["lie", "up", "angel"]);
@@ -196,6 +198,8 @@ material.onBeforeCompile = (shader) => {
           : pose == 4 && limb == 2 ? -1.6 - 0.8 * sin(t * 4.0 + phase + side * 1.6)
           : pose == 4 ? 0.3 * sin(t * 4.0 + phase) * side
           : pose == 5 ? -1.5708
+          : pose == 7 ? (limb == 2 ? -1.1 : -0.4 + 0.3 * sin(phase) * side)
+          : pose == 8 ? (limb == 2 ? -1.0 : -1.1 + 0.25 * sin(phase) * side)
           : 0.0;
         vec2 p = transformed.yz - vec2(pivot, 0.0);
         transformed.yz = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))

@@ -22,6 +22,8 @@ import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createTanks } from "./tank.js";
+import { createBike } from "./bike.js";
+import { createLawn } from "./lawn.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createTraining } from "./football.js";
@@ -1348,6 +1350,20 @@ const training = createTraining(
   [3, 2], // the goalkeeping coach throws, the third goalkeeper catches
 );
 scene.add(...training.objects);
+// A girl on her pink bike (src/bike.js) to and fro on the path from WGS84 47.571822, 7.599996 to
+// 47.571540, 7.601622, her little sister running after her.
+const bike = createBike([fromWGS84(47.571822, 7.599996), fromWGS84(47.57154, 7.601622)], heightAt);
+scene.add(...bike.objects);
+// "PUMA" mown into the grass (src/lawn.js), reading from WGS84 47.571836, 7.600411 to 47.572127,
+// 7.600549.
+scene.add(
+  createLawn(
+    "PUMA",
+    [fromWGS84(47.571836, 7.600411), fromWGS84(47.572127, 7.600549)],
+    terrainInfo,
+    heights,
+  ),
+);
 const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
 // The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west.
 const dinos = createDinos(
@@ -2869,20 +2885,18 @@ function intoArea(x, z) {
   return [clamp(x, x0, x0 + (nx - 1) * cell), clamp(z, z0, z0 + (nz - 1) * cell)];
 }
 
-// Bilinear terrain height at a scene position.
+// The terrain's height at a scene position as its mesh has it: each cell's two triangles meet
+// along the line from its south-west to its north-east corner.
 function heightAt(x, z) {
   const { x0, z0, cell, nx, nz } = terrainInfo;
   const fx = THREE.MathUtils.clamp((x - x0) / cell, 0, nx - 1.001);
   const fz = THREE.MathUtils.clamp((z - z0) / cell, 0, nz - 1.001);
-  const ix = Math.floor(fx);
-  const iz = Math.floor(fz);
-  const tx = fx - ix;
-  const tz = fz - iz;
-  const i = iz * nx + ix;
-  return (
-    (heights[i] * (1 - tx) + heights[i + 1] * tx) * (1 - tz) +
-    (heights[i + nx] * (1 - tx) + heights[i + nx + 1] * tx) * tz
-  );
+  const [tx, tz] = [fx % 1, fz % 1];
+  const i = Math.floor(fz) * nx + Math.floor(fx);
+  const [nw, ne, sw, se] = [heights[i], heights[i + 1], heights[i + nx], heights[i + nx + 1]];
+  return tx + tz <= 1
+    ? nw + (ne - nw) * tx + (sw - nw) * tz
+    : se + (sw - se) * (1 - tx) + (ne - se) * (1 - tz);
 }
 
 // Flies the craft piloted, if any, on by dt seconds and returns it; but where its underside or
@@ -3636,6 +3650,7 @@ renderer.setAnimationLoop((time) => {
   peopleTime.value = time / 1000;
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
   training.update(dt);
+  bike.update(dt);
   serpent.update(time / 1000);
   const flier = fly(dt);
   helicopter.update(time / 1000, flier === helicopter ? flown : null);
