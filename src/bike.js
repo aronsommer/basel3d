@@ -147,7 +147,7 @@ export function createBike([from, to], ground) {
       group.add(mesh);
       return [mesh, r];
     });
-    const crowd = createCrowd("woman", 1);
+    const crowd = createCrowd("woman", 1, false); // she rides, she does not flee
     crowd.dress(0, LOOKS[k], pose);
     crowd.mesh.frustumCulled = false; // she moves
     group.add(crowd.mesh);

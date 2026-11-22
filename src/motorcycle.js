@@ -37,7 +37,7 @@ const SPEC = {
   width: 0.8,
 };
 
-// One per place ({ x, y, z, heading }), each { group, material, update }; they share their
+// One per place ({ x, y, z, heading }), each { group, material, update, half }; they share their
 // geometries and all materials but their own (so one is highlighted alone). boost(position): how
 // much larger to draw one far away; world: as for createDriving (src/drive.js).
 export function createMotorcycles(places, boost, world) {
@@ -219,6 +219,6 @@ export function createMotorcycles(places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update };
+    return { group, material, update, half: SPEC.half };
   }
 }

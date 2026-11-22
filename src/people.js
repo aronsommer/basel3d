@@ -25,10 +25,10 @@ const FORWARD = 0.2;
 // ride, on a bike: the arms ahead to the handlebar, the legs pedalling by phase; trike, the same
 // with the legs far ahead, as to a tricycle's pedals on its front wheel.
 const POSES = ["stand", "walk", "lie", "yoga", "dance", "up", "angel", "ride", "trike"];
-// Lying on the back: tilted about its own x after the heading, its back on the ground (BACK metres
+// Lying on the back: tilted about its own x after the heading, its back on the ground (LIE metres
 // up), turned round, so it lies from its place along the heading, the head furthest.
 const LYING = new Set(["lie", "up", "angel"]);
-const BACK = 0.12;
+const LIE = 0.12;
 // Metres up where they turn, by limb: legs, arms, a dog's legs.
 const PIVOTS = [0.9, 1.47, 0.34];
 
@@ -235,9 +235,21 @@ material.onBeforeCompile = (shader) => {
     .replace("vec4( diffuse, opacity )", "vec4( vLook, opacity )");
 };
 
+// The crowds whose figures flee from traffic (dodge).
+const fleeing = [];
+// Fleeing: running RUN metres per second, at most REACH metres from its place, back after CALM
+// seconds of no danger at BACK metres per second; STRIDE radians of the walk per metre.
+const RUN = 7;
+const REACH = 8;
+const CALM = 2.5;
+const BACK = 1.3;
+const STRIDE = 4.5;
+const [WALK, STAND] = ["walk", "stand"].map((pose) => POSES.indexOf(pose));
+
 // count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
-// tilt: radians about its own x after the heading) }; a look's head is short hair unless given.
-export function createCrowd(body, count) {
+// tilt: radians about its own x after the heading), hide(i) }; a look's head is short hair unless
+// given. Its figures flee from traffic (dodge) unless flee is false.
+export function createCrowd(body, count, flee = true) {
   const geometry = new THREE.BufferGeometry();
   for (const name of ["position", "piece"])
     geometry.setAttribute(name, BODIES[body].attributes[name]);
@@ -252,22 +264,85 @@ export function createCrowd(body, count) {
   const mesh = new THREE.InstancedMesh(geometry, material, count);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   const [matrix, tilted, scale] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Vector3()];
+  const put = (i, x, y, z, heading, phase, size, tilt) => {
+    matrix.makeRotationY(heading).multiply(tilted.makeRotationX(tilt));
+    matrix.scale(scale.setScalar(size)).setPosition(x, y, z);
+    mesh.setMatrixAt(i, matrix);
+    phases.array[i] = phase;
+    mesh.instanceMatrix.needsUpdate = phases.needsUpdate = true;
+  };
+  // Per figure: as placed, x, y, z, heading, phase, size, tilt and its pose; fleeing, how far it
+  // is off that place (x, z), its heading, its phase beyond the placed one and the seconds since
+  // its last danger.
+  const home = new Float32Array(8 * count);
+  const off = new Float32Array(5 * count);
+  if (flee) fleeing.push({ count, home, off, put, poses: more });
   return {
     mesh,
     dress(i, { skin, hair, top = 0, bottom = 0, shoes = 0, hat = 0, head = "hair", dress }, pose) {
       const options = (1 << OPTIONS.indexOf(head)) | (dress ? 1 << OPTIONS.indexOf("dress") : 0);
       look.set([skin, hair, top, bottom], 4 * i);
-      more.set([shoes, hat, options, POSES.indexOf(pose)], 4 * i);
+      more.set([shoes, hat, options, (home[8 * i + 7] = POSES.indexOf(pose))], 4 * i);
       look.needsUpdate = more.needsUpdate = true;
     },
     place(i, x, y, z, heading, phase, size = 1, tilt = 0) {
-      matrix.makeRotationY(heading).multiply(tilted.makeRotationX(tilt));
-      matrix.scale(scale.setScalar(size)).setPosition(x, y, z);
-      mesh.setMatrixAt(i, matrix);
-      phases.array[i] = phase;
-      mesh.instanceMatrix.needsUpdate = phases.needsUpdate = true;
+      home.set([x, y, z, heading, phase, size, tilt], 8 * i);
+      put(i, x, y, z, heading, phase, size, tilt);
+    },
+    // Out of sight, no longer fleeing.
+    hide(i) {
+      off.fill(0, 5 * i, 5 * i + 5);
+      more.array[4 * i + 3] = home[8 * i + 7];
+      more.needsUpdate = true;
+      this.place(i, 0, -1000, 0, 0, 0);
     },
   };
+}
+
+// Moves the figures of all crowds dt seconds on, after their own moves: one in danger runs across
+// the way of what comes (danger(x, y, z): [x, z] of unit length, or null), unless a wall is there
+// (blocked(x, y, z, toX, toZ)); calm again, it walks back. Off its place it stands on
+// ground(x, z, y) upright, running or walking, else standing.
+export function dodge(dt, danger, ground, blocked) {
+  for (const { count, home, off, put, poses } of fleeing)
+    for (let i = 0; i < count; i++) {
+      const [h, o] = [8 * i, 5 * i];
+      let [ox, oz] = [off[o], off[o + 1]];
+      const [x, y, z] = [home[h] + ox, home[h + 1], home[h + 2] + oz];
+      const away = danger(x, y, z);
+      if (!away && !ox && !oz) continue;
+      let step = 0;
+      if (away) {
+        off[o + 2] = Math.atan2(away[0], away[1]);
+        off[o + 4] = 0;
+        const [tx, tz] = [ox + away[0] * RUN * dt, oz + away[1] * RUN * dt];
+        if (Math.hypot(tx, tz) < REACH && !blocked(x, y, z, home[h] + tx, home[h + 2] + tz)) {
+          step = RUN * dt;
+          [ox, oz] = [tx, tz];
+        }
+      } else if ((off[o + 4] += dt) > CALM) {
+        const left = Math.hypot(ox, oz);
+        step = Math.min(left, BACK * dt);
+        off[o + 2] = Math.atan2(-ox, -oz);
+        [ox, oz] = step < left ? [ox - (ox / left) * step, oz - (oz / left) * step] : [0, 0];
+      }
+      [off[o], off[o + 1]] = [ox, oz];
+      const back = !ox && !oz;
+      if (back) off[o + 3] = 0;
+      const walking = home[h + 7] === WALK; // on its own, as the pedestrians
+      const pose = back ? home[h + 7] : step || walking ? WALK : STAND;
+      if (poses.array[4 * i + 3] !== pose) {
+        poses.array[4 * i + 3] = pose;
+        poses.needsUpdate = true;
+      }
+      if (back) put(i, ...home.subarray(h, h + 7));
+      else {
+        const [fx, fz] = [home[h] + ox, home[h + 2] + oz];
+        const heading = step || !walking ? off[o + 2] : home[h + 3];
+        off[o + 3] += step * STRIDE;
+        put(i, fx, ground(fx, fz, y), fz, heading, home[h + 4] + off[o + 3], home[h + 5], 0);
+      }
+    }
 }
 
 // People at places ({ x, y, z, heading, pose }), standing unless another pose (POSES) is given;
@@ -280,10 +355,11 @@ export function createPeople(places, looks) {
     ks.forEach((k, i) => {
       const { x, y, z, heading, pose = "stand" } = places[k];
       crowd.dress(i, looks[k % looks.length], pose);
-      if (LYING.has(pose)) crowd.place(i, x, y + BACK, z, heading + Math.PI, 0, 1, -Math.PI / 2);
+      if (LYING.has(pose)) crowd.place(i, x, y + LIE, z, heading + Math.PI, 0, 1, -Math.PI / 2);
       else crowd.place(i, x, y, z, heading, k * 2.3);
     });
     crowd.mesh.computeBoundingSphere();
+    crowd.mesh.boundingSphere.radius += REACH; // where they may flee to
     return crowd.mesh;
   });
 }

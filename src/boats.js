@@ -206,9 +206,9 @@ const KINDS = {
   },
 };
 
-// Boats of a kind (KINDS), one per place ({ x, y, z, heading }), each { group, material, update };
-// they share their geometries and all materials but the hull's (so one is highlighted alone).
-// boost(position): how much larger to draw one far away; world: as for createDriving
+// Boats of a kind (KINDS), one per place ({ x, y, z, heading }), each { group, material, update,
+// half }; they share their geometries and all materials but the hull's (so one is highlighted
+// alone). boost(position): how much larger to draw one far away; world: as for createDriving
 // (src/drive.js).
 export function createBoats(kind, places, boost, world) {
   const { spec, width, half, axles, parts, side, lights } = KINDS[kind];
@@ -305,6 +305,6 @@ export function createBoats(kind, places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update };
+    return { group, material, update, half };
   }
 }

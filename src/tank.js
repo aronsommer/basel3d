@@ -58,8 +58,8 @@ function link(u) {
   return [END + BEND * Math.sin(front), 0.45 + BEND * Math.cos(front), front];
 }
 
-// One per place ({ x, y, z, heading }), each { group, material, update, train, aim, fire }; they
-// share their geometries and all materials but their own (so one is highlighted alone).
+// One per place ({ x, y, z, heading }), each { group, material, update, half, train, aim, fire };
+// they share their geometries and all materials but their own (so one is highlighted alone).
 // boost(position): how much larger to draw one far away; world: as for createDriving
 // (src/drive.js).
 export function createTanks(places, boost, world) {
@@ -246,6 +246,7 @@ export function createTanks(places, boost, world) {
       group,
       material,
       update,
+      half: SPEC.half,
       // The gun is to point along a scene direction (unit); to be called every frame it is.
       train(direction) {
         wanted.copy(direction);

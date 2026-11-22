@@ -35,7 +35,7 @@ import { createZoo } from "./zoo.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
 import { createJet } from "./jet.js";
-import { createPeople, mix, peopleTime } from "./people.js";
+import { createPeople, dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
 import { createPoints } from "./points.js";
@@ -482,11 +482,13 @@ const carCell = (x, z) =>
 
 // Trams, trains and cars on their loops (tools/paths.mjs, createMovers), sharing the traffic.
 const traffic = {
-  // Each car's front, centre and back, noted anew each frame: x, z per point (xz); its vehicle,
-  // rail and the next point in its cell, -1 if none (of); per cell its first and last point, in
-  // the order noted (head: -1 if none, tail). Each kind makes room for its own.
+  // Each car's front, back and centre, noted anew each frame in that order: x, z per point (xz);
+  // its height (y); its vehicle, rail and the next point in its cell, -1 if none (of); per cell its
+  // first and last point, in the order noted (head: -1 if none, tail). Each kind makes room for
+  // its own.
   noted: 0,
   xz: new Float64Array(0),
+  y: new Float32Array(0),
   of: new Int32Array(0),
   head: new Int32Array(CELLS * CELLS).fill(-1),
   tail: new Int32Array(CELLS * CELLS),
@@ -2104,13 +2106,15 @@ function createMovers({ routes }, points, kind, traffic) {
   // Room for its cars' points among the traffic's.
   const room = 3 * CARS * vehicles.length;
   traffic.xz = new Float64Array(traffic.xz.length + 2 * room);
+  traffic.y = new Float32Array(traffic.y.length + room);
   traffic.of = new Int32Array(traffic.of.length + 3 * room);
   const note = (p, v) => {
-    const { xz, of, head, tail } = traffic;
+    const { xz, y, of, head, tail } = traffic;
     const n = traffic.noted++;
     const c = carCell(p.x, p.z);
     xz[2 * n] = p.x;
     xz[2 * n + 1] = p.z;
+    y[n] = p.y;
     of[3 * n] = first + v;
     of[3 * n + 1] = rail;
     of[3 * n + 2] = -1;
@@ -3187,6 +3191,66 @@ const drives = [
   if (!eye) ride.cab = (v, view) => vehicles[v].look(view);
   return [vehicles, ride];
 });
+// People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
+// cars of trams, trains and road vehicles that go, and the vehicles above (but the drones) while
+// they move faster than slow. In danger is one that one would pass within near metres of or
+// reach within ahead metres, at most level metres above or below it.
+const DANGER = { near: 4, ahead: 30, level: 3, slow: 0.5 }; // metres, slow per second
+// The vehicles above, each with where it was the frame before.
+const driven = drives
+  .flatMap(([vehicles]) => vehicles)
+  .filter(({ half }) => half)
+  .map((vehicle) => ({ vehicle, ...vehicle.group.position, speed: 0 }));
+const fleeFrom = [0, 0];
+let nearest = DANGER.near;
+// Notes a way across that of what is back at bx, bz, going along ux, uz (unit) with its front
+// length metres on, if x, z is in its way nearer than any yet.
+function across(x, z, bx, bz, ux, uz, length) {
+  const [dx, dz] = [x - bx, z - bz];
+  const along = dx * ux + dz * uz;
+  const side = dx * uz - dz * ux;
+  if (along < 0 || along > length + DANGER.ahead || Math.abs(side) >= nearest) return;
+  nearest = Math.abs(side);
+  const s = side < 0 ? -1 : 1;
+  [fleeFrom[0], fleeFrom[1]] = [uz * s, -ux * s];
+}
+function danger(x, y, z) {
+  nearest = DANGER.near;
+  const { xz, y: ys, of, head, blockers } = traffic;
+  for (let i = -1; i <= 1; i++)
+    for (let j = -1; j <= 1; j++)
+      for (let q = head[carCell(x + i * CELL, z + j * CELL)]; q >= 0; q = of[3 * q + 2]) {
+        if (blockers[of[3 * q]] >= 0 || Math.abs(ys[q] - y) > DANGER.level) continue;
+        const f = 2 * (q - (q % 3)); // its car's front, then back (traffic)
+        const [fx, fz, bx, bz] = [xz[f], xz[f + 1], xz[f + 2], xz[f + 3]];
+        const length = Math.hypot(fx - bx, fz - bz) || 1;
+        across(x, z, bx, bz, (fx - bx) / length, (fz - bz) / length, length);
+      }
+  for (const { vehicle, speed } of driven) {
+    const { position, rotation, scale } = vehicle.group;
+    if (Math.abs(speed) < DANGER.slow || Math.abs(position.y - y) > DANGER.level) continue;
+    // Along its heading, or back in reverse.
+    const s = Math.sign(speed);
+    const [ux, uz] = [s * Math.sin(rotation.y), s * Math.cos(rotation.y)];
+    const half = vehicle.half * scale.x;
+    across(x, z, position.x - ux * half, position.z - uz * half, ux, uz, 2 * half);
+  }
+  return nearest < DANGER.near ? fleeFrom : null;
+}
+const [wallFrom, wallTo] = [new THREE.Vector3(), new THREE.Vector3()];
+// Figures flee after all has moved this frame, from the vehicles above at their speed along
+// their heading.
+function flee(dt) {
+  for (const d of driven) {
+    const { position, rotation } = d.vehicle.group;
+    const [dx, dz] = [position.x - d.x, position.z - d.z];
+    d.speed = dt && (dx * Math.sin(rotation.y) + dz * Math.cos(rotation.y)) / dt;
+    [d.x, d.z] = [position.x, position.z];
+  }
+  dodge(dt, danger, walkGround, (x, y, z, toX, toZ) =>
+    world.blocked(wallFrom.set(x, y + 1, z), wallTo.set(toX, y + 1, toZ)),
+  );
+}
 // The ferries seated on the open deck before the hut, looking upstream.
 const ferryRide = riders(
   ferries.ferries.map(({ mesh, material }) => ({
@@ -3923,6 +3987,7 @@ renderer.setAnimationLoop((time) => {
     );
   if (riding?.ride === footRide) onFoot.step(dt, steering());
   drive(dt);
+  flee(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   afloat += dt;
   ferries.update(afloat);
