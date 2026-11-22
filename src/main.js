@@ -2903,7 +2903,7 @@ function heightAt(x, z) {
 // Flies the craft piloted, if any, on by dt seconds and returns it; but where its underside or
 // its front (craft.nose ahead of its middle, along its body) meets the ground or is below a
 // roof, a wall is between its middle and its front, or it sinks through a bridge's deck, it blows
-// up and one is off, the
+// up, and with it the building or bridge it met (destroy), and one is off, the
 // camera staying where it is: the view's centre is where it looks at the ground, CENTRE above it
 // as updateOrbit keeps it, so nothing moves; only a camera looking less far down than the view
 // allows (maxPolarAngle) tilts down to that. Not while it still rises after boarding (lift).
@@ -2911,6 +2911,7 @@ const looking = new THREE.Vector3();
 const flownFrom = new THREE.Vector3();
 const flownTo = new THREE.Vector3();
 const front = new THREE.Vector3();
+const bottom = new THREE.Vector3();
 function fly(dt) {
   const craft = pilot();
   if (!craft) return;
@@ -2927,18 +2928,18 @@ function fly(dt) {
     y - Math.sin(rotation.x) * craft.nose * scale.y,
     z + Math.cos(flown.heading) * level,
   );
-  const met =
-    under < heightAt(x, z) ||
-    front.y < heightAt(front.x, front.z) ||
+  const built =
     structures.top(x, z, Infinity, under) > under ||
     structures.top(front.x, front.z, Infinity, front.y) > front.y ||
     structures.wall(flownTo, front, true) ||
     bridgeDecks()
       .heights(x, z)
       .some((h) => under < h && h <= flownFrom.y);
+  const met = built || under < heightAt(x, z) || front.y < heightAt(front.x, front.z);
   if (rising || !met) return craft;
   const velocity = flownTo.clone().sub(flownFrom).setY(0);
   explosions.crash(flownTo, craft.group, velocity.divideScalar(dt || 1));
+  if (built) destroy(structures.hit(bottom.set(x, under, z), front));
   camera.getWorldDirection(looking);
   looking.y = Math.min(
     looking.y,
