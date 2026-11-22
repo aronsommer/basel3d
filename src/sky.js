@@ -3,8 +3,8 @@ import * as THREE from "three";
 const ZENITH = 0x4296e1; // a softer take on the Rhine's light blue (waterLight in src/main.js)
 
 // The sky: from horizon (the fog's colour) up to ZENITH, with a glow round the sun (a unit
-// vector towards it) and slowly drifting fair-weather clouds. A triangle over the whole screen,
-// drawn first; the clouds are only worked out above the horizon, so mostly where sky is seen.
+// vector towards it) and slowly drifting fair-weather clouds. A triangle over the whole screen at
+// the far end of the view, drawn after all that is opaque, so only where sky is seen.
 export function createSky(horizon, sun) {
   const time = { value: 0 };
   const sky = new THREE.Mesh(
@@ -57,12 +57,11 @@ export function createSky(horizon, sun) {
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
-      depthTest: false,
       depthWrite: false,
     }),
   );
   sky.frustumCulled = false;
-  sky.renderOrder = -1e9; // before all else
+  sky.renderOrder = 1e9; // after all else that is opaque
   sky.onBeforeRender = () => (time.value = performance.now() / 1000);
   return sky;
 }

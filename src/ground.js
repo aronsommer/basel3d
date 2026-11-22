@@ -1,7 +1,7 @@
 // The map as textures, drawn by src/ground-worker.js: one per tile of the terrain, with as many
 // pixels as its distance from the camera needs, and finer squares round the point the camera
 // looks at, each inside the next, which the terrain's shader lays over the tiles. All are drawn
-// anew as the camera moves, the nearest first.
+// anew as the camera moves, the nearest first; finer only while they may be in view.
 import * as THREE from "three";
 
 const SIZES = [256, 512, 1024, 2048]; // pixels across a tile; phones and tablets stop at 1024
@@ -121,9 +121,10 @@ export function createGround(files, { x0, z0, chunk, cell, nx, nz }, renderer, s
     next();
   };
 
-  // distance(name): metres from the camera to a tile; focal: the pixels a metre takes on the
-  // screen a metre away; focus: the point looked at, range: metres from the camera to it.
-  ground.update = (distance, focal, focus, range) => {
+  // distance(name): metres from the camera to a tile; inView(name): whether it may be in view;
+  // focal: the pixels a metre takes on the screen a metre away; focus: the point looked at,
+  // range: metres from the camera to it; seen(x, z, extent): whether a square may be in view.
+  ground.update = (distance, inView, focal, focus, range, seen) => {
     const level = (metres) => {
       const px = (SHARE * chunk * focal) / Math.max(metres, 1);
       let l = 0;
@@ -134,6 +135,8 @@ export function createGround(files, { x0, z0, chunk, cell, nx, nz }, renderer, s
       tile.distance = distance(tile.name);
       tile.want = level(tile.distance);
       tile.keep = level(tile.distance / KEEP);
+      // Out of view, it is not drawn finer than it is.
+      if (!inView(tile.name)) tile.want = Math.min(tile.want, Math.max(tile.level, 0));
     }
     // Squares while a pixel at the focus spans less than a tile's finest (about half a metre),
     // each on a grid of a quarter of its width.
@@ -142,6 +145,7 @@ export function createGround(files, { x0, z0, chunk, cell, nx, nz }, renderer, s
         const extent = SQUARES[i + (range > 45 ? 1 : 0)];
         const grid = (v) => Math.round((v - extent / 2) / (extent / 4)) * (extent / 4);
         const want = { x: grid(focus.x), z: grid(focus.z), extent };
+        if (!seen(want.x, want.z, extent)) return void (square.want = null); // keeps what it shows
         if (square.want && named(want) === named(square.want)) return;
         square.want = want;
         square.since = performance.now();

@@ -178,6 +178,9 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
       }
       for (const mesh of [bodies, trails]) {
         mesh.count = n;
+        if (!n) continue; // nothing drawn, nothing to send
+        mesh.instanceMatrix.clearUpdateRanges();
+        mesh.instanceMatrix.addUpdateRange(0, 16 * n);
         mesh.instanceMatrix.needsUpdate = true;
       }
     },

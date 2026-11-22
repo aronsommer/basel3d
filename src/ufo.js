@@ -205,7 +205,8 @@ export function createUfo(boost, roof) {
       flashes.setMatrixAt(n++, matrix.compose(flash.position, still, size));
     }
     flashes.count = n;
-    for (const mesh of [bolts, flashes]) mesh.instanceMatrix.needsUpdate = true;
+    // Only what is drawn is sent.
+    for (const mesh of [bolts, flashes]) if (mesh.count) mesh.instanceMatrix.needsUpdate = true;
   }
   return {
     group,

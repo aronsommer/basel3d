@@ -41,6 +41,7 @@ const FACADE = `
     vec2 p = (fract(q / cs) - 0.5) * cs; // metres from the cell's middle
     float mpp = max(fwidth(q.x), fwidth(q.y)); // metres per pixel
     float aa = mpp * 0.7;
+    float far = smoothstep(0.7, 1.6, mpp); // 1: too far to resolve the windows
     float near = 1.0 - smoothstep(0.22, 0.85, mpp);
     float fine = 1.0 - smoothstep(0.04, 0.15, mpp); // thin lines fade before they would flicker
     float gf = step(id.y, 0.5) * step(vWall.x, vWall.z + 1.0); // on the ground floor
@@ -48,6 +49,7 @@ const FACADE = `
     float h2 = fract(seed * 13.71 + 0.31), h3 = fract(seed * 29.37 + 0.17);
     vec3 wall = diffuseColor.rgb, col = wall, glassColour = ${SETTINGS.glass};
     float glass = 0.0;
+    if (far < 1.0) {
     if (style == 0 || style == 5) {
       // Old town (5: the town hall): tall windows in stone surrounds, shutters, doors, shops.
       bool townHall = style == 5;
@@ -141,9 +143,10 @@ const FACADE = `
       col = mix(col, wall * 0.4 * (0.8 + 0.2 * step(0.5, fract(p.y * 3.0))), gate);
     }
     col = mix(col, glassColour * (0.85 + 0.3 * wid), glass);
+    }
     // Too far to resolve the windows: the facade's average.
     float share = style == 3 ? 0.75 : style == 2 ? 0.42 : style == 4 || style == 7 ? 0.0 : 0.2;
-    diffuseColor.rgb = mix(col, mix(wall, ${SETTINGS.glass}, share * 0.6), smoothstep(0.7, 1.6, mpp));
+    diffuseColor.rgb = mix(col, mix(wall, ${SETTINGS.glass}, share * 0.6), far);
   }
 }
 `;

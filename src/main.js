@@ -63,7 +63,8 @@ const BOOST_MAX = 3;
 const boost = (p) =>
   THREE.MathUtils.clamp(camera.position.distanceTo(p) / BOOST_FROM, 1, BOOST_MAX);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// On the stronger graphics card where there are two.
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 // Neutral tone mapping keeps the aerial photo's colours; on top, a little more saturation,
@@ -354,7 +355,9 @@ function decksOf(numbers) {
 // one, above or below it, as the ways on bridges do (tools/paths.mjs), and their heights at a point.
 function deckOf(triangles) {
   const GRID = 10; // metres
-  const cells = new Map(); // "column,row" -> offsets of the triangles reaching into it
+  const cells = new Map(); // cellKey -> offsets of the triangles reaching into it
+  const cellKey = (column, row) => column * 65536 + row;
+  const NONE = []; // the heights where there is no deck
   const [a, b, c, normal] = [...Array(4)].map(() => new THREE.Vector3());
   for (let t = 0; t < triangles.length; t += 9) {
     a.fromArray(triangles, t);
@@ -371,22 +374,28 @@ function deckOf(triangles) {
         z * GRID <= Math.max(a.z, b.z, c.z);
         z++
       ) {
-        const key = `${x},${z}`;
+        const key = cellKey(x, z);
         if (!cells.has(key)) cells.set(key, []);
         cells.get(key).push(t);
       }
   }
   const side = (ax, az, bx, bz, px, pz) => (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+  // Not to be changed by the caller.
   function heights(x, z) {
+    const list = cells.get(cellKey(Math.floor(x / GRID), Math.floor(z / GRID)));
+    if (!list) return NONE;
     const found = [];
-    for (const t of cells.get(`${Math.floor(x / GRID)},${Math.floor(z / GRID)}`) ?? []) {
-      const [ax, ay, az, bx, by, bz, cx, cy, cz] = triangles.slice(t, t + 9);
+    for (const t of list) {
+      const [ax, az] = [triangles[t], triangles[t + 2]];
+      const [bx, bz] = [triangles[t + 3], triangles[t + 5]];
+      const [cx, cz] = [triangles[t + 6], triangles[t + 8]];
       const d1 = side(ax, az, bx, bz, x, z);
       const d2 = side(bx, bz, cx, cz, x, z);
       const d3 = side(cx, cz, ax, az, x, z);
       const sum = d1 + d2 + d3;
       if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
-      found.push((ay * d2 + by * d3 + cy * d1) / sum); // barycentric
+      // Barycentric.
+      found.push((triangles[t + 1] * d2 + triangles[t + 4] * d3 + triangles[t + 7] * d1) / sum);
     }
     return found;
   }
@@ -465,12 +474,23 @@ const overlay = new THREE.Scene();
 
 const CELL = 20; // metres of the grids of the traffic's car points
 const cell = (x, z) => (Math.floor(x / CELL) + 1000) * 4096 + Math.floor(z / CELL) + 1000;
+const CELLS = 512; // cells each way of the grid of the cars noted, the scene's origin in its middle
+const carCell = (x, z) =>
+  (Math.floor(x / CELL) + CELLS / 2) * CELLS + Math.floor(z / CELL) + CELLS / 2;
 
 // Trams, trains and cars on their loops (tools/paths.mjs, createMovers), sharing the traffic.
 const traffic = {
-  cars: new Map(), // cell -> flat [x, z, vehicle, rail, …] of each car's front, centre and back
+  // Each car's front, centre and back, noted anew each frame: x, z per point (xz); its vehicle,
+  // rail and the next point in its cell, -1 if none (of); per cell its first and last point, in
+  // the order noted (head: -1 if none, tail). Each kind makes room for its own.
+  noted: 0,
+  xz: new Float64Array(0),
+  of: new Int32Array(0),
+  head: new Int32Array(CELLS * CELLS).fill(-1),
+  tail: new Int32Array(CELLS * CELLS),
   taken: new Map(), // cell -> flat [x, z, …] of the starting vehicles and the space ahead
   blockers: [], // per vehicle (of all kinds): the vehicle it waits for, or -1
+  walks: new Int32Array(0), // per vehicle: 1 + the vehicle whose walk reached it (drive)
 };
 const movers = MOVER_KINDS.map((kind, i) =>
   createMovers(
@@ -483,11 +503,13 @@ const movers = MOVER_KINDS.map((kind, i) =>
 // Moves all vehicles dt seconds on: each notes its cars, looks ahead, then goes if its way is
 // clear. In a ring of vehicles waiting for each other, the first one goes.
 function drive(dt) {
-  for (const list of traffic.cars.values()) list.length = 0;
+  traffic.head.fill(-1);
+  traffic.noted = 0;
   for (const mover of movers) mover.place();
   for (const mover of movers) mover.look();
   const { blockers } = traffic;
-  const walks = new Int32Array(blockers.length); // per vehicle: 1 + the vehicle whose walk reached it
+  if (traffic.walks.length !== blockers.length) traffic.walks = new Int32Array(blockers.length);
+  const walks = traffic.walks.fill(0);
   for (let v = 0; v < blockers.length; v++) {
     let u = v;
     while (u >= 0 && !walks[u]) {
@@ -843,12 +865,9 @@ const WATER = -4.9; // scene y
 const STEP = 1; // metres
 const world = {
   ground(x, z, y) {
-    return Math.max(
-      heightAt(x, z),
-      ...bridgeDecks()
-        .heights(x, z)
-        .filter((h) => h <= y + STEP),
-    );
+    let top = heightAt(x, z);
+    for (const h of bridgeDecks().heights(x, z)) if (h <= y + STEP && h > top) top = h;
+    return top;
   },
   blocked: (from, to) => structures.wall(from, to),
   intoArea,
@@ -1098,17 +1117,22 @@ scene.add(...zoo.meshes);
 // as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
 // bridge whose sidewalk runs along its edge; never on the water: there on the highest deck at or
 // around them, however high.
-const AROUND = Array.from({ length: 8 }, (_, k) => [
-  2 * Math.sin((k * Math.PI) / 4),
-  2 * Math.cos((k * Math.PI) / 4),
-]); // 2 m away in eight directions
+const AROUND = [
+  [0, 0],
+  ...Array.from({ length: 8 }, (_, k) => [
+    2 * Math.sin((k * Math.PI) / 4),
+    2 * Math.cos((k * Math.PI) / 4),
+  ]),
+]; // there and 2 m away in eight directions
 const walkGround = (x, z, y) => {
   const below = world.ground(x, z, y); // makes roads first
-  const decks = [[0, 0], ...AROUND].flatMap(([dx, dz]) => roads.heights(x + dx, z + dz));
-  const reached = decks.filter((h) => h <= y + STEP);
-  return below > WATER
-    ? Math.max(below, ...reached)
-    : Math.max(below, ...(reached.length ? reached : decks));
+  let [reached, highest] = [-Infinity, -Infinity]; // the highest deck within reach, and of all
+  for (const [dx, dz] of AROUND)
+    for (const h of roads.heights(x + dx, z + dz)) {
+      if (h > highest) highest = h;
+      if (h <= y + STEP && h > reached) reached = h;
+    }
+  return Math.max(below, below > WATER || reached > -Infinity ? reached : highest);
 };
 const walkers = createWalkers(
   walksBuffer,
@@ -1849,11 +1873,12 @@ function createMovers({ routes }, points, kind, traffic) {
     const f = (((d % line.length) + line.length) % line.length) / line.step;
     const k = Math.min(Math.floor(f), line.count - 1);
     const t = f - k;
-    const [i, j] = [line.start + k, line.start + ((k + 1) % line.count)];
+    const i = 3 * (line.start + k);
+    const j = 3 * (line.start + ((k + 1) % line.count));
     return out.set(
-      points[3 * i] + (points[3 * j] - points[3 * i]) * t,
-      points[3 * i + 1] + (points[3 * j + 1] - points[3 * i + 1]) * t,
-      points[3 * i + 2] + (points[3 * j + 2] - points[3 * i + 2]) * t,
+      points[i] + (points[j] - points[i]) * t,
+      points[i + 1] + (points[j + 1] - points[i + 1]) * t,
+      points[i + 2] + (points[j + 2] - points[i + 2]) * t,
     );
   }
 
@@ -1861,7 +1886,7 @@ function createMovers({ routes }, points, kind, traffic) {
   // it. Where loops share a way, one that would start on or right behind another (of any kind) is
   // left out.
   const random = (i) => (Math.abs(Math.sin(i * 12.9898 + 78.233)) * 43758.5453) % 1;
-  const { taken, cars, blockers } = traffic;
+  const { taken, blockers } = traffic;
   const spot = new THREE.Vector3();
   const vehicles = [];
   for (const line of lines) {
@@ -1972,7 +1997,6 @@ function createMovers({ routes }, points, kind, traffic) {
     () => new THREE.Vector3(),
   );
   const yAxis = new THREE.Vector3(0, 1, 0);
-  const matrix = new THREE.Matrix4();
 
   // Gaps where a bridge was blown up (cut): per line, per point whether it lies on such a deck. A
   // vehicle with a car over one vanishes (vehicle.away: seconds left) for BACK seconds, then is
@@ -1986,16 +2010,27 @@ function createMovers({ routes }, points, kind, traffic) {
       if (line.gone[pointAt(line, s)]) return true;
     return line.gone[pointAt(line, d)] === 1;
   };
-  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
   // Vehicles by their index in traffic.blockers.
   const first = blockers.length;
   blockers.push(...vehicles.map(() => -1));
   const rail = kind === "car" ? 0 : 1;
+  // Room for its cars' points among the traffic's.
+  const room = 3 * CARS * vehicles.length;
+  traffic.xz = new Float64Array(traffic.xz.length + 2 * room);
+  traffic.of = new Int32Array(traffic.of.length + 3 * room);
   const note = (p, v) => {
-    const key = cell(p.x, p.z);
-    if (!cars.has(key)) cars.set(key, []);
-    cars.get(key).push(p.x, p.z, first + v, rail);
+    const { xz, of, head, tail } = traffic;
+    const n = traffic.noted++;
+    const c = carCell(p.x, p.z);
+    xz[2 * n] = p.x;
+    xz[2 * n + 1] = p.z;
+    of[3 * n] = first + v;
+    of[3 * n + 1] = rail;
+    of[3 * n + 2] = -1;
+    if (head[c] < 0) head[c] = n;
+    else of[3 * tail[c] + 2] = n;
+    tail[c] = n;
   };
   // The vehicle other than self with a car at the point d metres along line that this kind waits
   // for, or -1.
@@ -2003,21 +2038,26 @@ function createMovers({ routes }, points, kind, traffic) {
     at(line, d, ahead);
     at(line, d - 1, behind);
     const length = Math.hypot(ahead.x - behind.x, ahead.z - behind.z) || 1;
-    const [fx, fz] = [(ahead.x - behind.x) / length, (ahead.z - behind.z) / length];
+    const fx = (ahead.x - behind.x) / length;
+    const fz = (ahead.z - behind.z) / length;
+    const { xz, of, head } = traffic;
     for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++) {
-        const list = cars.get(cell(ahead.x + i * CELL, ahead.z + j * CELL)) ?? [];
-        for (let q = 0; q < list.length; q += 4) {
-          const [dx, dz] = [list[q] - ahead.x, list[q + 1] - ahead.z];
+      for (let j = -1; j <= 1; j++)
+        for (
+          let q = head[carCell(ahead.x + i * CELL, ahead.z + j * CELL)];
+          q >= 0;
+          q = of[3 * q + 2]
+        ) {
+          const dx = xz[2 * q] - ahead.x;
+          const dz = xz[2 * q + 1] - ahead.z;
           if (
-            list[q + 2] !== self &&
-            list[q + 3] >= rail &&
+            of[3 * q] !== self &&
+            of[3 * q + 1] >= rail &&
             Math.abs(dx * fx + dz * fz) < ALONG &&
             Math.abs(dx * fz - dz * fx) < SIDE
           )
-            return list[q + 2];
+            return of[3 * q];
         }
-      }
     return -1;
   };
   // Vehicles far from the camera look ahead only every SLOW-th frame (each on its own frame) and
@@ -2029,9 +2069,11 @@ function createMovers({ routes }, points, kind, traffic) {
   const place = () => {
     vehicles.forEach((vehicle, v) => {
       const { line, d, length, height, away, model, slot } = vehicle;
+      const matrices = meshes[model].instanceMatrix.array;
       for (let c = 0; c < CARS; c++) {
+        const m = 16 * (slot * CARS + c);
         if (away !== undefined) {
-          meshes[model].setMatrixAt(slot * CARS + c, hidden);
+          matrices.fill(0, m, m + 15); // no size
           continue;
         }
         const end = d - c * (length + GAP);
@@ -2047,10 +2089,21 @@ function createMovers({ routes }, points, kind, traffic) {
         if (c === 0) vehicle.far = camera.position.distanceTo(centre) > FAR;
         const b = boost(centre);
         right.multiplyScalar(Math.min(b, MAX_WIDER));
-        matrix
-          .makeBasis(right, up.multiplyScalar(b * height), forward.multiplyScalar(length))
-          .setPosition(centre);
-        meshes[model].setMatrixAt(slot * CARS + c, matrix);
+        up.multiplyScalar(b * height);
+        forward.multiplyScalar(length);
+        // Its axes and its place, column by column.
+        matrices[m] = right.x;
+        matrices[m + 1] = right.y;
+        matrices[m + 2] = right.z;
+        matrices[m + 4] = up.x;
+        matrices[m + 5] = up.y;
+        matrices[m + 6] = up.z;
+        matrices[m + 8] = forward.x;
+        matrices[m + 9] = forward.y;
+        matrices[m + 10] = forward.z;
+        matrices[m + 12] = centre.x;
+        matrices[m + 13] = centre.y;
+        matrices[m + 14] = centre.z;
       }
     });
     for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
@@ -2616,11 +2669,15 @@ function addWater(shader) {
       varying vec3 vWorld;
       // The colour with a finer square of the map (src/ground.js) over it where it lies, its
       // edge blended in.
+      // Read only where it lies, so with the slopes worked out before.
       vec3 withSquare(vec3 under, sampler2D squareMap, vec4 rect) {
         vec2 uv = (vWorld.xz - rect.xy) / rect.z;
+        vec2 at = vec2(uv.x, 1.0 - uv.y);
+        vec2 across = dFdx(at), down = dFdy(at);
         vec2 edge = min(uv, 1.0 - uv);
         float inside = rect.w * smoothstep(0.0, 0.06, min(edge.x, edge.y));
-        return mix(under, texture2D(squareMap, vec2(uv.x, 1.0 - uv.y)).rgb, inside);
+        if (inside <= 0.0) return under;
+        return mix(under, textureGrad(squareMap, at, across, down).rgb, inside);
       }
       // Smooth value noise in [0, 1] (hash without sine, stable for large coordinates).
       float hash(vec2 p) {
@@ -2761,11 +2818,15 @@ function deckShader(shader) {
       varying vec3 vDeck;
       // The colour with a finer square of the decks' roads (src/ground.js) over it where it
       // lies, its edge blended in.
+      // Read only where it lies, so with the slopes worked out before.
       vec3 withDeckSquare(vec3 under, sampler2D squareMap, vec4 rect) {
         vec2 uv = (vDeck.xz - rect.xy) / rect.z;
+        vec2 at = vec2(uv.x, 1.0 - uv.y);
+        vec2 across = dFdx(at), down = dFdy(at);
         vec2 edge = min(uv, 1.0 - uv);
         float inside = rect.w * smoothstep(0.0, 0.06, min(edge.x, edge.y));
-        return mix(under, texture2D(squareMap, vec2(uv.x, 1.0 - uv.y)).rgb, inside);
+        if (inside <= 0.0) return under;
+        return mix(under, textureGrad(squareMap, at, across, down).rgb, inside);
       }
       void main() {`,
     )
@@ -2845,21 +2906,53 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
 }
 
 // The coarse terrain for the chunks TERRAIN_DETAIL metres or more from the camera, the map as
-// sharp as each chunk's distance needs and the rails of the chunks near enough to show them.
+// sharp as each chunk's distance needs, if in view, and the rails of the chunks near enough to
+// show them.
 const bufferSize = new THREE.Vector2();
+const view = new THREE.Frustum();
+const viewMatrix = new THREE.Matrix4();
+const squareBox = new THREE.Box3();
+const DECKS = 40; // metres the bridges' decks are above the ground at most
+// Whether the ground or a deck on a square (x, z of its north-west corner, metres across) may be
+// in the view last drawn: the box round the terrain at nine points of it, a quarter of its width
+// higher and lower for what lies between them.
+function squareSeen(x, z, extent) {
+  let [low, high] = [Infinity, -Infinity];
+  for (let i = 0; i <= 2; i++)
+    for (let j = 0; j <= 2; j++) {
+      const h = heightAt(x + (i * extent) / 2, z + (j * extent) / 2);
+      low = Math.min(low, h);
+      high = Math.max(high, h);
+    }
+  squareBox.min.set(x, low - extent / 4, z);
+  squareBox.max.set(x + extent, high + extent / 4 + DECKS, z + extent);
+  return view.intersectsBox(squareBox);
+}
 function updateTerrain() {
+  view.setFromProjectionMatrix(
+    viewMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+  );
   const distances = new Map();
+  const seen = new Set(); // the chunks that may be in the view last drawn
   for (const mesh of terrain.children) {
     const [fine, coarse] = mesh.userData.levels;
     distances.set(mesh.name, fine.boundingBox.distanceToPoint(camera.position));
     mesh.geometry = distances.get(mesh.name) < TERRAIN_DETAIL ? fine : coarse;
+    if (view.intersectsBox(fine.boundingBox)) seen.add(mesh.name);
   }
   if (groundKind !== "map") return;
   // The pixels a metre takes on the screen a metre away.
   const focal =
     (renderer.getDrawingBufferSize(bufferSize).y / 2) * camera.projectionMatrix.elements[5];
   const focus = riding ? camera.position : orbit.target;
-  map.update((name) => distances.get(name), focal, focus, camera.position.distanceTo(focus));
+  map.update(
+    (name) => distances.get(name),
+    (name) => seen.has(name),
+    focal,
+    focus,
+    camera.position.distanceTo(focus),
+    squareSeen,
+  );
   // The rails have faded where a pixel spans 1.6 m (src/rails.js), and lie on the fine terrain.
   const far = Math.min(1.6 * focal, TERRAIN_DETAIL);
   for (const mesh of rails.children) mesh.visible = distances.get(mesh.name) < far;
@@ -2892,12 +2985,14 @@ function heightAt(x, z) {
   const { x0, z0, cell, nx, nz } = terrainInfo;
   const fx = THREE.MathUtils.clamp((x - x0) / cell, 0, nx - 1.001);
   const fz = THREE.MathUtils.clamp((z - z0) / cell, 0, nz - 1.001);
-  const [tx, tz] = [fx % 1, fz % 1];
+  const tx = fx % 1;
+  const tz = fz % 1;
   const i = Math.floor(fz) * nx + Math.floor(fx);
-  const [nw, ne, sw, se] = [heights[i], heights[i + 1], heights[i + nx], heights[i + nx + 1]];
-  return tx + tz <= 1
-    ? nw + (ne - nw) * tx + (sw - nw) * tz
-    : se + (sw - se) * (1 - tx) + (ne - se) * (1 - tz);
+  const ne = heights[i + 1];
+  const sw = heights[i + nx];
+  if (tx + tz <= 1) return heights[i] + (ne - heights[i]) * tx + (sw - heights[i]) * tz;
+  const se = heights[i + nx + 1];
+  return se + (sw - se) * (1 - tx) + (ne - se) * (1 - tz);
 }
 
 // Flies the craft piloted, if any, on by dt seconds and returns it; but where its underside or

@@ -33,12 +33,14 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   const meshesWith = (numbers) => new Set([...numbers].flatMap((n) => meshesOf[n] ?? []));
 
   // Per number its bounding box in scene coordinates (min x, y, z, max x, y, z), and per
-  // GRID-metre square of the ground ("column,row") the numbers whose boxes reach into it; worked
-  // out when first needed.
+  // GRID-metre square of the ground (cellKey) the numbers whose boxes reach into it; worked out
+  // when first needed.
   const GRID = 100;
   let boxes = null;
   const cells = new Map();
-  const cellRange = (from, to) => [Math.floor(from / GRID), Math.floor(to / GRID)];
+  const NONE = []; // an empty square's numbers
+  const cellOf = (at) => Math.floor(at / GRID);
+  const cellKey = (column, row) => column * 4096 + row;
   function measure() {
     boxes = new Float32Array(meshesOf.length * 6);
     for (let i = 0; i < boxes.length; i++) boxes[i] = i % 6 < 3 ? Infinity : -Infinity;
@@ -58,11 +60,11 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         }
       });
     for (let n = 0; n < meshesOf.length; n++) {
-      const [x0, x1] = cellRange(boxes[6 * n], boxes[6 * n + 3]);
-      const [z0, z1] = cellRange(boxes[6 * n + 2], boxes[6 * n + 5]);
+      const [x0, x1] = [cellOf(boxes[6 * n]), cellOf(boxes[6 * n + 3])];
+      const [z0, z1] = [cellOf(boxes[6 * n + 2]), cellOf(boxes[6 * n + 5])];
       for (let x = x0; x <= x1; x++)
         for (let z = z0; z <= z1; z++) {
-          const key = `${x},${z}`;
+          const key = cellKey(x, z);
           if (!cells.has(key)) cells.set(key, []);
           cells.get(key).push(n);
         }
@@ -70,16 +72,19 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   }
   // Where (0 to 1) the segment from → to enters the box of number n; Infinity if it misses it.
   const enter = (from, to, n) => {
-    let [t0, t1] = [0, 1];
+    let t0 = 0;
+    let t1 = 1;
     for (let d = 0; d < 3; d++) {
-      const a = from.getComponent(d);
-      const delta = to.getComponent(d) - a;
-      const [low, high] = [boxes[6 * n + d], boxes[6 * n + 3 + d]];
+      const a = d === 0 ? from.x : d === 1 ? from.y : from.z;
+      const delta = (d === 0 ? to.x : d === 1 ? to.y : to.z) - a;
+      const low = boxes[6 * n + d];
+      const high = boxes[6 * n + 3 + d];
       if (delta === 0) {
         if (a < low || a > high) return Infinity;
         continue;
       }
-      const [u, w] = [(low - a) / delta, (high - a) / delta];
+      const u = (low - a) / delta;
+      const w = (high - a) / delta;
       t0 = Math.max(t0, Math.min(u, w));
       t1 = Math.min(t1, Math.max(u, w));
       if (t0 > t1) return Infinity;
@@ -228,15 +233,20 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     // short against GRID) enters first, or -1; hidden ones are left out.
     hit(from, to) {
       if (!boxes) measure();
-      let [best, first] = [-1, Infinity];
-      const [x0, x1] = cellRange(Math.min(from.x, to.x), Math.max(from.x, to.x));
-      const [z0, z1] = cellRange(Math.min(from.z, to.z), Math.max(from.z, to.z));
-      for (let x = x0; x <= x1; x++)
+      let best = -1;
+      let first = Infinity;
+      const x1 = cellOf(Math.max(from.x, to.x));
+      const z0 = cellOf(Math.min(from.z, to.z));
+      const z1 = cellOf(Math.max(from.z, to.z));
+      for (let x = cellOf(Math.min(from.x, to.x)); x <= x1; x++)
         for (let z = z0; z <= z1; z++)
-          for (const n of cells.get(`${x},${z}`) ?? []) {
+          for (const n of cells.get(cellKey(x, z)) ?? NONE) {
             if (!meshesOf[n].length) continue;
             const t = enter(from, to, n);
-            if (t < first) [best, first] = [n, t];
+            if (t < first) {
+              best = n;
+              first = t;
+            }
           }
       return best;
     },
@@ -244,11 +254,12 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     // from → to (short against GRID) at the height of from; hidden ones are left out.
     wall(from, to, bridges = false) {
       if (!boxes) measure();
-      const [x0, x1] = cellRange(Math.min(from.x, to.x), Math.max(from.x, to.x));
-      const [z0, z1] = cellRange(Math.min(from.z, to.z), Math.max(from.z, to.z));
-      for (let x = x0; x <= x1; x++)
+      const x1 = cellOf(Math.max(from.x, to.x));
+      const z0 = cellOf(Math.min(from.z, to.z));
+      const z1 = cellOf(Math.max(from.z, to.z));
+      for (let x = cellOf(Math.min(from.x, to.x)); x <= x1; x++)
         for (let z = z0; z <= z1; z++)
-          for (const n of cells.get(`${x},${z}`) ?? []) {
+          for (const n of cells.get(cellKey(x, z)) ?? NONE) {
             if ((n >= count && !bridges) || !meshesOf[n].length || enter(from, to, n) === Infinity)
               continue;
             const list = surfacesOf(n).walls;
@@ -273,9 +284,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     top(x, z, y, above = -Infinity) {
       if (!boxes) measure();
       let best = -Infinity;
-      const [column] = cellRange(x, x);
-      const [row] = cellRange(z, z);
-      for (const n of cells.get(`${column},${row}`) ?? []) {
+      for (const n of cells.get(cellKey(cellOf(x), cellOf(z))) ?? NONE) {
         if (n >= count || !meshesOf[n].length) continue;
         const b = 6 * n;
         if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
