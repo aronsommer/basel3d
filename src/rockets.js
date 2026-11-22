@@ -96,6 +96,7 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
   }
 
   return {
+    meets,
     // The first point on the line from origin along direction (unit) that meets the ground or a
     // building or bridge, to within AIM_STEP / 64 by halving the step there, so it does not jump;
     // else the point range metres along it.
