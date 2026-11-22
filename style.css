@@ -43,11 +43,6 @@ p {
   -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
   backdrop-filter: blur(32px) saturate(200%);
 }
-/* "Glass" unticked in the Dev panel (src/dev.js): without the blur, to see what it costs. */
-.no-glass * {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-}
 #loading {
   position: absolute;
   top: 50%;

@@ -4,10 +4,9 @@
 // refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
 // and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
-// part hides and shows it, to see what it costs, and "Glass" the blur behind the buttons and
-// panels (the browser's work, so only the FPS show it); at the bottom "Aerial" shows the aerial
+// part hides and shows it, to see what it costs; at the bottom "Aerial" shows the aerial
 // photo as the ground, not ticked at first. All of it lives here, the menu entry in index.html
-// and the styles in style.css (#dev-box, #dev, .no-glass), so it can be taken out whole.
+// and the styles in style.css (#dev-box, #dev), so it can be taken out whole.
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -47,11 +46,6 @@ export function createDev(renderer, render, parts, aerial) {
     });
     return input;
   });
-  const glassLabel = add("label");
-  const glass = glassLabel.appendChild(element("input", { type: "checkbox", checked: true }));
-  glassLabel.append("Glass");
-  const blur = (on) => document.body.classList.toggle("no-glass", !(glass.checked = on));
-  glass.addEventListener("change", () => blur(glass.checked));
   const photoLabel = add("label");
   const photo = photoLabel.appendChild(element("input", { type: "checkbox" }));
   photoLabel.append("Aerial");
@@ -65,7 +59,6 @@ export function createDev(renderer, render, parts, aerial) {
   const button = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
   button.addEventListener("click", () => {
     const settings = parts.map(([name], i) => `${name} ${boxes[i].checked ? "on" : "off"}`);
-    settings.push(`Glass ${glass.checked ? "on" : "off"}`);
     const text = [...shown, ...settings, `Resolution ${SCALES[scale] * 100}%`];
     copy(text.join("\n")).then((done) => {
       if (!done) return getSelection().selectAllChildren(stats);
@@ -87,7 +80,6 @@ export function createDev(renderer, render, parts, aerial) {
     panel.hidden = !box.checked;
     for (const input of boxes) input.checked = true;
     for (const [, objects] of parts) for (const object of objects) object.visible = true;
-    blur(true);
     rescale(0);
     [frames, timed, cpu, gpu, since, fresh] = [0, 0, 0, 0, performance.now(), true];
   });
