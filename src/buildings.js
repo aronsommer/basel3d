@@ -159,6 +159,37 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     return surfaces.get(n);
   }
 
+  // Whether the ray (as long as length, in scene coordinates) meets a triangle of number n, as a
+  // raycast does: a building's only from outside.
+  const ray = new THREE.Ray();
+  const local = new THREE.Ray();
+  const inverse = new THREE.Matrix4();
+  const [pa, pb, pc, met] = [...Array(4)].map(() => new THREE.Vector3());
+  function crossed(n, length) {
+    for (const mesh of meshesOf[n]) {
+      const { index, attributes } = mesh.geometry;
+      const { position } = attributes;
+      const at = (i) => (index ? index.getX(i) : i);
+      const outside = [mesh.material].flat()[0].side === THREE.FrontSide;
+      local.copy(ray).applyMatrix4(inverse.copy(mesh.matrixWorld).invert());
+      const list = runsOf(mesh).get(n) ?? NONE;
+      for (let r = 0; r < list.length; r += 2)
+        for (let t = list[r]; t < list[r + 1]; t += 3) {
+          pa.fromBufferAttribute(position, at(t));
+          pb.fromBufferAttribute(position, at(t + 1));
+          pc.fromBufferAttribute(position, at(t + 2));
+          if (
+            local.intersectTriangle(pa, pb, pc, outside, met) &&
+            met.applyMatrix4(mesh.matrixWorld).distanceTo(ray.origin) < length
+          )
+            return true;
+        }
+    }
+    return false;
+  }
+  const looked = new Uint32Array(meshesOf.length); // per number, the look (between) that tested it
+  let look = 0;
+
   // The one shown in HIGHLIGHT (its number; -1 for none).
   const highlighted = { value: -1 };
   const highlightNumber = (shader) => {
@@ -249,6 +280,30 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
             }
           }
       return best;
+    },
+    // Whether a building or bridge is between two scene points, as a raycast finds it; hidden
+    // ones are left out. Only those are tested whose bounding box the line enters, found in the
+    // squares around points on it half a square apart.
+    between(from, to) {
+      if (!boxes) measure();
+      const length = from.distanceTo(to);
+      if (!length) return false;
+      ray.origin.copy(from);
+      ray.direction.subVectors(to, from).divideScalar(length);
+      look++;
+      for (let d = 0; d < length + GRID / 2; d += GRID / 2) {
+        const part = Math.min(d / length, 1);
+        const column = cellOf(from.x + (to.x - from.x) * part);
+        const row = cellOf(from.z + (to.z - from.z) * part);
+        for (let x = column - 1; x <= column + 1; x++)
+          for (let z = row - 1; z <= row + 1; z++)
+            for (const n of cells.get(cellKey(x, z)) ?? NONE) {
+              if (looked[n] === look || !meshesOf[n].length) continue;
+              looked[n] = look;
+              if (enter(from, to, n) < Infinity && crossed(n, length)) return true;
+            }
+      }
+      return false;
     },
     // Whether a wall of a building (or with bridges, of a bridge too) crosses the level segment
     // from → to (short against GRID) at the height of from; hidden ones are left out.

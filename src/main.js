@@ -1970,6 +1970,7 @@ function createMovers({ routes }, points, kind, traffic) {
     };
     const mesh = new THREE.InstancedMesh(geometry, material, fleets[m].length * CARS);
     mesh.frustumCulled = false; // the vehicles move all over the city
+    mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity); // so any ray may meet one
     return mesh;
   });
   vehicles.forEach(({ model, slot, color }) => {
@@ -3445,7 +3446,6 @@ const handles = [
 ];
 const middle = new THREE.Vector3();
 function vehicleAt(clientX, clientY, reach = 0) {
-  for (const mover of movers) for (const mesh of mover.meshes) mesh.boundingSphere = null; // they moved since computed
   const found = vehicleOn(clientX, clientY);
   if (found) return found;
   let [best, nearest] = [null, REACH + reach];
@@ -3465,13 +3465,16 @@ function vehicleAt(clientX, clientY, reach = 0) {
     }
   return null;
 }
-// Whether the terrain, a building or a bridge is between the camera and a point.
+// Whether the terrain (looked up every SIGHT metres), a building or a bridge is between the camera
+// and a point.
+const SIGHT = 5; // metres
+const sight = new THREE.Vector3();
 function hidden(point) {
-  raycaster.set(camera.position, point.clone().sub(camera.position).normalize());
-  raycaster.far = camera.position.distanceTo(point);
-  const behind = raycaster.intersectObjects([terrain, buildings.scene, bridges.scene]).length > 0;
-  raycaster.far = Infinity;
-  return behind;
+  const length = camera.position.distanceTo(point);
+  for (let d = SIGHT; d < length; d += SIGHT)
+    if (sight.lerpVectors(camera.position, point, d / length).y < heightAt(sight.x, sight.z))
+      return true;
+  return structures.between(camera.position, point);
 }
 // The { ride, vehicle } at a screen point, if visible: not in a tunnel under the terrain or
 // behind a building or bridge; not the one ridden.
@@ -3486,10 +3489,7 @@ function vehicleOn(clientX, clientY) {
   const ride = rides.find((r) => r.objects.some((o) => o.getObjectById(hit.object.id)));
   const vehicle = ride.vehicleOf(hit);
   if (ride === riding?.ride && vehicle === riding.vehicle) return null;
-  raycaster.far = hit.distance;
-  const hidden = raycaster.intersectObjects([terrain, buildings.scene, bridges.scene]).length > 0;
-  raycaster.far = Infinity;
-  return hidden ? null : { ride, vehicle };
+  return hidden(hit.point) ? null : { ride, vehicle };
 }
 
 // The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
@@ -3597,9 +3597,9 @@ addEventListener("resize", () => {
 // --- The view in the URL like on openstreetmap.org, with bearing and pitch as in MapLibre:
 // #map=zoom/latitude/longitude/bearing/pitch. The point looked at (WGS84); the zoom of a web map
 // (256 px tiles) showing as much ground across the screen's height there; the direction looked in
-// (degrees, 0 north, 90 east) and the tilt (degrees, 0 straight down), both optional (0). Kept up
-// to date while the view changes (at most every VIEW_DELAY ms; not when it did not move, so it
-// does not creep by rounding), read at the start and when the URL changes.
+// (degrees, 0 north, 90 east) and the tilt (degrees, 0 straight down), both optional (0). Written
+// once the view has rested for VIEW_DELAY ms, so not while it moves (and not when it did not
+// move, so it does not creep by rounding), read at the start and when the URL changes.
 const VIEW_DELAY = 300;
 // WGS84 <-> scene x, z with swisstopo's approximate formulas for LV95 (about 1 m). The two are not
 // each other's inverse (about 1 m apart), so fromWGS84 corrects its result twice to undo toWGS84
@@ -3667,12 +3667,12 @@ function readView() {
   return true;
 }
 let viewShown = ""; // camera position and target as last read or written
-let viewWritten = 0; // when the URL was last updated (ms)
+let viewHash = ""; // the view as it would be written, at the last frame it had changed
+let viewSince = 0; // since when it is that (ms)
 function writeView(time) {
-  if (riding || time - viewWritten < VIEW_DELAY) return;
+  if (riding) return;
   const shown = [...camera.position.toArray(), ...orbit.target.toArray()].join();
   if (shown === viewShown) return;
-  [viewShown, viewWritten] = [shown, time];
   const offset = camera.position.clone().sub(orbit.target);
   const r = offset.length();
   const [lat, lon] = toWGS84(orbit.target.x, orbit.target.z);
@@ -3680,6 +3680,9 @@ function writeView(time) {
   const bearing = Math.round(THREE.MathUtils.radToDeg(Math.atan2(-offset.x, offset.z)) + 360) % 360;
   const pitch = Math.round(THREE.MathUtils.radToDeg(Math.acos(offset.y / r)));
   const hash = `#map=${zoom.toFixed(2)}/${lat.toFixed(6)}/${lon.toFixed(6)}/${bearing}/${pitch}`;
+  if (hash !== viewHash) [viewHash, viewSince] = [hash, time]; // still moving
+  if (time - viewSince < VIEW_DELAY) return;
+  viewShown = shown;
   if (hash !== location.hash) history.replaceState(null, "", hash);
 }
 addEventListener("hashchange", readView);
