@@ -29,6 +29,8 @@ import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
+import { createFerries } from "./ferries.js";
+import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createZoo } from "./zoo.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
@@ -528,7 +530,32 @@ for (const mover of movers) {
   overlay.add(mover.routes);
   for (const deck of brokenDecks) mover.cut(deck);
 }
-const ships = createShips(new Float32Array(shipsBuffer));
+// The ferries (src/ferries.js), which the ships wait for, and the Basiliskbrunnen
+// (src/basilisks.js) on the ground.
+const ferries = createFerries(fromWGS84, heightAt, boost);
+scene.add(ferries.group);
+// On the Rhine the terrain lies flat at the water's surface, at most WATER.
+const WATER = -4.9; // scene y
+// A fountain within RHINE metres of the Rhine faces it: the water first found, looking every 2 m
+// further out in 36 directions (those found then averaged); others are turned as they may, as
+// the files do not say which way they face.
+const RHINE = 60;
+const towardsRhine = (x, z) => {
+  for (let d = 2; d <= RHINE; d += 2) {
+    let [sx, sz] = [0, 0];
+    for (let a = 0; a < 36; a++) {
+      const [s, c] = [Math.sin((a * Math.PI) / 18), Math.cos((a * Math.PI) / 18)];
+      if (heightAt(x + d * s, z + d * c) <= WATER) [sx, sz] = [sx + s, sz + c];
+    }
+    if (sx || sz) return Math.atan2(sx, sz);
+  }
+};
+const basilisks = BASILISKS.map(([lat, lon], k) => {
+  const [x, z] = fromWGS84(lat, lon);
+  return { x, y: heightAt(x, z), z, heading: towardsRhine(x, z) ?? k * 2.4 };
+});
+scene.add(createBasilisks(basilisks));
+const ships = createShips(new Float32Array(shipsBuffer), ferries.ferries);
 scene.add(...ships.meshes);
 overlay.add(ships.route);
 const planes = createPlanes();
@@ -821,7 +848,17 @@ const nameLayer = document.getElementById("names");
 scene.updateMatrixWorld(); // for the rays from above
 const fromAbove = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
-const labels = JSON.parse(new TextDecoder().decode(namesJson)).map(({ name, kind, x, z }) => {
+// With them the ferries, at the middle of their line, and the Basiliskbrunnen.
+const labels = [
+  ...JSON.parse(new TextDecoder().decode(namesJson)),
+  ...ferries.ferries.map(({ name, a, r, length }) => ({
+    name,
+    kind: "landmark",
+    x: a.x + (r.x * length) / 2,
+    z: a.z + (r.z * length) / 2,
+  })),
+  ...basilisks.map(({ x, z }) => ({ name: "Basiliskbrunnen", kind: "landmark", x, z })),
+].map(({ name, kind, x, z }) => {
   const at = new THREE.Vector3(x, heightAt(x, z), z);
   if (kind === "landmark") {
     fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
@@ -858,8 +895,6 @@ function addRails() {
   scene.add(rails);
 }
 if (map) addRails();
-// On the Rhine the terrain lies flat at the water's surface, at most WATER.
-const WATER = -4.9; // scene y
 // Where the vehicles on the ground (src/drive.js) drive: each stands on the terrain or on the
 // highest bridge deck at most STEP above its wheels.
 const STEP = 1; // metres
@@ -1445,12 +1480,16 @@ function updateNames() {
 
 // Ships on their round course on the Rhine (tools/ships.mjs), which keeps clear of the bridge
 // piers and the sea monster: SHIPS tankers, container ships, passenger ships and speedboats in
-// turn, evenly spaced and all at the same speed, so they never meet. Each is at most 11 m wide (the
-// course keeps 10 m clear around its middle) and 6 m high, to pass under the bridges. Whale
-// families swim among them.
-function createShips(course) {
+// turn, evenly spaced and all at the same speed. Each is at most 11 m wide (the course keeps 10 m
+// clear around its middle) and 6 m high, to pass under the bridges. Whale families swim among
+// them. Each keeps GAP behind the one ahead, and stops before a ferry's line (src/ferries.js)
+// unless the ferry stays out of its lane until it is past, and the one ahead lets it pass.
+function createShips(course, ferries) {
   const SPEED = 5; // metres per second
   const SHIPS = 20; // about one every 650 m of the course
+  const GAP = 20; // metres
+  const ZONE = 30; // metres along the course each side of a ferry's line: its hull and rope
+  const LANE = 12; // metres the ferry is off the course there at least: half a ship and a ferry
   // Cumulative distance along the course (x, y, z per point).
   const n = course.length / 3;
   const distance = new Float32Array(n);
@@ -1459,8 +1498,9 @@ function createShips(course) {
       distance[i - 1] +
       Math.hypot(course[3 * i] - course[3 * i - 3], course[3 * i + 2] - course[3 * i - 1]);
   const total = distance[n - 1];
+  const mod = (d) => ((d % total) + total) % total;
   const at = (d, out) => {
-    d = ((d % total) + total) % total;
+    d = mod(d);
     let [lo, hi] = [0, n - 1];
     while (hi - lo > 1) {
       const mid = (lo + hi) >> 1;
@@ -1473,6 +1513,44 @@ function createShips(course) {
       course[3 * lo + 1] + (course[3 * hi + 1] - course[3 * lo + 1]) * t,
       course[3 * lo + 2] + (course[3 * hi + 2] - course[3 * lo + 2]) * t,
     );
+  };
+
+  // Where the course crosses each ferry's line: { ferry, distance along the course, across:
+  // metres along the ferry's line }.
+  const crossings = [];
+  for (const ferry of ferries) {
+    const [ex, ez] = [ferry.r.x * ferry.length, ferry.r.z * ferry.length];
+    for (let i = 1; i < n; i++) {
+      const [px, pz] = [course[3 * i - 3], course[3 * i - 1]];
+      const [dx, dz] = [course[3 * i] - px, course[3 * i + 2] - pz];
+      const [wx, wz] = [ferry.a.x - px, ferry.a.z - pz];
+      const cross = dx * ez - dz * ex;
+      const t = (wx * ez - wz * ex) / cross; // along the course's piece
+      const u = (wx * dz - wz * dx) / cross; // along the ferry's line
+      if (t >= 0 && t < 1 && u >= 0 && u <= 1)
+        crossings.push({
+          ferry,
+          distance: distance[i - 1] + (distance[i] - distance[i - 1]) * t,
+          across: u * ferry.length,
+        });
+    }
+  }
+  // Whether a ship may go on by step metres seconds in: GAP behind the one ahead, and if it would
+  // come within ZONE of a ferry's line, only if the ferry keeps LANE away until its back is ZONE
+  // past and the one ahead is far enough on to let it get there.
+  const mayGo = (ship, step, seconds) => {
+    const ahead = mod(ship.ahead.d - ship.d) - (ship.length + ship.ahead.length) / 2;
+    if (ahead - step < GAP) return false;
+    const front = ship.d + ship.length / 2;
+    for (const { ferry, distance, across } of crossings) {
+      const before = mod(distance - ZONE - front);
+      if (before >= step) continue; // not reached, or in or past it already
+      const past = before + 2 * ZONE + ship.length; // metres until its back is past
+      if (ahead < past + GAP) return false;
+      for (let t = 0; t <= past / SPEED; t += 0.25)
+        if (Math.abs(ferry.at(seconds + t) - across) < LANE) return false;
+    }
+    return true;
   };
 
   // Ships along +z, the waterline at y = 0, built from coloured parts.
@@ -1627,8 +1705,10 @@ function createShips(course) {
     c -= 12 + RISE;
     return LEAP * c - (GRAVITY / 2) * c * c; // leaping
   };
-  // Whether a whale leaps in its cycle n (from falling back): not if a bridge spans the course
-  // from FREE metres before its dive to FREE metres past its spout. bridged: by 5 m of the course.
+  // Whether a whale leaps in its cycle n (from falling back): not while it waits, nor if a bridge
+  // spans the course from FREE metres before its dive to FREE metres past its spout, reckoned from
+  // where it is now (w.d, w.t: its time), as if it went on; if it waits, it leaps short of there.
+  // bridged: by 5 m of the course.
   const FREE = 20;
   const bridged = [];
   const spot = new THREE.Vector3();
@@ -1638,9 +1718,10 @@ function createShips(course) {
   };
   const leaps = (w, n) => {
     if (n in w.leaps) return w.leaps[n];
-    const from = w.start + (n * CYCLE + 8 + w.delay) * SPEED - FREE;
+    if (w.waiting) return (w.leaps[n] = false);
+    const from = w.d + (n * CYCLE + 8 - w.t) * SPEED - FREE;
     for (let d = from; d < from + (CYCLE - 1) * SPEED + 2 * FREE; d += 5) {
-      const i = Math.floor((((d % total) + total) % total) / 5);
+      const i = Math.floor(mod(d) / 5);
       if ((bridged[i] ??= spans(i))) return (w.leaps[n] = false);
     }
     return (w.leaps[n] = true);
@@ -1686,25 +1767,27 @@ function createShips(course) {
       mesh.add(tail, spout);
       const start = (total * (f * (SHIPS / FAMILIES) + 0.5)) / SHIPS - k * FOLLOW;
       const delay = (k * FOLLOW) / SPEED;
-      return { mesh, tail, drops, size, delay, blowing: false, start, leaps: {} };
+      const [length, eye] = [32 * size, [0, 6.5, 3]];
+      return { mesh, tail, drops, size, delay, blowing: false, start, leaps: {}, length, eye };
     }),
   );
-  fleet.push(
-    ...whales.map(({ mesh, size, start }) => ({
-      mesh,
-      length: 32 * size,
-      eye: [0, 6.5, 3],
-      start,
-    })),
-  );
+  fleet.push(...whales);
+  // Each with its distance along the course (d) and the one ahead of it.
+  const ring = fleet.toSorted((a, b) => mod(a.start) - mod(b.start));
+  ring.forEach((ship, k) => {
+    ship.d = ship.start;
+    ship.ahead = ring[(k + 1) % ring.length];
+  });
   const [drop, scale] = [new THREE.Vector3(), new THREE.Vector3()];
   const tilt = new THREE.Matrix4();
 
   const [front, back, forward, right, up] = [...Array(5)].map(() => new THREE.Vector3());
   const yAxis = new THREE.Vector3(0, 1, 0);
-  const update = (seconds) => {
+  const update = (seconds, dt) => {
     for (const ship of fleet) {
-      const d = ship.start + seconds * SPEED;
+      ship.waiting = !mayGo(ship, SPEED * dt, seconds);
+      if (!ship.waiting) ship.d += SPEED * dt;
+      const d = ship.d;
       at(d + ship.length / 2, front);
       at(d - ship.length / 2, back);
       forward.subVectors(front, back).setY(0).normalize();
@@ -1717,7 +1800,7 @@ function createShips(course) {
     }
     // The whales, raised or lowered by height, nose up while rising, flukes beating.
     for (const w of whales) {
-      const t = seconds - w.delay;
+      const t = (w.t = seconds - w.delay);
       const climb = rise(w, t + 0.5) - rise(w, t - 0.5); // metres in the second around t
       w.mesh.matrix.multiply(
         tilt.makeRotationX(-Math.atan2(climb, SPEED)).scale(scale.setScalar(w.size)),
@@ -3102,10 +3185,20 @@ const drives = [
   if (!eye) ride.cab = (v, view) => vehicles[v].look(view);
   return [vehicles, ride];
 });
+// The ferries seated on the open deck before the hut, looking upstream.
+const ferryRide = riders(
+  ferries.ferries.map(({ mesh, material }) => ({
+    object: mesh,
+    materials: [material],
+    eye: [0.8, 1.65, 0.5],
+    ahead: [0.8, 1.4, 20],
+  })),
+);
 // What one can ride, each with its objects to click, vehicleOf(hit), cab and highlight.
 const rides = [
   ...movers,
   ships.ride,
+  ferryRide,
   ...planes.crafts.map(({ ride }) => ride),
   helicopter.ride,
   serpent.ride,
@@ -3796,6 +3889,7 @@ function showPoints(points) {
 const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints);
 
 let last = performance.now();
+let afloat = 0; // seconds the ferries and ships have moved, so they keep in step
 renderer.setAnimationLoop((time) => {
   // The first frame's time can be before last.
   const dt = THREE.MathUtils.clamp((time - last) / 1000, 0, 0.1);
@@ -3828,7 +3922,9 @@ renderer.setAnimationLoop((time) => {
   if (riding?.ride === footRide) onFoot.step(dt, steering());
   drive(dt);
   if (riding?.ride.away?.(riding.vehicle)) getOff();
-  ships.update(time / 1000);
+  afloat += dt;
+  ferries.update(afloat);
+  ships.update(afloat, dt);
   zoo.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);
