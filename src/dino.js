@@ -9,11 +9,11 @@ import { createDriving } from "./drive.js";
 
 const SKIN = 0xa8a27e;
 const BELLY = 0xc4bd98;
-const STRIDE = 5; // metres walked per step cycle
+const STRIDE = 8; // metres walked per step cycle
 const SPEC = {
-  max: 6,
+  max: 18,
   back: 2,
-  accelerate: 3,
+  accelerate: 9,
   brake: 8,
   roll: 4,
   steer: 0.6,
@@ -133,7 +133,7 @@ export function createDinos(places, boost, world) {
       const step = (2 * Math.PI * s.rolled) / STRIDE;
       // Front left with back right, front right with back left.
       columns.forEach((leg, k) => {
-        leg.rotation.x = 0.3 * Math.sin(step + (k === 0 || k === 3 ? 0 : Math.PI));
+        leg.rotation.x = 0.45 * Math.sin(step + (k === 0 || k === 3 ? 0 : Math.PI));
       });
       head.rotation.set(0.03 * Math.sin(0.5 * seconds), 0.35 * s.turn, 0);
       whip.rotation.y = 0.12 * Math.sin(0.6 * seconds) + 0.1 * Math.sin(step);
