@@ -31,6 +31,8 @@ import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
+import { createStation } from "./station.js";
+import { clockTime, createClocks } from "./clocks.js";
 import { createZoo } from "./zoo.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
@@ -407,8 +409,8 @@ function deckOf(triangles) {
   };
 }
 // Blows up the building or bridge with this number (-1: none) and remembers it, if it was there;
-// vehicles vanish where a bridge was, people on its roof with it, and the helipads and the jet on
-// it come down to the ground.
+// vehicles vanish where a bridge was, people on its roof and Basel SBB's front with it, and the
+// helipads and the jet on it come down to the ground.
 function destroy(number) {
   const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
@@ -1334,7 +1336,7 @@ scene.add(jet.group);
 // On each Roche tower's roof, four women dressed as the friends dancing 2 m around its middle,
 // each looking out another way (north-east, south-east, south-west, north-west). destroy()
 // removes them with their tower.
-const onRoofs = new Map(); // building number → the meshes of those on its roof
+const onRoofs = new Map(); // building number → the meshes that go with it
 for (const [t, tower] of [
   [2612702, 1267635],
   [2612756, 1267585],
@@ -1362,6 +1364,15 @@ for (const [t, tower] of [
 // 2611386.8, 1266248.2, walls as beige as the station building's (LV95 2611375.6, 1266339.0).
 const platforms = roofAt([2611267.0, 1266160.4]);
 if (platforms) structures.paint(platforms.number, { roof: 0x6a696a, wall: 0xded3bd });
+// Basel SBB's front (src/station.js) and its clocks (src/clocks.js) on the building under its
+// hall's roof (LV95 2611371.9, 1266325.5).
+const station = roofAt([2611371.9, 1266325.5]);
+if (station) {
+  const sbb = createStation();
+  const meshes = [sbb.mesh, createClocks(sbb.clocks)];
+  scene.add(...meshes);
+  onRoofs.set(station.number, meshes);
+}
 // The Badischer Bahnhof's platform roofs, each under one of these points, as dark as its building's
 // roof (LV95 2612676.3, 1268528.5).
 for (const point of [
@@ -4051,6 +4062,8 @@ renderer.setAnimationLoop((time) => {
   water.waterTime.value = time / 1000;
   pavilionTime.value = time / 1000;
   peopleTime.value = time / 1000;
+  const now = new Date();
+  clockTime.value = (now / 1000 - now.getTimezoneOffset() * 60) % 86400;
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
   training.update(dt);
   bike.update(dt);
