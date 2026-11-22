@@ -5,9 +5,10 @@
 //   street is half its width plus half a sidewalk, as the map draws them (tools/map.mjs), on a
 //   bridge INSET less, so they stay on its deck;
 // - along footways, paths (not sidewalks or crossings, which the loops above cover), pedestrian
-//   streets and squares, AISLE metres either side of their middle, but not into the streets'
+//   streets and squares on the ground or a bridge, AISLE metres either side of their middle, but not into the streets'
 //   sidewalks; those mostly along pedestrian streets and squares are busy.
-// No aisle reaches into water (OSM water areas but bridges); lines running off the grid (MARGIN
+// No aisle reaches into water (OSM water areas but bridges) or beside the passage under the
+// Mittlere Brücke (src/passage.js); lines running off the grid (MARGIN
 // beyond BOX) and loops enclosing less than SMALLEST or more than WETTEST of them on water are left
 // out. Each is simplified to within SIMPLIFY metres, left out if it then crosses itself, and
 // written as a Uint16 count of points (plus BUSY for a busy one) and the points as Uint16 pairs
@@ -17,6 +18,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { E_MIN, N_MAX, PUBLIC, TREE_GRID } from "./area.mjs";
 import { onBridge, osmElements, roadWidth, SIDEWALK_WIDTH, toLV95 } from "./osm.mjs";
+import { PASSAGE } from "../src/passage.js";
+import { inPassage, passageEnds, passageLength, passageLocal } from "./passage.mjs";
 
 // The inner city in LV95: Grossbasel, Kleinbasel up to the Messe, the Bahnhof SBB.
 const BOX = { e0: 2610200, e1: 2612600, n0: 1266400, n1: 1268800 };
@@ -60,15 +63,24 @@ function bin(bins, a, b, offset) {
   for (const key of keys) (bins.get(key) ?? bins.set(key, []).get(key)).push([a, b, offset]);
 }
 const osm = await osmElements();
-for (const { type, tags = {}, geometry } of osm) {
-  if (type !== "way" || (tags.tunnel && tags.tunnel !== "no")) continue;
-  const bins = binsOf(tags);
+for (const way of osm) {
+  const { type, tags = {}, geometry } = way;
+  // The passage under the Mittlere Brücke is a street along its middle, its sidewalks a metre
+  // inside its walls.
+  const open = inPassage(way);
+  if (type !== "way" || (tags.tunnel && tags.tunnel !== "no" && !open)) continue;
+  const bins = open ? streets : binsOf(tags);
   if (!bins) continue;
-  const offset =
-    bins === streets
+  // Footways and squares off the ground (on another layer but a bridge's, or covered) have none in
+  // the model to walk on.
+  const off = tags.covered === "yes" || (Number(tags.layer ?? 0) !== 0 && !onBridge(tags));
+  if (bins !== streets && off) continue;
+  const offset = open
+    ? PASSAGE.width / 2 - 1
+    : bins === streets
       ? roadWidth(tags.highway) / 2 + SIDEWALK_WIDTH / 2 - (onBridge(tags) ? INSET : 0)
       : AISLE;
-  const points = geometry.map((p) => p && toLV95(p));
+  const points = (open ? passageEnds : geometry).map((p) => p && toLV95(p));
   for (let i = 1; i < points.length; i++) {
     if (!points[i - 1] || !points[i]) continue;
     bin(bins, points[i - 1], points[i], offset);
@@ -118,6 +130,14 @@ for (const { type, tags = {}, geometry, members } of osm) {
         wet[j * w + i] = 1;
   }
 }
+// Beside the passage under the Mittlere Brücke (src/passage.js), towards the Rhine, as water: below
+// the bridge only the passage is walked there.
+for (let j = 0; j < h; j++)
+  for (let i = 0; i < w; i++) {
+    const [t, river] = passageLocal(e0 + i * GRID, n0 + j * GRID);
+    if (t >= 0 && t <= passageLength && river > PASSAGE.width / 2 && river <= PASSAGE.reach)
+      wet[j * w + i] = 1;
+  }
 for (let j = 0; j < h; j++)
   for (let i = 0; i < w; i++)
     if (wet[j * w + i] && nearest(bridges, e0 + i * GRID, n0 + j * GRID) < 0) wet[j * w + i] = 0;
@@ -237,7 +257,57 @@ const kept = (loops) =>
 const busy = (points) =>
   points.filter(([e, n]) => nearest(pedestrian, e, n) < nearest(ways, e, n)).length >
   points.length / 2;
-const [sidewalks, aisles] = [kept(contours(blocks)), kept(contours(aisle))];
+// At the passage under the Mittlere Brücke only its corridors are walked (src/passage.js): below,
+// the passage; above, the bridge's sidewalks, CORRIDOR metres either side. A loop is cut where it
+// leaves them there or goes from one level to the other where they cross, each piece walked
+// there and back.
+const CORRIDOR = 1.5;
+const corridors = PASSAGE.sidewalks.map((line) => line.map(([lat, lon]) => toLV95({ lat, lon })));
+// A point's place: "" outside, "below", "above", "both" where they cross, or null elsewhere.
+function place([e, n]) {
+  const [t, river] = passageLocal(e, n);
+  if (t < 0 || t > passageLength || river < -PASSAGE.street || river > PASSAGE.reach) return "";
+  const below = Math.abs(river) <= PASSAGE.width / 2;
+  const above = corridors.some(([[ae, an], [be, bn]]) => {
+    const [de, dn] = [be - ae, bn - an];
+    const f = Math.min(Math.max(((e - ae) * de + (n - an) * dn) / (de * de + dn * dn), 0), 1);
+    return Math.hypot(ae + f * de - e, an + f * dn - n) <= CORRIDOR;
+  });
+  return below && above ? "both" : below ? "below" : above ? "above" : null;
+}
+function cut(points) {
+  const dense = points.flatMap((a, i) => {
+    const b = points[(i + 1) % points.length];
+    const steps = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / GRID);
+    return Array.from({ length: steps }, (_, k) => [
+      a[0] + ((b[0] - a[0]) * k) / steps,
+      a[1] + ((b[1] - a[1]) * k) / steps,
+    ]);
+  });
+  const places = dense.map(place);
+  const start = places.indexOf(null);
+  if (start < 0 && !(places.includes("below") && places.includes("above"))) return [points];
+  const pieces = [[]];
+  let level = ""; // of the piece, once known
+  for (let k = 1; k <= dense.length; k++) {
+    const i = (start + k) % dense.length; // from a cut, if any
+    const at = places[i];
+    if (at === null || (level && at !== "both" && at && at !== level)) {
+      if (pieces.at(-1).length) pieces.push([]);
+      level = at === null ? "" : at;
+      if (at === null) continue;
+    }
+    if (at === "") level = "";
+    else if (at !== "both") level = at;
+    pieces.at(-1).push(dense[i]);
+  }
+  return pieces
+    .filter((piece) => piece.length > 2)
+    .map((piece) => [...piece, ...piece.slice(1, -1).reverse()]);
+}
+const [sidewalks, aisles] = [kept(contours(blocks)), kept(contours(aisle))].map((loops) =>
+  loops.flatMap(cut),
+);
 const data = [
   ...sidewalks.flatMap((points) => written(points, false)),
   ...aisles.flatMap((points) => written(points, busy(points))),

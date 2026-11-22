@@ -14,6 +14,7 @@ import { createCity } from "./city.js";
 import { createGround } from "./ground.js";
 import { createRails } from "./rails.js";
 import { unpackHeights, unpackPoints } from "./pack.js";
+import { PASSAGE } from "./passage.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
@@ -242,6 +243,26 @@ function startMap([shapes, soft, railsFile]) {
 }
 startMap(groundBuffers);
 const heights = Float32Array.from(unpackHeights(heightsBuffer, terrainInfo.nx), (cm) => cm / 100);
+// The passage (src/passage.js) in scene metres, whose ground (passageGround) replaces the terrain
+// (addWater, createPassage): its first end's middle a, its direction (ux, uz) and length, the
+// terrain's heights y0 and y1 at its ends, per bank point [along, metres from the middle towards
+// the Rhine] (at least to the wall) and the Rhine's surface beside it.
+const passage = (() => {
+  const [a, b] = PASSAGE.ends.map(([lat, lon]) => fromWGS84(lat, lon));
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const [ux, uz] = [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
+  // A scene position's [along, across]: metres from a along the middle and towards the street.
+  const local = (x, z) => [(x - a[0]) * ux + (z - a[1]) * uz, (x - a[0]) * uz - (z - a[1]) * ux];
+  const point = (t, s) => [a[0] + ux * t + uz * s, a[1] + uz * t - ux * s];
+  const half = PASSAGE.width / 2;
+  const bank = PASSAGE.bank.map(([lat, lon]) => {
+    const [t, s] = local(...fromWGS84(lat, lon));
+    return [t, Math.max(-s, half)];
+  });
+  const [y0, y1] = [a, b].map(([x, z]) => gridAt(x, z));
+  const river = gridAt(...point(length / 2, -PASSAGE.reach));
+  return { a, ux, uz, length, half, bank, y0, y1, river, local, point };
+})();
 const treePositions = new Uint16Array(treesBuffer);
 const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -588,8 +609,7 @@ const runners = createRunners(
       [47.562109, 7.589342],
       [47.561837, 7.589635],
       [47.561363, 7.590089],
-      [47.560955, 7.590486],
-      [47.560341, 7.591195],
+      ...PASSAGE.ends, // through the passage, between its walls
       [47.559974, 7.5917],
       [47.559655, 7.592087],
       [47.559514, 7.592332],
@@ -949,6 +969,7 @@ const bridgeDecks = () =>
       parts.flatMap(({ positions }) => positions),
     ),
   ));
+scene.add(...createPassage());
 // The map's rails (src/rails.js), on the ground and on the decks, but those of destroyed bridges.
 function addRails() {
   rails = createRails(tracks, terrainInfo, heights, (x, z) =>
@@ -2871,7 +2892,11 @@ function updateTrees() {
   }
 }
 
-function addWater(shader) {
+// cut: whether it leaves out the terrain in the passage's area, where createPassage lays its own.
+function addWater(shader, cut) {
+  const { a, ux, uz, length, half } = passage;
+  const f = (v) => v.toFixed(3);
+  shader.uniforms.passageCut = { value: cut };
   Object.assign(shader.uniforms, water);
   squares.maps.forEach((map, i) => (shader.uniforms[`squareMap${i}`] = map));
   squares.rects.forEach((rect, i) => (shader.uniforms[`squareRect${i}`] = rect));
@@ -2885,6 +2910,7 @@ function addWater(shader) {
     .replace(
       "void main() {",
       `uniform sampler2D waterMask;
+      uniform bool passageCut;
       uniform float waterTime;
       uniform vec4 waterArea;
       uniform vec3 waterDark, waterLight;
@@ -2920,7 +2946,13 @@ function addWater(shader) {
       float waterPattern(vec2 q, float fine) {
         return 0.65 * noise(q * 0.03) + 0.35 * mix(0.5, noise(q * 0.1 + 17.0), fine);
       }
-      void main() {`,
+      void main() {
+      if (passageCut) {
+        vec2 rel = vWorld.xz - vec2(${f(a[0])}, ${f(a[1])});
+        float t = dot(rel, vec2(${f(ux)}, ${f(uz)}));
+        float s = dot(rel, vec2(${f(uz)}, ${f(-ux)}));
+        if (t > 0.0 && t < ${f(length)} && s < ${f(half)} && s > ${f(-PASSAGE.reach)}) discard;
+      }`,
     )
     .replace(
       "#include <map_fragment>",
@@ -3119,7 +3151,7 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
       const material = new THREE.MeshLambertMaterial({
         map: ground[groundKind].get(`${ix}_${iz}`),
       });
-      material.onBeforeCompile = addWater;
+      material.onBeforeCompile = (shader) => addWater(shader, true);
       material.customProgramCacheKey = () => "water"; // all chunks share one program
       const mesh = new THREE.Mesh(fine, material);
       mesh.name = `${ix}_${iz}`;
@@ -3127,6 +3159,70 @@ function createTerrain({ x0, z0, cell, nx, nz, chunk }) {
       group.add(mesh);
     }
   return group;
+}
+
+// The passage's ground (passageGround), every metre, and a wall on the street's side from there up
+// to the terrain.
+function createPassage() {
+  const { x0, z0, chunk } = terrainInfo;
+  const { length, half, point } = passage;
+  const { reach } = PASSAGE;
+  const [ix, iz] = point(length / 2, 0).map((d, k) => Math.floor((d - [x0, z0][k]) / chunk));
+  // Beyond its ends and its edge in the water it reaches UNDER metres on, DROP below the terrain,
+  // so no seam shows between them.
+  const [UNDER, DROP] = [1, 0.02];
+  const [nt, ns] = [Math.ceil(length + 2 * UNDER), Math.ceil(half + reach + UNDER)];
+  const position = [];
+  const uv = [];
+  for (let i = 0; i <= nt; i++)
+    for (let j = 0; j <= ns; j++) {
+      const t = -UNDER + ((length + 2 * UNDER) * i) / nt;
+      const s = half - ((half + reach + UNDER) * j) / ns;
+      const [x, z] = point(t, s);
+      const inside = t >= 0 && t <= length && s >= -reach;
+      position.push(x, inside ? passageGround(t, s) : gridAt(x, z) - DROP, z);
+      uv.push((x - x0) / chunk - ix, 1 - ((z - z0) / chunk - iz));
+    }
+  const index = [];
+  for (let i = 0; i < nt; i++)
+    for (let j = 0; j < ns; j++) {
+      const k = i * (ns + 1) + j;
+      index.push(k, k + 1, k + ns + 1, k + 1, k + ns + 2, k + ns + 1);
+    }
+  const ground = new THREE.BufferGeometry();
+  ground.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
+  ground.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  ground.setIndex(index);
+  ground.computeVertexNormals();
+  // Along the street's side every metre, from its ground up to the terrain; elsewhere it turns
+  // into the terrain (passageGround).
+  const walls = [];
+  const steps = Math.ceil(length);
+  for (let i = 1; i <= steps; i++) {
+    const [[xa, za], [xb, zb]] = [i - 1, i].map((k) => point((length * k) / steps, half));
+    const [ya, yb] = [i - 1, i].map((k) => passageGround((length * k) / steps, half));
+    const [ta, tb] = [gridAt(xa, za), gridAt(xb, zb)];
+    walls.push(xa, ya, za, xb, yb, zb, xa, ta, za, xb, yb, zb, xb, tb, zb, xa, ta, za);
+  }
+  const wall = new THREE.BufferGeometry();
+  wall.setAttribute("position", new THREE.Float32BufferAttribute(walls, 3));
+  // Drawn like its terrain tile (its map, also when changed, and water), but not cut (addWater).
+  const tile = terrain.getObjectByName(`${ix}_${iz}`).material;
+  const material = new THREE.MeshLambertMaterial({ map: tile.map });
+  Object.defineProperty(material, "map", { get: () => tile.map });
+  material.onBeforeCompile = (shader) => addWater(shader, false);
+  material.customProgramCacheKey = tile.customProgramCacheKey;
+  return [
+    new THREE.Mesh(ground, material),
+    new THREE.Mesh(
+      wall,
+      new THREE.MeshLambertMaterial({
+        color: materials.bridge.color,
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+    ),
+  ];
 }
 
 // The coarse terrain for the chunks TERRAIN_DETAIL metres or more from the camera, the map as
@@ -3203,9 +3299,37 @@ function intoArea(x, z) {
   return [clamp(x, x0, x0 + (nx - 1) * cell), clamp(z, z0, z0 + (nz - 1) * cell)];
 }
 
+// The ground's height at a scene position: the passage's (passageGround) in its area, else the
+// terrain's.
+function heightAt(x, z) {
+  const [t, s] = passage.local(x, z);
+  return t >= 0 && t <= passage.length && s <= passage.half && s >= -PASSAGE.reach
+    ? passageGround(t, s)
+    : gridAt(x, z);
+}
+
+// The passage's ground at [along, across] (passage.local): level from the street's wall to the
+// bank's edge, from there falling evenly to the Rhine's surface at its edge; towards its ends and
+// its edge in the water it turns into the terrain.
+function passageGround(t, s) {
+  const { bank, y0, y1, length, river, point } = passage;
+  let edge = bank[0][1];
+  for (let i = 1; i < bank.length; i++)
+    if (t > bank[i - 1][0])
+      edge =
+        bank[i - 1][1] +
+        (bank[i][1] - bank[i - 1][1]) *
+          Math.min((t - bank[i - 1][0]) / (bank[i][0] - bank[i - 1][0]), 1);
+  const level = y0 + ((y1 - y0) * t) / length;
+  const y =
+    level + (river - level) * Math.min(Math.max((-s - edge) / (PASSAGE.water - edge), 0), 1);
+  const blend = Math.max(0, 1 - Math.min(t, length - t, s + PASSAGE.reach) / PASSAGE.blend);
+  return blend ? y + (gridAt(...point(t, s)) - y) * blend : y;
+}
+
 // The terrain's height at a scene position as its mesh has it: each cell's two triangles meet
 // along the line from its south-west to its north-east corner.
-function heightAt(x, z) {
+function gridAt(x, z) {
   const { x0, z0, cell, nx, nz } = terrainInfo;
   const fx = THREE.MathUtils.clamp((x - x0) / cell, 0, nx - 1.001);
   const fz = THREE.MathUtils.clamp((z - z0) / cell, 0, nz - 1.001);

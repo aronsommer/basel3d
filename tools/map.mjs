@@ -15,6 +15,8 @@ import { MeshoptDecoder } from "meshoptimizer";
 import { E_MIN, E_MAX, N_MIN, N_MAX, CHUNK, PUBLIC, TREE_GRID, toX, toZ } from "./area.mjs";
 import { osmElements, toLV95, roadWidth, SIDEWALK_WIDTH, onBridge } from "./osm.mjs";
 import { underBridges, BRIDGES_FILE } from "./bsbridges.mjs";
+import { PASSAGE } from "../src/passage.js";
+import { inPassage, passageEnds } from "./passage.mjs";
 import { encodeTexture } from "./tiles.mjs";
 import { Bytes } from "./pack.mjs";
 import { photoMosaic } from "./swisstopo.mjs";
@@ -46,6 +48,40 @@ function coveredBridge(way) {
   const points = way.geometry.filter(Boolean);
   const [a, b] = [points[(points.length - 1) >> 1], points[points.length >> 1]].map(toLV95);
   return underBridge({ x: toX((a[0] + b[0]) / 2), z: toZ((a[1] + b[1]) / 2) });
+}
+// The first JOIN metres of a way from each of its ends on such a bridge (WGS84 points), drawn on
+// the decks too, where these reach beyond the OSM bridge.
+const JOIN = 30;
+const deckNodes = new Set(
+  elements
+    .filter((el) => el.type === "way" && el.geometry && coveredBridge(el))
+    .flatMap((el) => [el.nodes[0], el.nodes.at(-1)]),
+);
+function joins({ nodes, geometry }) {
+  const pieces = [];
+  for (const [start, step] of [
+    [0, 1],
+    [nodes.length - 1, -1],
+  ]) {
+    if (!deckNodes.has(nodes[start])) continue;
+    const piece = [geometry[start]];
+    let left = JOIN;
+    for (let k = start; k + step >= 0 && k + step < nodes.length; k += step) {
+      const [a, b] = [geometry[k], geometry[k + step]];
+      if (!a || !b) break; // outside the query box
+      const [pa, pb] = [a, b].map(toLV95);
+      const d = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
+      if (d >= left) {
+        const f = left / d;
+        piece.push({ lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f });
+        break;
+      }
+      piece.push(b);
+      left -= d;
+    }
+    if (piece.length > 1) pieces.push(piece);
+  }
+  return pieces;
 }
 
 // --- Style: what to draw, in which colour, how wide (metres) and in which order. Muted tones about
@@ -160,10 +196,16 @@ for (const el of elements) {
   const deck = coveredBridge(el);
   const closed = el.nodes[0] === el.nodes.at(-1);
   const area = closed && areaStyle(tags);
-  const line = lineStyle(tags);
-  const geometry = { rings: [ring(el.geometry)], closed: Boolean(area) };
+  const open = inPassage(el); // drawn straight along it, as road across its whole width
+  const line = open ? { order: 11, stroke: ROAD, width: PASSAGE.width } : lineStyle(tags);
+  const geometry = { rings: [ring(open ? passageEnds : el.geometry)], closed: Boolean(area) };
   if (area) shapes.push({ ...area, deck, geometry });
-  else if (line) for (const style of [line].flat()) shapes.push({ ...style, deck, geometry });
+  else if (line) {
+    const pieces = deck ? [] : joins(el).map((piece) => ({ rings: [ring(piece)], closed: false }));
+    for (const style of [line].flat())
+      for (const [on, g] of [[deck, geometry], ...pieces.map((p) => [true, p])])
+        shapes.push({ ...style, deck: on, geometry: g });
+  }
 }
 shapes.sort((a, b) => a.order - b.order);
 const ground = shapes.filter((s) => !s.deck);
@@ -235,15 +277,24 @@ const ground = shapes.filter((s) => !s.deck);
 // --- public/ground/rails.bin: the tracks drawn on the ground, for the rails the viewer lays on
 // them (src/rails.js), packed (tools/pack.mjs): per track 2 for a railway or 0 for a tram, + 1 on
 // a deck, and its points in tenths of a metre from the north-west corner, each as the step from
-// the point before.
+// the point before. The pieces of tracks joining a deck (joins) also once more, on it.
 {
   const bytes = new Bytes();
-  const tracks = elements.filter((el) => el.geometry && el.tags?.railway && lineStyle(el.tags));
+  const tracks = elements
+    .filter((el) => el.geometry && el.tags?.railway && lineStyle(el.tags))
+    .flatMap((el) => {
+      const kind = el.tags.railway === "tram" ? 0 : 2;
+      const deck = coveredBridge(el);
+      return [
+        [kind + (deck ? 1 : 0), el.geometry],
+        ...(deck ? [] : joins(el).map((piece) => [kind + 1, piece])),
+      ];
+    });
   bytes.number(tracks.length);
   let [x, y] = [0, 0];
-  for (const el of tracks) {
-    const points = ring(el.geometry);
-    bytes.number((el.tags.railway === "tram" ? 0 : 2) + (coveredBridge(el) ? 1 : 0));
+  for (const [flags, geometry] of tracks) {
+    const points = ring(geometry);
+    bytes.number(flags);
     bytes.number(points.length);
     for (const [px, py] of points) {
       bytes.signed(px - x);

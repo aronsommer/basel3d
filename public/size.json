@@ -24,8 +24,8 @@
   "hash": "a1716bc0"
  },
  "ground/map.bin": {
-  "size": 875165,
-  "hash": "c9f98f11"
+  "size": 884992,
+  "hash": "69b205d3"
  },
  "ground/photo/0_0.ktx2": {
   "size": 254930,
@@ -284,8 +284,8 @@
   "hash": "302c67f6"
  },
  "ground/rails.bin": {
-  "size": 77181,
-  "hash": "ecaba475"
+  "size": 80148,
+  "hash": "0faff5c7"
  },
  "ground/soft.bin": {
   "size": 3475646,
@@ -328,8 +328,8 @@
   "hash": "2a472e6c"
  },
  "walks.bin": {
-  "size": 61076,
-  "hash": "19a17c6f"
+  "size": 58898,
+  "hash": "925bf146"
  },
  "water.ktx2": {
   "size": 227833,
