@@ -33,11 +33,12 @@ import { createFerries } from "./ferries.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createStation } from "./station.js";
 import { clockTime, createClocks } from "./clocks.js";
-import { createZoo } from "./zoo.js";
+import { createSwans, createZoo } from "./zoo.js";
+import { createRunners } from "./runners.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
 import { createJet } from "./jet.js";
-import { createPeople, dodge, mix, peopleTime } from "./people.js";
+import { TOSS, createPeople, dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createDev } from "./dev.js";
 import { createPoints } from "./points.js";
@@ -565,6 +566,60 @@ const basilisks = BASILISKS.map(([lat, lon], k) => {
 scene.add(createBasilisks(basilisks));
 const ships = createShips(new Float32Array(shipsBuffer), ferries.ferries);
 scene.add(...ships.meshes);
+// Joggers (src/runners.js) along the Rhine's Kleinbasel bank, from the Unterer
+// Rheinweg by the Dreirosenbrücke up to the Schaffhauserrheinweg (WGS84 points); also cyclists and
+// e-scooter riders, who brake for what the people flee from (danger).
+const runners = createRunners(
+  [
+    [
+      [47.569116, 7.586471],
+      [47.568795, 7.58646],
+      [47.568347, 7.586464],
+      [47.567868, 7.586493],
+      [47.567246, 7.5866],
+      [47.566715, 7.586722],
+      [47.566198, 7.586894],
+      [47.565404, 7.587183],
+      [47.564827, 7.587496],
+      [47.564298, 7.587806],
+      [47.563756, 7.588174],
+      [47.563085, 7.588593],
+      [47.562739, 7.588849],
+      [47.562109, 7.589342],
+      [47.561837, 7.589635],
+      [47.561363, 7.590089],
+      [47.560955, 7.590486],
+      [47.560341, 7.591195],
+      [47.559974, 7.5917],
+      [47.559655, 7.592087],
+      [47.559514, 7.592332],
+      [47.559229, 7.592729],
+      [47.559053, 7.593029],
+      [47.558801, 7.593468],
+      [47.558428, 7.594155],
+      [47.558205, 7.594643],
+      [47.557972, 7.595168],
+      [47.557796, 7.595554],
+      [47.557648, 7.595999],
+      [47.557478, 7.596442],
+      [47.557335, 7.596826],
+      [47.557235, 7.597123],
+      [47.55715, 7.597558],
+      [47.55706, 7.598561],
+      [47.557015, 7.59915],
+      [47.557026, 7.600412],
+      [47.557048, 7.601241],
+      [47.557063, 7.601894],
+      [47.557103, 7.602674],
+      [47.557174, 7.603441],
+      [47.557263, 7.604338],
+      [47.557347, 7.605095],
+    ].map(([lat, lon]) => fromWGS84(lat, lon)),
+  ],
+  heightAt,
+  danger,
+);
+scene.add(...runners.meshes);
 overlay.add(ships.route);
 const planes = createPlanes();
 scene.add(...planes.meshes);
@@ -929,7 +984,7 @@ const parked = (places) =>
 const police = createPolice(
   parked([
     { x: -1002.3, z: -765.7, heading: 0 },
-    { x: 132.7, z: -1427.2, heading: -0.05 },
+    { x: 133.6, z: -1437.5, heading: -0.05 },
     { x: 656.5, z: -507.4, heading: -0.93 },
     { x: 660.7, z: -506.8, heading: -0.93, unmarked: true },
   ]),
@@ -1001,7 +1056,7 @@ const MEN_LOOKS = mix(
     top: [0xffffff, 0x1e7d4a, 0x111111, 0xf2c94c, 0xc0392b, 0x1e88e5, 0x6b6b6b, 0xff6f00],
     bottom: [0x3b4d6b, 0x222222, 0x6b6b6b, 0x1d1d1d, 0xc2a878, 0x2f4f2f, 0x4a5d7a],
     shoes: [0xffffff, 0x111111, 0xeeeeee, 0x1d1d1d],
-    head: ["cap", "hair", "beanie", "cap", "hair", "beanie"],
+    head: ["cap", "hair", "beanie", "backcap", "hair", "beanie"],
     hat: [0xc0392b, 0, 0x111111, 0x1b2333, 0, 0x8b0000],
   },
   MEN.length,
@@ -1070,11 +1125,12 @@ const sunbathing = parked(
 const TOWEL = 0.06;
 const SLIDE = 0.5; // metres
 const towelShape = new THREE.BoxGeometry(0.9, 0.02, 2).translate(0, TOWEL - 0.01, 0.9);
-// A towel of this colour under one lying at a place (feet there, head along the heading).
-function towel({ x, y, z, heading }, color) {
-  const mesh = new THREE.Mesh(towelShape, new THREE.MeshLambertMaterial({ color }));
+// A towel of this colour and shape under one at a place (lying: feet there, head along the
+// heading), tilted forward by tilt radians.
+function towel({ x, y, z, heading, tilt = 0 }, color, shape = towelShape) {
+  const mesh = new THREE.Mesh(shape, new THREE.MeshLambertMaterial({ color }));
   mesh.position.set(x, y, z);
-  mesh.rotation.y = heading;
+  mesh.rotation.set(tilt, heading, 0, "YXZ");
   return mesh;
 }
 // Each [LV95 east, north, heading, pose]: the yoga row about 1 m apart around LV95 2610515.3,
@@ -1158,6 +1214,54 @@ const zoo = createZoo(
   tree.clear,
 );
 scene.add(...zoo.meshes);
+// An old man in a cap sitting on a cloth on the Rhine's bank in St. Johann (WGS84 47.565768,
+// 7.583695), tilted forward with the slope, tossing bread to a swan family that looks at him: a
+// cygnet among its parents.
+const [feederX, feederZ] = fromWGS84(47.565768, 7.583695);
+const family = [
+  [47.565727, 7.583781, 1.5],
+  [47.565771, 7.583791, 0.9],
+  [47.565822, 7.583738, 1.5],
+].map(([lat, lon, size]) => {
+  const [x, z] = fromWGS84(lat, lon);
+  const heading = Math.atan2(feederX - x, feederZ - z);
+  return { x, y: heightAt(x, z), z, heading, size, young: size < 1 };
+});
+// Facing the cygnet, tilted as the ground falls over 1 m that way.
+const facing = Math.atan2(family[1].x - feederX, family[1].z - feederZ);
+const feederY = heightAt(feederX, feederZ);
+const feeder = {
+  x: feederX,
+  y: feederY,
+  z: feederZ,
+  heading: facing,
+  tilt: Math.atan(feederY - heightAt(feederX + Math.sin(facing), feederZ + Math.cos(facing))),
+};
+// The bread leaves his right hand (as src/people.js has it sitting, leaning back, the arm ahead)
+// each time his arm is furthest ahead (phase 0).
+const hand = new THREE.Vector3(-0.28, 0.83, 0.31)
+  .applyEuler(new THREE.Euler(feeder.tilt, facing, 0, "YXZ"))
+  .add(new THREE.Vector3(feederX, feederY + TOWEL, feederZ));
+const swans = createSwans(family, hand, (2 * Math.PI) / TOSS, Math.PI / 2 / TOSS);
+scene.add(
+  ...swans.meshes,
+  towel(feeder, 0x24539e, new THREE.BoxGeometry(1.1, 0.02, 1.5).translate(0, TOWEL - 0.01, 0.35)),
+  ...createPeople(
+    [{ ...feeder, y: feeder.y + TOWEL, pose: "sit" }],
+    [
+      {
+        body: "man",
+        skin: 0xe8c4a8,
+        hair: 0xd0d0d0,
+        top: 0x6b5a45,
+        bottom: 0x8a8070,
+        shoes: 0x3a2a1c,
+        hat: 0x2f3b4c,
+        head: "cap",
+      },
+    ],
+  ),
+);
 // Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
 // as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
 // bridge whose sidewalk runs along its edge; never on the water: there on the highest deck at or
@@ -1196,9 +1300,10 @@ const walkers = createWalkers(
         bottom: [0x3b4d6b, 0x222222, 0xc2a878, 0x6b6b6b, 0x4a5d7a, 0x2f4f2f],
         shoes: [0xffffff, 0x111111, 0x6b4a2a, 0x1d1d1d],
         // Men (even) and women (odd) in turn, as the bodies.
-        head: ["hair", "long", "cap", "long", "hair", "long", "beanie", "hair"],
+        head: ["hair", "long", "cap", "long", "hair", "long", "beanie", "hair", "backcap", "long"],
         dress: [false, false, false, true],
         hat: [0x1b2333, 0xc0392b, 0x111111],
+        face: [null, null, "glasses", null, null, "shades", null, null, null, null, "glasses"],
       },
       100,
     ),
@@ -4065,6 +4170,7 @@ renderer.setAnimationLoop((time) => {
   const now = new Date();
   clockTime.value = (now / 1000 - now.getTimezoneOffset() * 60) % 86400;
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
+  runners.update(dt);
   training.update(dt);
   bike.update(dt);
   serpent.update(time / 1000);
@@ -4089,6 +4195,7 @@ renderer.setAnimationLoop((time) => {
   ferries.update(afloat);
   ships.update(afloat, dt);
   zoo.update(time / 1000);
+  swans.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);
   planes.update(time / 1000, flier, flown);

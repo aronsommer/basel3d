@@ -1,0 +1,350 @@
+// Joggers, cyclists and e-scooter riders to and fro along routes on the Rhine's banks: joggers
+// alone, in pairs or in groups of men, women and children in sports kit; men and women on bikes
+// (src/bike.js) and e-scooters in other colours. Each keeps to the right and passes one slower
+// ahead on the left when that is clear, else keeps behind it; joggers flee from traffic
+// (src/people.js), the others brake for it and wait.
+import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { BIKE, bikeFrame, PEDAL } from "./bike.js";
+import { part } from "./parts.js";
+import { createCrowd, mix } from "./people.js";
+
+const TURN = 3; // radians a second they turn at most
+const SIDE = 1.5; // metres a second they move across, to keep right or to pass
+// Metres apart across the path they keep at least, metres further left they pass on, metres
+// ahead they look (and a second's way more); metres a second they slow down and speed up by each
+// second.
+const WIDTH = 0.9;
+const PASS = 1.4;
+const LOOK = 4;
+const [BRAKE, START] = [5, 1.5];
+// Out of traffic's way: metres across at most, metres a second they move across, seconds calm till
+// they move back.
+const [DODGE, DASH, CALM] = [6, 4, 2];
+// Joggers: how many, metres a second, radians of the run per metre, their lean forward (radians),
+// a child's and a woman's size, the metres right of the path's middle and behind each other in a
+// group.
+const JOGGERS = 50;
+const PACE = [2.4, 3.4];
+const STRIDE = 2.6;
+const LEAN = 0.12;
+const [CHILD, WOMAN] = [0.6, 0.93];
+const [RIGHT, BEHIND] = [[0.6, 1.4], 1.6];
+// Bikes SCALE times the girl's (her rider's body scaled with it).
+const SCALE = 1.6;
+
+const random = (a, b) => a + Math.random() * (b - a);
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a, 0xc58c5c, 0x8a5634, 0x6b4128, 0x4a2c1a];
+const HAIR = [0x2a1d14, 0x111111, 0xe2c46e, 0x7a3a1a, 0x8a8a8a];
+// Sports kit: a shirt (top), shorts (bottom), bare arms and lower legs (hat: sleeves and socks of
+// the body "player", as the skin), trainers (shoes).
+const SHIRTS = [0xff6f00, 0x1e88e5, 0xe91e63, 0x76ff03, 0xffffff, 0x111111, 0xffd600, 0x00bcd4];
+const SHORTS = [0x111111, 0x1b2333, 0x3a3a3a, 0x1e3a8a, 0x6b6b6b];
+const TRAINERS = [0xffffff, 0xff5722, 0x111111, 0x00e5ff, 0xc6ff00];
+
+// An e-scooter, facing +z, its rear on the ground at the origin: a deck, two small wheels, a stem
+// with a handlebar; white where it takes its colour.
+const DECK = 0.14; // metres, the deck's top
+const scooter = mergeGeometries([
+  part(new THREE.BoxGeometry(0.16, 0.06, 0.6), 0x2a2a2a, [0, DECK - 0.03, 0.32]), // deck
+  ...[0, 0.68].map((z) =>
+    part(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 10).rotateZ(Math.PI / 2), 0x111111, [
+      0,
+      0.1,
+      z,
+    ]),
+  ), // wheels
+  part(new THREE.BoxGeometry(0.045, 0.95, 0.045), 0xffffff, [0, 0.6, 0.66]), // stem
+  part(new THREE.BoxGeometry(0.45, 0.03, 0.03), 0xffffff, [0, 1.06, 0.66]), // handlebar
+  ...[-1, 1].map((s) =>
+    part(new THREE.BoxGeometry(0.06, 0.04, 0.04), 0x111111, [s * 0.2, 1.06, 0.66]),
+  ), // grips
+]);
+// The vehicles: how many, metres a second, metres right of the path's middle, the frame, its
+// colours and size, metres to its front wheel, where its rider stands ([y, z] in the frame, were
+// they standing), the rider's size and lean forward (radians) and pose.
+const RIDES = {
+  bike: {
+    count: 20,
+    speed: [4.5, 7],
+    lane: [1.6, 2.6],
+    frame: bikeFrame(0xffffff, false),
+    colours: [0x111111, 0x1e3a8a, 0xc0392b, 0xb8b8b8, 0x2e7d32, 0xf5f5f5],
+    size: SCALE,
+    base: BIKE.wheels[1][2][2],
+    seat: BIKE.seat,
+    rider: BIKE.size,
+    lean: BIKE.lean,
+    pose: BIKE.pose,
+  },
+  scooter: {
+    count: 12,
+    speed: [3.5, 5.5],
+    lane: [1.2, 2.2],
+    frame: scooter,
+    colours: [0xd0d0d0, 0x111111, 0x2e7d32, 0xff6f00, 0x1e88e5],
+    size: 1,
+    base: 0.68,
+    seat: [DECK, 0.3],
+    rider: 1,
+    lean: 0.05,
+    pose: "scoot",
+  },
+};
+
+// A stretch of path through these points ([x, z] each): { points: [x, z, …], at: metres to each
+// point, length }.
+function stretchOf(route) {
+  const at = route.map(() => 0);
+  for (let i = 1; i < route.length; i++)
+    at[i] = at[i - 1] + Math.hypot(route[i][0] - route[i - 1][0], route[i][1] - route[i - 1][1]);
+  return { points: route.flat(), at, length: at.at(-1) };
+}
+
+// Where on a stretch s metres along it is: x, z.
+function spot({ points, at }, s) {
+  let [lo, hi] = [0, at.length - 1];
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (at[mid] <= s) lo = mid;
+    else hi = mid;
+  }
+  const t = (s - at[lo]) / (at[hi] - at[lo] || 1);
+  return [
+    points[2 * lo] + (points[2 * hi] - points[2 * lo]) * t,
+    points[2 * lo + 1] + (points[2 * hi + 1] - points[2 * lo + 1]) * t,
+    points[2 * hi] - points[2 * lo],
+    points[2 * hi + 1] - points[2 * lo + 1],
+  ];
+}
+
+// Where a mover is: right metres right of its stretch's middle (along it), s metres along it;
+// x, z and the stretch's way there.
+function locate({ stretch, s, right }) {
+  const [x, z, dx, dz] = spot(stretch, s);
+  const length = Math.hypot(dx, dz) || 1;
+  return [x - (dz / length) * right, z + (dx / length) * right, dx, dz];
+}
+// A mover on a stretch: { stretch, s, way: ±1 along it, top: metres a second it would go, pace:
+// as it goes, keep: metres right of the middle as it goes, pass: metres further left while
+// passing, right: as now, along the stretch, dodge: where right it goes out of traffic's way (null
+// if not), calm: seconds since, rolled: metres it went, x, y, z, heading }, facing on.
+function mover(stretch, s, way, top, keep, ground) {
+  const m = { stretch, s: THREE.MathUtils.clamp(s, 0, stretch.length), way, top, pace: top, keep };
+  Object.assign(m, { pass: 0, right: way * keep, dodge: null, calm: 0, rolled: 0 });
+  const [x, z, dx, dz] = locate(m);
+  return Object.assign(m, { x, y: ground(x, z), z, heading: Math.atan2(way * dx, way * dz) });
+}
+// Metres o is ahead of m along m's way.
+const ahead = (m, o) => (o.s - m.s) * m.way;
+// Whether none of others but m is within WIDTH of right across and from to to metres ahead of m.
+const clear = (m, others, right, from, to) =>
+  !others.some(
+    (o) =>
+      o !== m &&
+      o.stretch === m.stretch &&
+      Math.abs(o.right - right) < WIDTH &&
+      ahead(m, o) > from &&
+      ahead(m, o) < to,
+  );
+// The metres a second m goes at most, wanting speed, among others: behind the nearest in its way
+// ahead and slower it moves out to pass when that is clear ahead, else keeps to its speed; it moves
+// back in once clear there, or at once if that one comes the other way (and waits).
+function among(m, others, speed) {
+  const look = LOOK + m.pace;
+  let front = null;
+  for (const o of others) {
+    if (o === m || o.stretch !== m.stretch || Math.abs(o.right - m.right) >= WIDTH) continue;
+    const d = ahead(m, o);
+    if (d > 0 && d < look && (!front || d < ahead(m, front))) front = o;
+  }
+  if (front) {
+    const theirs = front.pace * front.way * m.way; // its speed along m's way
+    if (theirs >= speed) return speed;
+    if (theirs <= 0)
+      m.pass = 0; // one coming the other way: back in, not to meet it head on
+    else if (!m.pass && clear(m, others, m.way * (m.keep - PASS), -2, 2 * look)) m.pass = PASS;
+    return Math.max(0, theirs);
+  }
+  if (m.pass && clear(m, others, m.way * m.keep, -3, look)) m.pass = 0;
+  return speed;
+}
+// On dt seconds towards wanted metres a second, round at the ends, moving across to keep right
+// after turning round and to pass, or fast out of traffic's way.
+function move(m, wanted, dt, ground) {
+  const { stretch } = m;
+  m.pace += THREE.MathUtils.clamp(wanted - m.pace, -BRAKE * dt, START * dt);
+  m.s += m.way * m.pace * dt;
+  m.rolled += m.pace * dt;
+  if (m.s < 0 || m.s > stretch.length) {
+    m.way = -m.way;
+    m.s = THREE.MathUtils.clamp(m.s, 0, stretch.length);
+  }
+  const right = m.dodge ?? m.way * (m.keep - m.pass);
+  const side = (m.dodge === null ? SIDE : DASH) * dt;
+  m.right += THREE.MathUtils.clamp(right - m.right, -side, side);
+  const [x, z] = locate(m);
+  if (x !== m.x || z !== m.z) {
+    const turn = Math.atan2(x - m.x, z - m.z) - m.heading;
+    const by = Math.atan2(Math.sin(turn), Math.cos(turn));
+    m.heading += THREE.MathUtils.clamp(by, -TURN * dt, TURN * dt);
+  }
+  Object.assign(m, { x, y: ground(x, z), z });
+}
+
+// The joggers, cyclists and e-scooter riders on these routes (each [x, z] points); ground(x, z):
+// the height there; danger(x, y, z, reach): null if no traffic is there, else the shortest way out
+// of it ([x, z]) within reach metres (src/main.js). { meshes, update(dt) }.
+export function createRunners(routes, ground, danger) {
+  const stretches = routes.map(stretchOf);
+  const total = stretches.reduce((sum, { length }) => sum + length, 0);
+  // A stretch, the longer the likelier, and a spot on it.
+  const somewhere = () => {
+    let r = Math.random() * total;
+    const stretch = stretches.find(({ length }) => (r -= length) < 0) ?? stretches[0];
+    return [stretch, Math.random() * stretch.length];
+  };
+
+  // Joggers: groups of one to five, a child only beside an adult.
+  const joggers = [];
+  while (joggers.length < JOGGERS) {
+    const [stretch, s] = somewhere();
+    const size = pick([1, 1, 1, 2, 2, 3, 4, 5]);
+    const [way, pace] = [pick([-1, 1]), random(...PACE)];
+    for (let k = 0; k < size; k++) {
+      const kind = k && Math.random() < 0.2 ? "child" : pick(["man", "woman"]);
+      const keep = (k % 2 ? RIGHT[1] : RIGHT[0]) + random(-0.1, 0.1);
+      const behind = Math.floor(k / 2) * BEHIND;
+      joggers.push({ ...mover(stretch, s - way * behind, way, pace, keep, ground), kind });
+    }
+  }
+  const runners = createCrowd("player", joggers.length);
+  joggers.forEach((j, i) => {
+    const woman = j.kind === "woman" || (j.kind === "child" && Math.random() < 0.5);
+    const skin = pick(SKIN);
+    runners.dress(
+      i,
+      {
+        skin,
+        hair: pick(HAIR),
+        top: pick(SHIRTS),
+        bottom: pick(SHORTS),
+        shoes: pick(TRAINERS),
+        hat: skin,
+        head: woman ? "long" : pick(["hair", "hair", "cap", "backcap"]),
+        face: Math.random() < 0.2 ? "shades" : null,
+      },
+      "run",
+    );
+    j.size = j.kind === "child" ? CHILD : j.kind === "woman" ? WOMAN : 1;
+    j.phase = random(0, 6);
+  });
+
+  // Riders, men and women in turn, on each kind of vehicle (RIDES); its frames in one mesh, for the
+  // bikes their wheels in another.
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const color = new THREE.Color();
+  const kinds = Object.values(RIDES).map((ride) => {
+    const { count, speed, lane, frame, colours, pose } = ride;
+    const frames = new THREE.InstancedMesh(frame, material, count);
+    const crowds = { man: createCrowd("man", count / 2, false) };
+    crowds.woman = createCrowd("woman", count / 2, false);
+    const looks = mix(
+      {
+        skin: SKIN,
+        hair: HAIR,
+        top: [0xffffff, 0x1e88e5, 0x111111, 0xc0392b, 0x6b6b6b, 0xf2c94c, 0x1e7d4a, 0xff6f00],
+        bottom: [0x3b4d6b, 0x222222, 0xc2a878, 0x6b6b6b, 0x4a5d7a],
+        shoes: [0xffffff, 0x111111, 0x6b4a2a],
+        head: ["hair", "long", "cap", "long", "hair", "long", "backcap", "hair"],
+        hat: [0x1b2333, 0xc0392b, 0x111111],
+        face: [null, null, "shades", null, null],
+      },
+      count,
+    );
+    const riders = Array.from({ length: count }, (_, k) => {
+      const [stretch, s] = somewhere();
+      const rider = {
+        ...mover(stretch, s, pick([-1, 1]), random(...speed), random(...lane), ground),
+        crowd: crowds[k % 2 ? "woman" : "man"],
+        index: k >> 1,
+      };
+      rider.crowd.dress(rider.index, looks[k], pose);
+      frames.setColorAt(k, color.set(colours[k % colours.length]));
+      return rider;
+    });
+    const wheels =
+      ride === RIDES.bike && new THREE.InstancedMesh(BIKE.wheels[0][0], material, 2 * count);
+    const meshes = [frames, crowds.man.mesh, crowds.woman.mesh, ...(wheels ? [wheels] : [])];
+    return { ride, riders, frames, wheels, meshes };
+  });
+  const meshes = [runners.mesh, ...kinds.flatMap((kind) => kind.meshes)];
+  for (const mesh of meshes) mesh.frustumCulled = false; // they move
+  const all = [...joggers, ...kinds.flatMap(({ riders }) => riders)];
+
+  const [matrix, wheel, spin] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
+  const [turn, seat, position, scale] = [
+    new THREE.Euler(0, 0, 0, "YXZ"),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+  ];
+  const quaternion = new THREE.Quaternion();
+  return {
+    meshes,
+    update(dt) {
+      joggers.forEach((j, i) => {
+        // It waits while off its way, fleeing from traffic (dodge).
+        if (!runners.away(i)) {
+          move(j, among(j, all, j.top), dt, ground);
+          j.phase += (j.pace * dt * STRIDE) / j.size;
+        }
+        runners.place(i, j.x, j.y, j.z, j.heading, j.phase, j.size, LEAN);
+      });
+      for (const { ride, riders, frames, wheels } of kinds) {
+        const { size, base, seat: at, rider, lean } = ride;
+        scale.setScalar(size);
+        riders.forEach((r, k) => {
+          // Stopping before traffic ahead, on again once it is gone; in it, stopping and out of its
+          // way across the path, back after CALM seconds calm.
+          const out = danger(r.x, r.y, r.z, DODGE);
+          if (out) {
+            const [, , dx, dz] = locate(r);
+            r.dodge = r.right + (out[1] * dx - out[0] * dz) / (Math.hypot(dx, dz) || 1);
+            r.calm = 0;
+          } else if (r.dodge !== null && (r.calm += dt) > CALM) r.dodge = null;
+          const look = LOOK + r.pace;
+          const [ax, az] = [r.x + Math.sin(r.heading) * look, r.z + Math.cos(r.heading) * look];
+          const wanted = out || danger(ax, r.y, az, 0) ? 0 : r.top;
+          move(r, among(r, all, wanted), dt, ground);
+          // Pitched as the ground under its rear and front wheels.
+          const reach = base * size;
+          const front = ground(
+            r.x + Math.sin(r.heading) * reach,
+            r.z + Math.cos(r.heading) * reach,
+          );
+          turn.set(-Math.atan2(front - r.y, reach), r.heading, 0);
+          quaternion.setFromEuler(turn);
+          matrix.compose(position.set(r.x, r.y, r.z), quaternion, scale);
+          frames.setMatrixAt(k, matrix);
+          if (wheels)
+            BIKE.wheels.forEach(([, radius, middle], w) => {
+              spin.makeRotationX(r.rolled / (radius * size));
+              wheel.makeTranslation(...middle).multiply(spin);
+              wheels.setMatrixAt(2 * k + w, wheel.premultiply(matrix));
+            });
+          seat
+            .set(0, ...at)
+            .multiplyScalar(size)
+            .applyEuler(turn)
+            .add(position);
+          const pedals = (r.rolled * PEDAL) / size;
+          r.crowd.place(r.index, ...seat, r.heading, pedals, rider * size, lean + turn.x);
+        });
+        frames.instanceMatrix.needsUpdate = true;
+        if (wheels) wheels.instanceMatrix.needsUpdate = true;
+      }
+    },
+  };
+}

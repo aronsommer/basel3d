@@ -11,7 +11,7 @@ const GREY = 0xb8b8b8;
 const RIDE = 3.5; // metres per second at most, the bike
 const TRIKE = 2; // and the tricycle
 const STEER = 2; // radians per second, their turning at most
-const PEDAL = 2.5; // radians of the bike's pedals per metre
+export const PEDAL = 2.5; // radians of the bike's pedals per metre
 const WIDE = 1; // metres either side of the path's middle she aims at its ends
 const NEAR = 2; // metres from an end where she turns, and from her where the sister stops
 const LIFT = 0.45; // radians, the front wheel up in a wheelie
@@ -55,19 +55,22 @@ const [BIKE_PEDALS, BIKE_SEAT, BIKE_HEAD, BIKE_BAR] = [
   [0, 0.6, 0.62],
   [0, 0.8, 0.6],
 ];
-const BIKE = {
-  frame: mergeGeometries([
-    tube(BIKE_PEDALS, BIKE_SEAT, 0.022, PINK),
-    tube(BIKE_PEDALS, BIKE_HEAD, 0.025, PINK),
-    tube([0, R, 0], BIKE_PEDALS, 0.015, PINK),
-    tube([0, R, 0], [0, 0.5, 0.16], 0.015, PINK),
-    tube(BIKE_HEAD, [0, R, 0.75], 0.018, PINK),
+// The bike's frame in this colour, with a basket or not.
+export const bikeFrame = (color, basket) =>
+  mergeGeometries([
+    tube(BIKE_PEDALS, BIKE_SEAT, 0.022, color),
+    tube(BIKE_PEDALS, BIKE_HEAD, 0.025, color),
+    tube([0, R, 0], BIKE_PEDALS, 0.015, color),
+    tube([0, R, 0], [0, 0.5, 0.16], 0.015, color),
+    tube(BIKE_HEAD, [0, R, 0.75], 0.018, color),
     tube(BIKE_HEAD, BIKE_BAR, 0.015, GREY),
     box(0.4, 0.025, 0.025, GREY, BIKE_BAR),
     ...[-1, 1].map((s) => box(0.035, 0.035, 0.035, 0xffffff, [s * 0.2, BIKE_BAR[1], BIKE_BAR[2]])), // grips
     box(0.1, 0.04, 0.2, 0x222222, [0, 0.57, 0.12]), // saddle
-    box(0.22, 0.14, 0.14, 0xffffff, [0, 0.72, 0.74]), // basket
-  ]),
+    ...(basket ? [box(0.22, 0.14, 0.14, 0xffffff, [0, 0.72, 0.74])] : []),
+  ]);
+export const BIKE = {
+  frame: bikeFrame(PINK, true),
   wheels: [
     [[0, R, 0], R],
     [[0, R, 0.75], R],

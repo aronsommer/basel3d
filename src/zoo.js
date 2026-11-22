@@ -5,7 +5,8 @@
 // a crocodile opening its jaws slowly; wild boars and their striped piglets rooting, foxes and a
 // wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans,
 // mallards and geese swimming round in rings, goats grazing, small monkeys hopping about and a lynx
-// looking round, donkeys grazing, wolves looking round or howling.
+// looking round, donkeys grazing, wolves looking round or howling. Apart from them, swans at given
+// places pecking now and then (createSwans).
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
@@ -38,6 +39,9 @@ const LYNX = 0xb08a5a;
 const DONKEY = 0x8a8580;
 const PALE = 0xd8d0c4;
 const WOLF = 0x7a7670;
+// Two eyes, w wide and high and d deep, x to each side of the middle, at y, z.
+const eyes = (w, d, x, y, z, color = BLACK) =>
+  [-1, 1].map((s) => part(box(w, w, d), color, [s * x, y, z]));
 
 // The kinds, facing +z: body, what stays still; swing, what turns about x (or axis) at pivot (rest + amount ·
 // sin(speed · seconds) radians); ring: metres round their place they go on at pace metres a second,
@@ -53,6 +57,7 @@ const flamingoNeck = {
     part(box(0.06, 0.6, 0.06).translate(0, 0.3, 0).rotateX(0.2), PINK, [0, 0, 0]), // neck
     part(box(0.08, 0.1, 0.18), PINK, [0, 0.6, 0.18]), // head
     part(box(0.04, 0.1, 0.1), BLACK, [0, 0.55, 0.3]), // beak
+    ...eyes(0.025, 0.025, 0.045, 0.62, 0.17),
   ]),
   pivot: [0, 1.1, 0.25],
   amount: 0.25,
@@ -67,6 +72,7 @@ const deerNeck = [
   part(box(0.25, 0.7, 0.3).translate(0, 0.35, 0).rotateX(0.35), DEER, [0, 0, 0]), // neck
   part(box(0.25, 0.25, 0.45), DEER, [0, 0.7, 0.35]), // head
   part(box(0.15, 0.12, 0.1), 0x3a2a1c, [0, 0.66, 0.6]), // muzzle
+  ...eyes(0.05, 0.05, 0.13, 0.75, 0.45),
   ...[-1, 1].map((x) => part(box(0.15, 0.06, 0.12), DEER, [x * 0.17, 0.85, 0.2])), // ears
 ];
 const deerSwing = { pivot: [0, 1.5, 0.6], rest: 0.7, amount: 0.7, speed: 0.4 }; // grazing
@@ -83,8 +89,21 @@ const wolfHead = mergeGeometries([
   part(box(0.12, 0.1, 0.22), 0xc8c0b0, [0, 0.15, 0.34]), // snout
   part(box(0.05, 0.04, 0.03), BLACK, [0, 0.18, 0.46]), // nose
   ...[-1, 1].map((x) => part(new THREE.ConeGeometry(0.05, 0.13, 4), WOLF, [x * 0.08, 0.37, 0.05])), // ears
-  ...[-1, 1].map((x) => part(box(0.03, 0.03, 0.02), 0xd8b030, [x * 0.07, 0.25, 0.26])), // eyes
+  ...eyes(0.03, 0.02, 0.07, 0.25, 0.26, 0xd8b030),
 ]);
+// A swan's body and its neck with the head (both facing +z), in these colours.
+const swanBody = (color) => [
+  part(box(0.45, 0.35, 0.9), color, [0, 0.1, 0]),
+  part(box(0.25, 0.15, 0.25).rotateX(0.5), color, [0, 0.3, -0.45]), // tail
+  ...[-1, 1].map((x) => part(box(0.1, 0.15, 0.6), color, [x * 0.2, 0.32, -0.05])), // wings
+];
+const swanNeck = (color, beak) => [
+  part(box(0.08, 0.5, 0.08).rotateX(-0.2), color, [0, 0.45, 0.35]), // neck
+  part(box(0.1, 0.1, 0.2), color, [0, 0.72, 0.42]), // head
+  part(box(0.06, 0.05, 0.12), beak, [0, 0.7, 0.56]), // beak
+  part(box(0.05, 0.05, 0.04), BLACK, [0, 0.72, 0.5]), // its knob
+  ...eyes(0.025, 0.025, 0.055, 0.735, 0.47),
+];
 const KINDS = {
   wolf: {
     body: wolf,
@@ -115,15 +134,7 @@ const KINDS = {
     },
   },
   swan: {
-    body: [
-      part(box(0.45, 0.35, 0.9), WHITE, [0, 0.1, 0]),
-      part(box(0.25, 0.15, 0.25).rotateX(0.5), WHITE, [0, 0.3, -0.45]), // tail
-      ...[-1, 1].map((x) => part(box(0.1, 0.15, 0.6), WHITE, [x * 0.2, 0.32, -0.05])), // wings
-      part(box(0.08, 0.5, 0.08).rotateX(-0.2), WHITE, [0, 0.45, 0.35]), // neck
-      part(box(0.1, 0.1, 0.2), WHITE, [0, 0.72, 0.42]), // head
-      part(box(0.06, 0.05, 0.12), ORANGE, [0, 0.7, 0.56]), // beak
-      part(box(0.05, 0.05, 0.04), BLACK, [0, 0.72, 0.5]), // its knob
-    ],
+    body: [...swanBody(WHITE), ...swanNeck(WHITE, ORANGE)],
     ring: 3,
     pace: 0.3,
     swims: true,
@@ -143,6 +154,7 @@ const KINDS = {
         ), // horns
         ...[-1, 1].map((x) => part(box(0.12, 0.04, 0.06), GOAT, [x * 0.12, 0.4, 0.12])), // ears
         part(box(0.04, 0.1, 0.04), GOAT, [0, 0.2, 0.33]), // beard
+        ...eyes(0.04, 0.04, 0.095, 0.4, 0.26),
       ]),
       pivot: [0, 0.85, 0.4],
       rest: 0.5,
@@ -161,7 +173,7 @@ const KINDS = {
       part(box(0.04, 0.2, 0.04), MONKEY, [0, 0.14, -0.52]), // its curl
       part(box(0.18, 0.18, 0.16), MONKEY, [0, 0.55, 0]), // head
       part(box(0.12, 0.1, 0.02), 0xd8b890, [0, 0.53, 0.08]), // face
-      ...[-1, 1].map((x) => part(box(0.03, 0.03, 0.01), BLACK, [x * 0.03, 0.56, 0.095])), // eyes
+      ...eyes(0.03, 0.01, 0.03, 0.56, 0.095),
       ...[-1, 1].map((x) => part(box(0.04, 0.07, 0.04), 0xd8b890, [x * 0.1, 0.56, 0])), // ears
     ],
     hop: 0.25,
@@ -188,7 +200,7 @@ const KINDS = {
           part(new THREE.ConeGeometry(0.06, 0.14, 4), LYNX, [x * 0.1, 0.21, 0.04]), // ear
           part(box(0.02, 0.08, 0.02), BLACK, [x * 0.1, 0.31, 0.04]), // its tuft
         ]),
-        ...[-1, 1].map((x) => part(box(0.04, 0.04, 0.03), 0xc8b040, [x * 0.07, 0.06, 0.22])), // eyes
+        ...eyes(0.04, 0.03, 0.07, 0.06, 0.22, 0xc8b040),
         part(box(0.05, 0.03, 0.03), 0x3a2a1c, [0, 0, 0.23]), // nose
       ]),
       pivot: [0, 0.8, 0.45],
@@ -212,6 +224,7 @@ const KINDS = {
         part(box(0.06, 0.5, 0.08).translate(0, 0.27, -0.13).rotateX(0.5), 0x3a3430, [0, 0, 0]), // mane
         part(box(0.22, 0.25, 0.5), DONKEY, [0, 0.55, 0.45]), // head
         part(box(0.23, 0.18, 0.15), PALE, [0, 0.5, 0.68]), // muzzle
+        ...eyes(0.05, 0.05, 0.115, 0.62, 0.42),
         ...[-1, 1].map((x) =>
           part(box(0.06, 0.3, 0.05).rotateZ(-x * 0.25), DONKEY, [x * 0.1, 0.8, 0.32]),
         ), // long ears
@@ -229,6 +242,7 @@ const KINDS = {
         part(box(0.18, 0.4, 0.22).translate(0, 0.2, 0).rotateX(0.3), CHAMOIS, [0, 0, 0]), // neck
         part(box(0.18, 0.2, 0.32), 0xe6dccb, [0, 0.42, 0.22]), // face
         ...[-1, 1].map((x) => part(box(0.02, 0.08, 0.3), BLACK, [x * 0.095, 0.44, 0.22])), // stripes
+        ...eyes(0.04, 0.04, 0.095, 0.5, 0.3), // above the stripes
         ...[-1, 1].flatMap((x) => [
           part(box(0.03, 0.18, 0.03), BLACK, [x * 0.05, 0.6, 0.18]), // horn
           part(box(0.03, 0.03, 0.08), BLACK, [x * 0.05, 0.68, 0.13]), // its hook
@@ -256,6 +270,7 @@ const KINDS = {
       geometry: mergeGeometries([
         part(box(0.35, 2.2, 0.4).translate(0, 1.1, 0).rotateX(0.35), GIRAFFE, [0, 0, 0]), // neck
         part(box(0.35, 0.4, 0.8), GIRAFFE, [0, 2.1, 1]), // head
+        ...eyes(0.08, 0.08, 0.18, 2.2, 1.05),
         ...[-1, 1].map((x) => part(box(0.08, 0.3, 0.08), PATCH, [x * 0.1, 2.4, 0.8])), // ossicones
       ]),
       pivot: [0, 2.6, 0.8],
@@ -272,7 +287,7 @@ const KINDS = {
         part(box(0.1, 1.3, 1.1).rotateY(x * 0.6), 0x7a7a7a, [x * 0.9, 2.5, 1.6]),
       ), // ears
       ...[-1, 1].map((x) => part(box(0.12, 0.12, 0.7).rotateX(0.5), WHITE, [x * 0.35, 1.9, 2.5])), // tusks
-      ...[-1, 1].map((x) => part(box(0.12, 0.12, 0.12), BLACK, [x * 0.55, 2.75, 2.4])), // eyes
+      ...eyes(0.12, 0.12, 0.55, 2.75, 2.4),
       part(box(0.1, 0.9, 0.1), GREY, [0, 1.9, -1.55]), // tail
     ],
     swing: {
@@ -295,6 +310,7 @@ const KINDS = {
         part(box(0.08, 0.8, 0.12).translate(0, 0.4, -0.2).rotateX(0.5), BLACK, [0, 0, 0]), // mane
         part(box(0.28, 0.3, 0.6), WHITE, [0, 0.75, 0.6]), // head
         part(box(0.29, 0.2, 0.15), BLACK, [0, 0.7, 0.88]), // muzzle
+        ...eyes(0.05, 0.05, 0.145, 0.83, 0.6),
       ]),
       pivot: [0, 1.2, 0.7],
       rest: 0.9,
@@ -315,7 +331,7 @@ const KINDS = {
         part(new THREE.ConeGeometry(0.17, 0.7, 5), 0xd8d0c0, [0, 0.55, 1]), // horn
         part(new THREE.ConeGeometry(0.1, 0.3, 5), 0xd8d0c0, [0, 0.4, 0.6]), // small horn
         ...[-1, 1].map((x) => part(box(0.1, 0.3, 0.15), RHINO, [x * 0.3, 0.45, 0.1])), // ears
-        ...[-1, 1].map((x) => part(box(0.1, 0.1, 0.1), BLACK, [x * 0.41, 0.05, 0.6])), // eyes
+        ...eyes(0.1, 0.1, 0.41, 0.05, 0.6),
       ]),
       pivot: [0, 1.6, 1.5],
       rest: 0.25,
@@ -335,6 +351,8 @@ const KINDS = {
       part(box(0.3, 0.55, 0.05), WHITE, [0, 0.42, 0.18]), // belly
       part(box(0.28, 0.25, 0.28), BLACK, [0, 0.92, 0]), // head
       part(box(0.06, 0.06, 0.15), ORANGE, [0, 0.9, 0.2]), // beak
+      ...eyes(0.06, 0.06, 0.145, 0.97, 0.07, WHITE),
+      ...eyes(0.03, 0.03, 0.17, 0.97, 0.08), // pupils
       ...[-1, 1].map((x) => part(box(0.12, 0.04, 0.18), ORANGE, [x * 0.1, 0.02, 0.05])), // feet
       ...[-1, 1].map((x) => part(box(0.05, 0.4, 0.15).rotateZ(x * 0.3), BLACK, [x * 0.24, 0.5, 0])), // flippers
     ],
@@ -352,7 +370,7 @@ const KINDS = {
     swing: {
       geometry: mergeGeometries([
         part(box(1.1, 0.5, 1.1), HIPPO, [0, 0.25, 0.55]), // upper jaw
-        ...[-1, 1].map((x) => part(box(0.15, 0.15, 0.15), BLACK, [x * 0.35, 0.55, 0.2])), // eyes
+        ...eyes(0.15, 0.15, 0.35, 0.55, 0.2),
         ...[-1, 1].map((x) => part(box(0.12, 0.15, 0.06), HIPPO, [x * 0.4, 0.55, -0.05])), // ears
       ]),
       pivot: [0, 0.05, 1.2],
@@ -375,7 +393,7 @@ const KINDS = {
         part(box(0.22, 0.2, 0.04), 0x6b5048, [0, -0.15, 0.73]), // nose
         ...[-1, 1].map((x) => part(box(0.04, 0.1, 0.04), WHITE, [x * 0.13, -0.12, 0.6])), // tusks
         ...[-1, 1].map((x) => part(box(0.08, 0.15, 0.08), BOAR, [x * 0.15, 0.22, 0.05])), // ears
-        ...[-1, 1].map((x) => part(box(0.05, 0.05, 0.05), BLACK, [x * 0.23, 0.05, 0.35])), // eyes
+        ...eyes(0.05, 0.05, 0.23, 0.05, 0.35),
       ]),
       pivot: [0, 0.75, 0.6],
       rest: 0.35,
@@ -399,7 +417,7 @@ const KINDS = {
         ...[-1, 1].map((x) =>
           part(new THREE.ConeGeometry(0.06, 0.14, 4), FOX, [x * 0.07, 0.21, 0.05]),
         ), // ears
-        ...[-1, 1].map((x) => part(box(0.03, 0.03, 0.03), BLACK, [x * 0.07, 0.1, 0.19])), // eyes
+        ...eyes(0.03, 0.03, 0.07, 0.1, 0.19),
       ]),
       pivot: [0, 0.5, 0.32],
       axis: "y",
@@ -422,7 +440,7 @@ const KINDS = {
         ...[-1, 1].map((x) =>
           part(new THREE.ConeGeometry(0.05, 0.1, 4), CAT, [x * 0.07, 0.15, 0.03]),
         ), // ears
-        ...[-1, 1].map((x) => part(box(0.04, 0.04, 0.03), 0xc8b040, [x * 0.06, 0.05, 0.15])), // eyes
+        ...eyes(0.04, 0.03, 0.06, 0.05, 0.15, 0xc8b040),
         part(box(0.04, 0.03, 0.03), 0xd08a8a, [0, -0.02, 0.16]), // nose
       ]),
       pivot: [0, 0.5, 0.3],
@@ -448,7 +466,7 @@ const KINDS = {
     swing: {
       geometry: mergeGeometries([
         part(box(0.5, 0.18, 0.8), CROCODILE, [0, 0.1, 0.4]), // head
-        ...[-1, 1].map((x) => part(box(0.1, 0.1, 0.1), 0xc8b040, [x * 0.15, 0.22, 0.1])), // eyes
+        ...eyes(0.1, 0.1, 0.15, 0.22, 0.1, 0xc8b040),
       ]),
       pivot: [0, 0.2, 0.7],
       rest: -0.25,
@@ -461,6 +479,7 @@ const KINDS = {
       part(box(0.6, 0.5, 1.6), SEAL, [0, -0.1, 0]),
       part(box(0.4, 0.4, 0.45), SEAL, [0, 0.2, 0.95]), // head
       part(box(0.12, 0.1, 0.1), BLACK, [0, 0.2, 1.2]), // nose
+      ...eyes(0.07, 0.04, 0.1, 0.3, 1.18), // ahead
       part(box(0.6, 0.06, 0.3), 0x5a5550, [0, -0.05, -0.9]), // hind flippers
     ],
     ring: 4,
@@ -475,6 +494,7 @@ const bird = (body, head, beak, size) => ({
     part(box(0.22, 0.18, 0.42).scale(size, size, size), body, [0, 0.05 * size, 0]),
     part(box(0.12, 0.13, 0.14).scale(size, size, size), head, [0, 0.2 * size, 0.2 * size]),
     part(box(0.06, 0.03, 0.1).scale(size, size, size), beak, [0, 0.18 * size, 0.3 * size]),
+    ...eyes(0.025 * size, 0.025 * size, 0.062 * size, 0.23 * size, 0.22 * size),
     part(box(0.1, 0.06, 0.1).rotateX(0.5).scale(size, size, size), body, [
       0,
       0.12 * size,
@@ -723,6 +743,60 @@ export function createZoo(places, ground, clear) {
           mesh.rotation.z = 0.2 * Math.sin(6 * seconds + k);
         }
       }
+    },
+  };
+}
+
+// Where a swan's neck turns: at its base; radians it dips, its beak then on the water BEAK metres
+// ahead of the swan (before its size).
+const NECK = [0, 0.2, 0.38];
+const DIP = 1.6;
+const BEAK = 0.87;
+// Seconds a piece of bread flies, metres it rises in its arc, seconds a peck takes.
+const FLY = 1;
+const ARC = 1.5;
+const PECK = 1;
+// Swans at places ({ x, y, z, heading, size, young: grey }), fed bread tossed from a point (a
+// Vector3) every period seconds from first on, to each in turn; each pecks its piece where it
+// lands, ahead of it. Returns { meshes, update(seconds) }.
+export function createSwans(places, from, period, first) {
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const breadShape = part(box(0.12, 0.07, 0.12), 0xd9b26a, [0, 0.035, 0]);
+  const shapes = [WHITE, 0x8a8278].map((color) => [
+    mergeGeometries(swanBody(color)),
+    mergeGeometries(swanNeck(color, color === WHITE ? ORANGE : 0x4a4545)).translate(
+      ...NECK.map((v) => -v),
+    ),
+  ]);
+  const swans = places.map(({ x, y, z, heading, size, young }) => {
+    const [body, neck] = shapes[young ? 1 : 0].map((g) => new THREE.Mesh(g, material));
+    body.position.set(x, y, z);
+    body.rotation.y = heading;
+    body.scale.setScalar(size);
+    neck.position.fromArray(NECK);
+    body.add(neck);
+    const reach = BEAK * size;
+    const target = new THREE.Vector3(
+      x + reach * Math.sin(heading),
+      y,
+      z + reach * Math.cos(heading),
+    );
+    return { body, neck, bread: new THREE.Mesh(breadShape, material), target };
+  });
+  const cycle = period * swans.length;
+  return {
+    meshes: swans.flatMap(({ body, bread }) => [body, bread]),
+    update(seconds) {
+      swans.forEach(({ neck, bread, target }, k) => {
+        const since = (((seconds - first - k * period) % cycle) + cycle) % cycle; // its last toss
+        const peck = since - FLY;
+        neck.rotation.x = peck > 0 && peck < PECK ? DIP * Math.sin((Math.PI * peck) / PECK) : 0;
+        bread.visible = peck < PECK / 2; // eaten once the beak is down
+        if (since < FLY) {
+          const s = since / FLY;
+          bread.position.lerpVectors(from, target, s).y += 4 * ARC * s * (1 - s);
+        } else bread.position.copy(target);
+      });
     },
   };
 }

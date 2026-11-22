@@ -5,16 +5,21 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 export const peopleTime = { value: 0 }; // seconds
 
-// The colours of a look ({ skin, hair, top, bottom, shoes, hat }, as 0xrrggbb), by slot; a dog's
-// fur is its skin, its ears and nose its hair.
-const SLOTS = ["skin", "hair", "top", "bottom", "shoes", "hat"];
-// What a look may have: its head (short hair, long hair, a cap with a peak ahead or a beanie, both
-// of hat colour) and a long dress (of bottom colour).
-const OPTIONS = ["hair", "long", "cap", "beanie", "dress"];
+// The colours of a look ({ skin, hair, top, bottom, shoes, hat }, as 0xrrggbb), by slot, then
+// white and black, the same for all (eyes); a dog's fur is its skin, its ears, eyes and nose its
+// hair.
+const SLOTS = ["skin", "hair", "top", "bottom", "shoes", "hat", "white", "black"];
+// What a look may have: its head (short hair, long hair, a cap with its peak ahead or back, or a
+// beanie, all of hat colour), a long dress (of bottom colour) and its face (glasses or
+// sunglasses, black).
+const OPTIONS = ["hair", "long", "cap", "backcap", "beanie", "dress", "glasses", "shades"];
 // Radians: the legs and arms swing by LEG and ARM each way while walking; standing, the arms by
 // SWING each way around FORWARD ahead.
 const LEG = 0.45;
 const ARM = 0.35;
+// Radians running: the legs swing by RUN_LEG each way, the arms by RUN_ARM around RUN_FORWARD
+// ahead; metres it bounces up each step.
+const [RUN_LEG, RUN_ARM, RUN_FORWARD, BOUNCE] = [0.75, 0.7, 0.3, 0.06];
 const SWING = 0.3;
 const FORWARD = 0.2;
 // Their poses: standing, the arms swinging a little; walking, legs and arms swinging; lying on the
@@ -23,14 +28,35 @@ const FORWARD = 0.2;
 // spreading them apart and closing them slowly; angel, lying on the back sweeping the arms along
 // the ground up over the head and back and opening and closing the legs, as making a snow angel;
 // ride, on a bike: the arms ahead to the handlebar, the legs pedalling by phase; trike, the same
-// with the legs far ahead, as to a tricycle's pedals on its front wheel.
-const POSES = ["stand", "walk", "lie", "yoga", "dance", "up", "angel", "ride", "trike"];
+// with the legs far ahead, as to a tricycle's pedals on its front wheel; sit, on the ground with
+// the legs straight ahead, leaning back LEAN radians, propped on the left hand, the right arm
+// tossing food ahead; run, as walking with longer strides, bouncing; scoot, standing on an
+// e-scooter, the left foot a little ahead, the arms ahead to its handlebar.
+const POSES = [
+  "stand",
+  "walk",
+  "lie",
+  "yoga",
+  "dance",
+  "up",
+  "angel",
+  "ride",
+  "trike",
+  "sit",
+  "run",
+  "scoot",
+];
 // Lying on the back: tilted about its own x after the heading, its back on the ground (LIE metres
 // up), turned round, so it lies from its place along the heading, the head furthest.
 const LYING = new Set(["lie", "up", "angel"]);
 const LIE = 0.12;
 // Metres up where they turn, by limb: legs, arms, a dog's legs.
 const PIVOTS = [0.9, 1.47, 0.34];
+// Metres a body sits lower than it stands: its legs, turned ahead, on the ground.
+const SEAT = 0.81;
+const LEAN = 0.45;
+// Radians a second of the sitting one's tossing arm, furthest ahead at 1.5708 (+ its phase).
+export const TOSS = 1.5;
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 // A part at [x, y, z] in a colour slot; limb: ±1 a leg, ±2 an arm, ±3 a dog's leg, the sign its
@@ -51,10 +77,46 @@ function piece(geometry, slot, [x, y, z], limb = 0, options = []) {
 const heads = (y) => [
   piece(box(0.24, 0.08, 0.26), "hair", [0, y + 0.02, -0.01], 0, ["hair", "long"]),
   piece(box(0.22, 0.4, 0.08), "hair", [0, y - 0.17, -0.14], 0, ["long"]),
-  piece(box(0.24, 0.08, 0.26), "hat", [0, y + 0.02, -0.01], 0, ["cap"]),
+  piece(box(0.24, 0.08, 0.26), "hat", [0, y + 0.02, -0.01], 0, ["cap", "backcap"]),
   piece(box(0.2, 0.02, 0.12), "hat", [0, y - 0.01, 0.17], 0, ["cap"]),
+  piece(box(0.2, 0.02, 0.12), "hat", [0, y - 0.01, -0.19], 0, ["backcap"]),
   piece(box(0.25, 0.14, 0.27), "hat", [0, y + 0.03, -0.01], 0, ["beanie"]),
 ];
+// A person's face on a head w metres wide whose front is at z: eyes at y, white with black pupils,
+// a smiling mouth below them; over the eyes glasses or sunglasses: thick frames round them,
+// meeting between them, or dark lenses over them, both with temples along the head's sides and a
+// top bar on to them.
+function face(y, z, w) {
+  const [front, half] = [z + 0.03, w / 2];
+  const both = ["glasses", "shades"];
+  return [
+    piece(box(0.05, 0.012, 0.01), "black", [0, y - 0.09, z + 0.005]), // mouth
+    ...[-1, 1].flatMap((s) => [
+      piece(box(0.012, 0.012, 0.01), "black", [s * 0.031, y - 0.08, z + 0.005]), // mouth's corner
+      piece(box(0.055, 0.04, 0.02), "white", [s * 0.05, y, z]),
+      piece(box(0.028, 0.028, 0.02), "black", [s * 0.05, y, z + 0.01]),
+      piece(
+        box(half + 0.009, 0.018, 0.01),
+        "black",
+        [(s * (half + 0.011)) / 2, y + 0.031, front],
+        0,
+        both,
+      ), // top bar
+      piece(
+        box(0.01, 0.018, 0.14),
+        "black",
+        [s * (half + 0.005), y + 0.031, front - 0.07],
+        0,
+        both,
+      ), // temple
+      piece(box(0.098, 0.018, 0.01), "black", [s * 0.05, y - 0.031, front], 0, ["glasses"]),
+      ...[0.01, 0.09].map((x) =>
+        piece(box(0.018, 0.08, 0.01), "black", [s * x, y, front], 0, ["glasses"]),
+      ),
+      piece(box(0.098, 0.08, 0.01), "black", [s * 0.05, y, front], 0, ["shades"]),
+    ]),
+  ];
+}
 
 // The bodies, facing +z, standing on y = 0.
 const BODIES = {
@@ -69,6 +131,7 @@ const BODIES = {
     piece(box(0.44, 0.62, 0.25), "top", [0, 1.21, 0]),
     piece(box(0.1, 0.08, 0.1), "skin", [0, 1.56, 0]),
     piece(box(0.22, 0.26, 0.24), "skin", [0, 1.72, 0]),
+    ...face(1.75, 0.12, 0.22),
     ...heads(1.85),
   ]),
   // Slimmer and smaller: trousers or a long dress, a T-shirt, bare arms.
@@ -83,6 +146,7 @@ const BODIES = {
     piece(box(0.36, 0.58, 0.22), "top", [0, 1.18, 0]),
     piece(box(0.09, 0.07, 0.09), "skin", [0, 1.505, 0]),
     piece(box(0.2, 0.24, 0.22), "skin", [0, 1.65, 0]),
+    ...face(1.68, 0.11, 0.2),
     ...heads(1.76),
   ]),
   // A football kit: a shirt (top) with sleeves of the socks' colour (hat), shorts (bottom), socks
@@ -100,6 +164,7 @@ const BODIES = {
     piece(box(0.44, 0.62, 0.25), "top", [0, 1.21, 0]),
     piece(box(0.1, 0.08, 0.1), "skin", [0, 1.56, 0]),
     piece(box(0.22, 0.26, 0.24), "skin", [0, 1.72, 0]),
+    ...face(1.75, 0.12, 0.22),
     ...heads(1.85),
   ]),
   // Barefoot in a bikini: its top (top) and bottom (bottom).
@@ -115,6 +180,7 @@ const BODIES = {
     ...[-1, 1].map((s) => piece(box(0.14, 0.14, 0.11), "top", [s * 0.075, 1.31, 0.13])), // cups
     piece(box(0.09, 0.07, 0.09), "skin", [0, 1.48, 0]),
     piece(box(0.2, 0.24, 0.22), "skin", [0, 1.63, 0]),
+    ...face(1.66, 0.11, 0.2),
     ...heads(1.74),
   ]),
   // Knee-high boots (shoes), a miniskirt (bottom), a crop top, long hair and a handbag.
@@ -131,16 +197,18 @@ const BODIES = {
     piece(box(0.34, 0.1, 0.19), "skin", [0, 1.45, 0]),
     piece(box(0.08, 0.07, 0.08), "skin", [0, 1.535, 0]),
     piece(box(0.2, 0.24, 0.22), "skin", [0, 1.68, 0]),
+    ...face(1.71, 0.11, 0.2),
     piece(box(0.22, 0.06, 0.24), "hair", [0, 1.8, -0.01]),
     piece(box(0.22, 0.4, 0.08), "hair", [0, 1.6, -0.1]),
     piece(box(0.06, 0.16, 0.22), "top", [0.31, 0.98, 0]),
   ]),
-  // Fur, darker ears and nose, a collar (top).
+  // Fur, darker ears, eyes and nose, a collar (top).
   dog: mergeGeometries([
     ...[-1, 1].flatMap((s) => [
       piece(box(0.06, 0.34, 0.06), "skin", [s * 0.07, 0.17, 0.2], 3 * s),
       piece(box(0.06, 0.34, 0.06), "skin", [s * 0.07, 0.17, -0.2], -3 * s),
       piece(box(0.05, 0.08, 0.04), "hair", [s * 0.06, 0.66, 0.31]),
+      piece(box(0.03, 0.03, 0.03), "hair", [s * 0.085, 0.59, 0.41]), // eyes
     ]),
     piece(box(0.2, 0.2, 0.55), "skin", [0, 0.42, 0]),
     piece(box(0.17, 0.17, 0.2), "skin", [0, 0.55, 0.34]),
@@ -182,7 +250,8 @@ material.onBeforeCompile = (shader) => {
       "#include <begin_vertex>",
       `#include <begin_vertex>
       float slot = piece.x;
-      vLook = linear(slot < 0.5 ? look.x : slot < 1.5 ? look.y : slot < 2.5 ? look.z
+      vLook = slot > 5.5 ? vec3(slot < 6.5 ? 1.0 : 0.0)
+        : linear(slot < 0.5 ? look.x : slot < 1.5 ? look.y : slot < 2.5 ? look.z
         : slot < 3.5 ? look.w : slot < 4.5 ? more.x : more.y);
       if (piece.z > 0.0 && (int(piece.z) & int(more.z)) == 0) transformed = vec3(0.0);
       if (piece.y != 0.0) {
@@ -193,6 +262,9 @@ material.onBeforeCompile = (shader) => {
         int pose = int(more.w + 0.5);
         float t = peopleTime;
         float a = pose == 1 ? (limb == 2 ? ${ARM} : -${LEG}) * sin(phase) * side
+          : pose == 10 ? (limb == 2 ? ${RUN_ARM} * sin(phase) * side - ${RUN_FORWARD}
+            : -${RUN_LEG} * sin(phase) * side)
+          : pose == 11 ? (limb == 2 ? -0.6 : -0.12 * side)
           : pose == 0 && limb == 2 ? ${SWING} * sin(t * 2.0 + phase + side * 1.4) - ${FORWARD}
           : pose == 3 && limb == 2 ? -1.5 + 1.5 * cos(t * 0.6 + phase)
           : pose == 4 && limb == 2 ? -1.6 - 0.8 * sin(t * 4.0 + phase + side * 1.6)
@@ -200,6 +272,8 @@ material.onBeforeCompile = (shader) => {
           : pose == 5 ? -1.5708
           : pose == 7 ? (limb == 2 ? -1.1 : -0.4 + 0.3 * sin(phase) * side)
           : pose == 8 ? (limb == 2 ? -1.0 : -1.1 + 0.25 * sin(phase) * side)
+          : pose == 9 && limb == 2 ? (side < 0.0 ? -1.0 - 0.5 * sin(t * ${TOSS} + phase) : -0.3)
+          : pose == 9 ? -1.5708
           : 0.0;
         vec2 p = transformed.yz - vec2(pivot, 0.0);
         transformed.yz = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))
@@ -228,6 +302,17 @@ material.onBeforeCompile = (shader) => {
           transformed.z * cos(w) - transformed.x * sin(w)
         );
         transformed.y += 0.05 * abs(sin(peopleTime * 2.0 + phase));
+      }
+      if (int(more.w + 0.5) == 10) transformed.y += ${BOUNCE} * abs(sin(phase));
+      if (int(more.w + 0.5) == 9) {
+        if (abs(piece.y) != 1.0) {
+          // All but the legs back about the hips.
+          float l = ${LEAN};
+          vec2 q = transformed.yz - vec2(${PIVOTS[0]}, 0.0);
+          transformed.yz = vec2(q.x * cos(l) + q.y * sin(l), q.y * cos(l) - q.x * sin(l))
+            + vec2(${PIVOTS[0]}, 0.0);
+        }
+        transformed.y -= ${SEAT};
       }`,
     );
   shader.fragmentShader = shader.fragmentShader
@@ -248,8 +333,8 @@ const [WALK, STAND] = ["walk", "stand"].map((pose) => POSES.indexOf(pose));
 
 // count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
 // tilt: radians about its own x after the heading), hide(i), away(i): whether off its place
-// (dodge) }; a look's head is short hair unless given. Its figures flee from traffic (dodge)
-// unless flee is false.
+// (dodge) }; a look's head is short hair unless given, its face (OPTIONS: glasses or shades)
+// bare. Its figures flee from traffic (dodge) unless flee is false.
 export function createCrowd(body, count, flee = true) {
   const geometry = new THREE.BufferGeometry();
   for (const name of ["position", "piece"])
@@ -280,8 +365,14 @@ export function createCrowd(body, count, flee = true) {
   if (flee) fleeing.push({ count, home, off, put, poses: more });
   return {
     mesh,
-    dress(i, { skin, hair, top = 0, bottom = 0, shoes = 0, hat = 0, head = "hair", dress }, pose) {
-      const options = (1 << OPTIONS.indexOf(head)) | (dress ? 1 << OPTIONS.indexOf("dress") : 0);
+    dress(
+      i,
+      { skin, hair, top = 0, bottom = 0, shoes = 0, hat = 0, head = "hair", dress, face },
+      pose,
+    ) {
+      const options = [head, dress && "dress", face]
+        .filter(Boolean)
+        .reduce((m, option) => m | (1 << OPTIONS.indexOf(option)), 0);
       look.set([skin, hair, top, bottom], 4 * i);
       more.set([shoes, hat, options, (home[8 * i + 7] = POSES.indexOf(pose))], 4 * i);
       look.needsUpdate = more.needsUpdate = true;
@@ -347,18 +438,19 @@ export function dodge(dt, danger, ground) {
     }
 }
 
-// People at places ({ x, y, z, heading, pose }), standing unless another pose (POSES) is given;
-// one lying has its place at its feet (were they on the ground) and its head away along the
-// heading. With these looks in turn; a mesh per body.
+// People at places ({ x, y, z, heading, pose, tilt }), standing unless another pose (POSES) is
+// given; one lying has its place at its feet (were they on the ground) and its head away along the
+// heading; one not lying is tilted forward by tilt radians, if given. With these looks in turn; a
+// mesh per body.
 export function createPeople(places, looks) {
   const bodies = Map.groupBy(places.keys(), (k) => looks[k % looks.length].body);
   return [...bodies].map(([body, ks]) => {
     const crowd = createCrowd(body, ks.length);
     ks.forEach((k, i) => {
-      const { x, y, z, heading, pose = "stand" } = places[k];
+      const { x, y, z, heading, pose = "stand", tilt = 0 } = places[k];
       crowd.dress(i, looks[k % looks.length], pose);
       if (LYING.has(pose)) crowd.place(i, x, y + LIE, z, heading + Math.PI, 0, 1, -Math.PI / 2);
-      else crowd.place(i, x, y, z, heading, k * 2.3);
+      else crowd.place(i, x, y, z, heading, k * 2.3, 1, tilt);
     });
     crowd.mesh.computeBoundingSphere();
     crowd.mesh.boundingSphere.radius += REACH; // where they may flee to
