@@ -11,6 +11,7 @@
 // crosses their way, they stop before it, watching it pass, and turn back after BOW.back seconds.
 import * as THREE from "three";
 import { PIVOTS, WHEEL, createCrowd } from "./people.js";
+import { PATIENCE } from "./space.js";
 
 const COUNT = 250;
 const RADIUS = 250; // metres
@@ -20,8 +21,12 @@ const APART = 4; // metres
 const PACE = [1.1, 1.6]; // metres per second, slowest and fastest
 const RIGHT = [0.45, 0.9]; // metres right of the loop, least and most, of a party's leftmost
 // Within GAP[1] metres ahead of a party's front, in its width and WIDE beside it, another party
-// going its way slows it to its speed, within GAP[0] it stops; looked for within NEAR metres.
+// going its way (turned at most SAME_WAY radians off it) slows it to its speed, within GAP[0] it
+// stops, but not for more than PATIENCE seconds on end (src/space.js); looked for within NEAR
+// metres.
 const GAP = [1, 2.5];
+const SAME_WAY = Math.PI / 4;
+const STANDS = 0.2; // metres a second, below which a party ahead is stepped round, not followed
 const WIDE = 0.6;
 const NEAR = 8;
 const STRIDE = 4.5; // radians of the walk per metre
@@ -33,14 +38,15 @@ const SLOW = 0.6; // of the pace, on crutches
 // Who walks together, by kind, the first leading: per member its look (0: the walker's, 1 and 2:
 // the next ones, "dog": a dog's) with what it wears more, its body (its look's unless given), where
 // beside the first [metres right (none left of it), ahead], metres up, its size, its pace and
-// stride (times PACE and STRIDE) and poses walking and standing; the SHARES of the walkers of each
-// kind, the rest alone. Side by side 0.9 metres apart, an adult with its arms 0.7 wide.
+// stride (times PACE and STRIDE), poses walking and standing and how far it roams round its place
+// [metres ahead and back, right and left] (dogs and children, roam); the SHARES of the walkers of
+// each kind, the rest alone. Side by side 0.9 metres apart, an adult with its arms 0.7 wide.
 const ROLL = 1 / (WHEEL * STRIDE); // a wheelchair's stride: its wheels' radians per radian
 const PARTIES = {
   alone: [{}],
   two: [{}, { look: 1, at: [0.9, 0.3] }],
   three: [{}, { look: 1, at: [0.9, -0.2] }, { look: 2, at: [0.45, 1.1] }],
-  child: [{}, { look: 1, at: [0.75, 0], size: CHILD, stride: 1 / CHILD }],
+  child: [{}, { look: 1, at: [0.75, 0], size: CHILD, stride: 1 / CHILD, play: [0.5, 0.25] }],
   // On the shoulders: its hips just over them (1.52 metres up), behind the head.
   shoulders: [
     {},
@@ -55,7 +61,7 @@ const PARTIES = {
   ],
   pram: [{ poses: ["push", "hold"] }, { look: 1, body: "pram", at: [0, 0.78] }],
   buggy: [{ poses: ["push", "hold"] }, { look: 1, body: "buggy", at: [0, 0.78] }],
-  dog: [{}, { look: "dog", at: [0.75, 0.5], stride: 1.6 }],
+  dog: [{}, { look: "dog", at: [0.75, 0.5], stride: 1.6, play: [1.2, 0.25] }],
   chair: [{ body: "chair", stride: ROLL }],
   pushed: [
     { body: "chair", stride: ROLL, poses: ["stand", "stand"] },
@@ -88,10 +94,23 @@ const SHARES = {
 const BOW = { margin: 1.2, look: 4, most: 5, speed: 1.2, near: 40, hold: 2, back: 8 };
 // Metres kept off obstacles (trees, fountains), instead of BOW.margin.
 const OBSTACLE = 0.4;
-// Metres round a body none else comes within (src/space.js), else ROOM.other times its size;
-// seconds one blocked there stands before it turns back.
+// Metres round a body none else comes within (src/space.js), else ROOM.other times its size.
 const ROOM = { chair: 0.4, pram: 0.35, buggy: 0.35, other: 0.3 };
-const STUCK = 3;
+// Each of a party steps aside on its own (shift: metres right of its place), so a party splits
+// round those it meets: the nearest within AHEAD metres ahead of it, coming the other way or
+// standing, not beside it by their rooms and CLEAR more, it passes on the side away from it (the
+// right if straight ahead), SIDESTEP metres a second, at most SHIFT; clear, it steps back.
+const [AHEAD, CLEAR, SIDESTEP, SHIFT] = [4, 0.25, 1.2, 1.5];
+// Parties meeting (their first within MEET metres) stop and talk, facing each other, CHAT seconds,
+// with CHAT_CHANCE; one alone catching up with a party going its way (within SAME_WAY), all
+// walking as most do (free), joins it on its right with JOIN_CHANCE; either way they meet again
+// only after MET seconds. Each second, one of a party walking as most do leaves it with LEAVE
+// chance, walking on alone at its own pace, as SPARE walkers kept empty allow; MOST in a party.
+// One joining or leaving glides to its new place, DRIFT metres a second.
+const MEET = 2.5;
+const [CHAT_CHANCE, JOIN_CHANCE, LEAVE] = [0.08, 0.3, 1 / 120];
+const CHAT = [8, 20];
+const [MET, SPARE, MOST, DRIFT] = [40, 30, 4, 1];
 
 // buffer: walks.bin; x0, z0: the scene point of the area's north-west corner; people: looks in
 // turn (bodies "man" and "woman"), the children's too; dogs: theirs in turn; ground(x, z, y): the
@@ -167,7 +186,8 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
   // The walkers, each with its party (PARTIES), the first leading: per member its look, figure
   // [crowd body, index], [right, ahead], size, stride, poses and its phase beyond the walker's.
   const counts = new Map();
-  const walkers = Array.from({ length: COUNT }, (_, i) => {
+  const walkers = Array.from({ length: COUNT + SPARE }, (_, i) => {
+    if (i >= COUNT) return shape({ party: [], slow: 1 }); // spare, for those leaving a party
     let r = Math.random();
     const kind = Object.keys(SHARES).find((k) => (r -= SHARES[k]) < 0) ?? "alone";
     const party = PARTIES[kind].map(
@@ -180,6 +200,7 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
         size = 1,
         stride = 1,
         poses = ["walk", "stand"],
+        play = [0, 0],
       }) => {
         const look = k === "dog" ? dogs[i % dogs.length] : people[(i + k) % people.length];
         body ??= k === "dog" ? "dog" : look.body;
@@ -192,6 +213,10 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
           up,
           size,
           radius: ROOM[body] ?? ROOM.other * size,
+          shift: 0, // metres right of its place, stepping aside (aim)
+          play,
+          roam: [0, 0], // metres ahead and right of its place, roaming now (roam)
+          drift: [0, 0], // and gliding to it, after joining or leaving a party
           x: Infinity, // where it is
           z: 0,
           heading: 0,
@@ -202,15 +227,7 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
         };
       },
     );
-    // Its width (right of the first) and how far it reaches ahead and back.
-    const [rights, aheads] = [party.map((m) => m.right), party.map((m) => m.ahead)];
-    return {
-      party,
-      slow: PARTIES[kind][0].pace ?? 1,
-      width: Math.max(...rights),
-      front: Math.max(...aheads),
-      back: Math.min(...aheads),
-    };
+    return shape({ party, slow: PARTIES[kind][0].pace ?? 1 });
   });
   const crowds = new Map([...counts].map(([body, count]) => [body, createCrowd(body, count)]));
   for (const crowd of crowds.values()) crowd.mesh.frustumCulled = false; // they move
@@ -233,7 +250,11 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
       waited: 0,
       watch: [0, 0],
       moving: true,
-      blocked: false, // by another (space)
+      held: 0, // seconds blocked by others on end (space)
+      behind: 0,
+      chat: 0, // seconds left talking with another party (talking)
+      talking: null,
+      met: Math.random() * MET, // seconds till it may meet another
       speed: 0, // metres per second along its way, this frame
     });
     for (const one of w.party) {
@@ -309,6 +330,102 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
     if (w.bow) return w.bow > 0 ? right : left;
     return right < -left ? right : left;
   }
+  // Its width (right of the first) and how far it reaches ahead and back; the party itself.
+  function shape(w) {
+    const [rights, aheads] = [w.party.map((m) => m.right), w.party.map((m) => m.ahead)];
+    return Object.assign(w, {
+      width: Math.max(0, ...rights),
+      front: Math.max(0, ...aheads),
+      back: Math.min(0, ...aheads),
+    });
+  }
+  // Metres right and ahead of a walker's place where one of its party (m) is: its place in the
+  // party, roaming and gliding, and stepped aside by shift.
+  const offsets = (m, shift = m.shift) => [
+    m.right + m.roam[1] + m.drift[1] + shift,
+    m.ahead + m.roam[0] + m.drift[0],
+  ];
+  // Whether one of a party walks as most do: an adult on foot (not a child, a dog, in a
+  // wheelchair, pushing or on crutches), who may join or leave a party.
+  const free = (m) =>
+    m.size === 1 && m.poses[0] === "walk" && (m.me[0] === "man" || m.me[0] === "woman");
+  // Puts one of a party (m), where it is, at a place in walker w's party (right, ahead), gliding
+  // there from where it is (drift).
+  function move(m, w, right, ahead) {
+    const [x, z, dx, dz] = spot(w, w.right + w.bow + right, ahead);
+    const length = Math.hypot(dx, dz);
+    const [ox, oz] = [(m.x - x) / length, (m.z - z) / length];
+    Object.assign(m, { group: w, right, ahead, shift: 0 });
+    m.drift = Number.isFinite(m.x) ? [ox * dx + oz * dz, oz * dx - ox * dz] : [0, 0];
+    w.party.push(m);
+    shape(w);
+  }
+  // Walker w meets another party nearby, if any: they talk, or one alone joins the other.
+  function meet(w) {
+    for (const o of walkers) {
+      if (o === w || !o.loop || o.met > 0 || o.chat > 0) continue;
+      if (Math.abs(o.x - w.x) + Math.abs(o.z - w.z) > MEET) continue;
+      w.met = o.met = MET;
+      const same = Math.cos(o.heading - w.heading) > Math.cos(SAME_WAY);
+      const [one, other] = w.party.length === 1 ? [w, o] : [o, w];
+      if (
+        same &&
+        one.party.length === 1 &&
+        other.party.length < MOST &&
+        [...one.party, ...other.party].every(free) &&
+        Math.random() < JOIN_CHANCE
+      ) {
+        move(one.party.pop(), other, other.width + 0.9, 0);
+        one.loop = null; // spare now
+      } else if (Math.random() < CHAT_CHANCE) {
+        w.chat = o.chat = random(...CHAT);
+        [w.talking, o.talking] = [o, w];
+      }
+      return;
+    }
+  }
+  // The last of walker w's party, if it walks as most do, leaves it for a spare walker, if any,
+  // going on alone from where it is, in its lane, at its own pace.
+  function leave(w) {
+    const m = w.party.at(-1);
+    const spare = walkers.find((o) => !o.party.length);
+    if (w.party.length < 2 || !free(m) || !spare) return;
+    w.party.pop();
+    shape(w);
+    const { loop, at, step, along, bow, heading, x, z, y } = w;
+    Object.assign(spare, { loop, at, step, along, bow, heading, x, z, y, phase: w.phase });
+    Object.assign(spare, { right: w.right + m.right, pace: random(...PACE), slow: 1, speed: 0 });
+    Object.assign(spare, { hold: 0, waited: 0, held: 0, behind: 0, chat: 0, met: MET });
+    move(m, spare, 0, 0);
+  }
+  // Where one of a party (m) roams now round its place (play): ahead and back, unevenly, and right
+  // and left, each in its own time (its phase), seconds on.
+  const roam = (m, seconds) => {
+    const [a, r, p] = [...m.play, m.phase];
+    const ahead = 0.6 * Math.sin(0.7 * seconds + p) + 0.4 * Math.sin(1.9 * seconds + 2 * p);
+    [m.roam[0], m.roam[1]] = [a * ahead, r * Math.sin(0.9 * seconds + 3 * p)];
+  };
+  let clock = 0; // seconds, for roaming
+  // Where right of its place one of a walker's party (m) would step aside to (see SHIFT).
+  function aim(w, m) {
+    const [right, ahead] = offsets(m, 0);
+    const [x, z, dx, dz] = spot(w, w.right + w.bow + right, ahead);
+    const length = Math.hypot(dx, dz);
+    const [ux, uz] = [dx / length, dz / length];
+    let [nearest, want] = [AHEAD, 0];
+    space.each(x + (ux * AHEAD) / 2, z + (uz * AHEAD) / 2, AHEAD / 2 + 1, (b) => {
+      if (b.group === w || b.gone) return;
+      if (b.speed > STANDS && Math.sin(b.heading) * ux + Math.cos(b.heading) * uz > 0.5) return;
+      const [ox, oz] = [b.x - x, b.z - z];
+      const along = ox * ux + oz * uz;
+      const across = oz * ux - ox * uz; // its right of the place
+      const room = m.radius + b.radius + CLEAR;
+      if (along < 0 || along >= nearest || Math.abs(across - m.shift) >= room) return;
+      nearest = along;
+      want = across > m.shift + 0.1 ? across - room : across + room;
+    });
+    return THREE.MathUtils.clamp(want, -SHIFT, SHIFT);
+  }
   // How fast a walker may go: its pace, but no faster than another party going its way, further
   // ahead, with one within GAP (see there) of its front; stopping within GAP[0].
   function follow(w) {
@@ -318,7 +435,8 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
       const [ox, oz] = [o.x - w.x, o.z - w.z];
       if (o === w || !o.loop || Math.abs(ox) + Math.abs(oz) > NEAR || ox * hx + oz * hz <= 0)
         continue;
-      if (Math.sin(o.heading) * hx + Math.cos(o.heading) * hz <= 0) continue; // meeting it
+      if (Math.sin(o.heading) * hx + Math.cos(o.heading) * hz < Math.cos(SAME_WAY)) continue;
+      if (o.speed < STANDS) continue; // stepped round (aim), not followed
       for (const { x, z } of o.party) {
         const [dx, dz] = [x - w.x, z - w.z];
         const [ahead, right] = [dx * hx + dz * hz - w.front, dz * hx - dx * hz];
@@ -382,7 +500,9 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
       const shown = camera.distanceTo(centre) < SHOWN;
       for (const crowd of crowds.values()) crowd.mesh.visible = shown;
       if (!shown) return;
+      clock += dt;
       walkers.forEach((w) => {
+        if (!w.party.length) return; // spare
         const away = Math.hypot(w.x - centre.x, w.z - centre.z);
         if (!w.loop || away > RADIUS) {
           const from = w.loop && away < 2 * RADIUS ? 0.8 : 0; // near the edge, unless it jumped
@@ -392,6 +512,16 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
             return;
           }
         }
+        // Talking, meeting another, leaving its party (see MEET); its party gliding to their places.
+        w.met -= dt;
+        if (w.chat > 0) w.chat -= dt;
+        else if (w.met <= 0) meet(w);
+        if (!w.party.length) return; // joined another
+        if (w.chat <= 0 && Math.random() < LEAVE * dt) leave(w);
+        for (const m of w.party)
+          for (const k of [0, 1])
+            m.drift[k] -= THREE.MathUtils.clamp(m.drift[k], -DRIFT * dt, DRIFT * dt);
+        const talks = w.chat > 0;
         // It waits while one of its party is off its way, fleeing from traffic (dodge), or
         // before a zone it cannot step round, standing still for BOW.hold before it looks again.
         const fleeing = w.party.some(dodging);
@@ -399,8 +529,8 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
         if (target === null && w.hold <= 0) w.hold = BOW.hold;
         const waits = target === null;
         // Turning back: the other way along its stretch, where it stands (its bow mirrored).
-        w.waited = (waits || w.blocked) && !fleeing ? w.waited + dt : 0;
-        if (w.waited > (w.blocked ? STUCK : BOW.back)) {
+        w.waited = waits && !fleeing ? w.waited + dt : 0;
+        if (w.waited > BOW.back) {
           const { points } = w.loop;
           const [a, b] = [w.at, next(w)];
           const length = Math.hypot(points[b] - points[a], points[b + 1] - points[a + 1]);
@@ -418,8 +548,12 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
           -BOW.speed * dt,
           BOW.speed * dt,
         );
-        let forward = fleeing || waits ? 0 : follow(w) * dt;
-        // Not where one of its party would come into another (space): standing instead.
+        if (talks) sideways = 0;
+        const behind = fleeing || waits || talks ? 0 : follow(w);
+        w.behind = behind < w.pace / 10 && !talks ? w.behind + dt : 0; // seconds stopped behind
+        let forward = fleeing || waits || talks ? 0 : (w.behind > PATIENCE ? w.pace : behind) * dt;
+        // Not where one of its party would come into another (space): standing instead, but
+        // squeezing past after PATIENCE seconds so.
         const before = [w.along, w.at, w.bow];
         w.bow += sideways;
         w.along += forward;
@@ -435,16 +569,23 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
           w.along -= length;
           w.at = next(w);
         }
-        w.blocked =
-          (forward > 0 || sideways !== 0) &&
-          w.party.some((m) => {
-            const [nx, nz] = spot(w, w.right + w.bow + m.right, m.ahead);
+        for (const m of w.party) if (m.play[0]) roam(m, clock);
+        const step = SIDESTEP * dt;
+        const shifts = w.party.map(
+          (m) => m.shift + THREE.MathUtils.clamp(aim(w, m) - m.shift, -step, step),
+        );
+        const blocked =
+          (forward > 0 || sideways !== 0 || w.party.some((m, k) => shifts[k] !== m.shift)) &&
+          w.party.some((m, k) => {
+            const [right, ahead] = offsets(m, shifts[k]);
+            const [nx, nz] = spot(w, w.right + w.bow + right, ahead);
             return space.blocked(w, m.radius, m.x, m.z, nx, nz);
           });
-        if (w.blocked) {
+        w.held = blocked ? w.held + dt : 0;
+        if (blocked && w.held < PATIENCE) {
           [w.along, w.at, w.bow] = before;
           forward = sideways = 0;
-        }
+        } else w.party.forEach((m, k) => (m.shift = shifts[k]));
         w.speed = dt && forward / dt;
         w.phase += (forward + Math.abs(sideways)) * STRIDE;
         const moving = forward > 0 || sideways !== 0;
@@ -453,20 +594,24 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
           for (const one of w.party) dress(one, moving);
         }
         const [x, z, dx, dz] = spot(w, w.right + w.bow, 0);
-        // Towards where it goes, or waiting, towards the zone it watches.
+        // Towards where it goes, talking, towards the other, or waiting, towards the zone it watches.
         const turn =
           (forward || sideways
             ? Math.atan2(dx * forward - dz * sideways, dz * forward + dx * sideways)
-            : waits
-              ? Math.atan2(w.watch[0] - x, w.watch[1] - z)
-              : Math.atan2(dx, dz)) - w.heading;
+            : talks
+              ? Math.atan2(w.talking.x - x, w.talking.z - z)
+              : waits
+                ? Math.atan2(w.watch[0] - x, w.watch[1] - z)
+                : Math.atan2(dx, dz)) - w.heading;
         w.heading += Math.atan2(Math.sin(turn), Math.cos(turn)) * Math.min(1, dt * TURN);
         Object.assign(w, { x, z, y: ground(x, z, w.y) });
         for (const m of w.party) {
-          const { me, right, ahead, up, size, stride, phase } = m;
+          const { me, up, size, stride, phase } = m;
           [m.heading, m.speed] = [w.heading, w.speed];
-          [m.x, m.z] = right || ahead ? spot(w, w.right + w.bow + right, ahead) : [x, z];
-          const y = (right || ahead ? ground(m.x, m.z, w.y) : w.y) + up;
+          const [across, on] = offsets(m);
+          const off = across || on;
+          [m.x, m.z] = off ? spot(w, w.right + w.bow + across, on) : [x, z];
+          const y = (off ? ground(m.x, m.z, w.y) : w.y) + up;
           crowds.get(me[0]).place(me[1], m.x, y, m.z, w.heading, w.phase * stride + phase, size);
         }
       });

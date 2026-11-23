@@ -1,7 +1,9 @@
 // Room for those on foot and on wheels (src/walkers.js, src/swimmers.js, src/runners.js), so none
 // moves into another: each body a circle { x, z, radius, group, gone } (gone: not in the way, as
 // in the water; x not finite: nowhere); a step bringing one nearer to one of another group while
-// within their radii together is blocked, a step away never.
+// within their radii together is blocked, a step away never. One blocked PATIENCE seconds on end
+// squeezes past (its mover no longer asks) until it is free, so none waits for ever.
+export const PATIENCE = 3;
 const CELL = 2; // metres, more than any two radii together and a frame's step
 const none = [];
 
@@ -21,6 +23,12 @@ export function createSpace() {
           const k = key(b.x, b.z);
           (grid.get(k) ?? grid.set(k, []).get(k)).push(b);
         }
+    },
+    // Calls visit(body) for each body noted within at least reach metres of x, z.
+    each(x, z, reach, visit) {
+      const [k, n] = [key(x, z), Math.ceil(reach / CELL)];
+      for (let i = -n; i <= n; i++)
+        for (let j = -n; j <= n; j++) for (const b of grid.get(k + i * 65536 + j) ?? none) visit(b);
     },
     // Whether one of group, radius metres round, moving from x, z to nx, nz is blocked.
     blocked(group, radius, x, z, nx, nz) {

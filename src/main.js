@@ -19,7 +19,6 @@ import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
-import { createPolice } from "./police.js";
 import { createAmbulances } from "./ambulance.js";
 import { createFireTrucks } from "./firetruck.js";
 import { createDriving } from "./drive.js";
@@ -34,19 +33,20 @@ import { createDrones } from "./drone.js";
 import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
-import { BASILISKS, BASIN, createBasilisks } from "./basilisks.js";
+import { BASIN } from "./basilisks.js";
+import { CATALOG } from "./catalog.js";
 import { createStation } from "./station.js";
 import { createFireStation, GREY } from "./firestation.js";
 import { createPride, dress, prideShader } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
-import { createSwans, createZoo } from "./zoo.js";
+import { createZoo } from "./zoo.js";
 import { createRunners } from "./runners.js";
 import { createSpace } from "./space.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
 import { createJet } from "./jet.js";
-import { TOSS, createPeople, dodge, mix, peopleTime } from "./people.js";
+import { createPeople, dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createGraffiti } from "./graffiti.js";
 import { createSplash } from "./splash.js";
@@ -103,6 +103,14 @@ renderer.toneMappingExposure = 1.2; // a bright, friendly day
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
+// Builds the catalog's kind with this id (src/catalog.js) at its places, with what its maker takes
+// from here, into the scene; what it returns.
+function build(id, city) {
+  const { places, make } = CATALOG[id];
+  const built = make(places, city);
+  scene.add(...built.objects);
+  return built;
+}
 scene.fog = new THREE.Fog(SKY, 3000, 9000);
 // Strong sky light keeps the sides facing away from the sun bright; the sun is warm. Both, and the
 // sky, change with the time of day (createDaylight).
@@ -281,16 +289,18 @@ const passage = (() => {
   const river = terrainAt(...point(length / 2, -PASSAGE.reach));
   return { a, ux, uz, length, half, bank, y0, y1, river, local, point };
 })();
-// The Basiliskbrunnen (src/basilisks.js) at x, z; the single trees but those within CLEARED
-// metres of one, which would hide it, or of a spot of UNTREED ([latitude, longitude]).
-const fountains = BASILISKS.map(([lat, lon]) => fromWGS84(lat, lon));
+// The single trees but those within CLEARED metres of a Basiliskbrunnen (src/catalog.js), which
+// they would hide, or of a spot of UNTREED ([latitude, longitude]).
 const UNTREED = [
   [47.562538, 7.58905],
   [47.562355, 7.589198],
 ];
 const CLEARED = 3;
 const treePositions = (() => {
-  const cleared = [...fountains, ...UNTREED.map(([lat, lon]) => fromWGS84(lat, lon))];
+  const cleared = [
+    ...CATALOG.L1.places.map(({ x, z }) => [x, z]),
+    ...UNTREED.map(([lat, lon]) => fromWGS84(lat, lon)),
+  ];
   const [all, kept] = [new Uint16Array(treesBuffer), []];
   for (let i = 0; i < all.length; i += 2) {
     const [x, z] = [terrainInfo.x0 + all[i] / 8, terrainInfo.z0 + all[i + 1] / 8];
@@ -594,7 +604,7 @@ for (const mover of movers) {
   for (const deck of brokenDecks) mover.cut(deck);
 }
 // The ferries (src/ferries.js), which the ships wait for, and the Basiliskbrunnen
-// (src/basilisks.js) on the ground.
+// (src/catalog.js) on the ground.
 const ferries = createFerries(fromWGS84, heightAt, boost);
 scene.add(ferries.group);
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
@@ -613,13 +623,7 @@ const towardsRhine = (x, z) => {
     if (sx || sz) return Math.atan2(sx, sz);
   }
 };
-const basilisks = fountains.map(([x, z], k) => ({
-  x,
-  y: heightAt(x, z),
-  z,
-  heading: towardsRhine(x, z) ?? k * 2.4,
-}));
-scene.add(createBasilisks(basilisks));
+build("L1", { heightAt, towardsRhine });
 // The decks of all standing bridges (deckOf), made when first needed.
 let roads = null;
 const bridgeDecks = () =>
@@ -788,7 +792,7 @@ const labels = [
     x: a.x + (r.x * length) / 2,
     z: a.z + (r.z * length) / 2,
   })),
-  ...basilisks.map(({ x, z }) => ({ name: "Basiliskbrunnen", kind: "landmark", x, z })),
+  ...CATALOG.L1.places.map(({ x, z }) => ({ name: "Basiliskbrunnen", kind: "landmark", x, z })),
 ].map(({ name, kind, x, z }) => {
   const at = new THREE.Vector3(x, heightAt(x, z), z);
   if (kind === "landmark") {
@@ -837,23 +841,12 @@ const parked = (places) =>
     fromAbove.set(new THREE.Vector3(place.x, 2000, place.z), DOWN);
     return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
   });
-// Police vans (src/police.js) in St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke,
-// both facing south, and on the Claraplatz by the men there (LV95 2611656.5, 1267907.4), facing
-// southwest, an unmarked one 3 m to its left and 3 m back; a motorcycle (src/motorcycle.js) at
+// Police vans (src/catalog.js); a motorcycle (src/motorcycle.js) at
 // WGS84 47.562470, 7.592271 and a poison green one at 47.561632, 7.593178, and a quad
 // (src/quad.js) at 47.561701, 7.593144, all facing the men on the Claraplatz; a
 // tank (src/tank.js) in the yard of the Kaserne facing east; a drone (src/drone.js) 2 m over the
 // Münster's roof (LV95 2611577.4, 1267321.0, 301.3), facing north over the Rhine. It flies down to roofs (structures.top) as well.
-const police = createPolice(
-  parked([
-    { x: -1002.3, z: -765.7, heading: 0 },
-    { x: 133.6, z: -1437.5, heading: -0.05 },
-    { x: 656.5, z: -507.4, heading: -0.93 },
-    { x: 660.7, z: -506.8, heading: -0.93, unmarked: true },
-  ]),
-  boost,
-  world,
-);
+const police = build("V1", { parked, boost, world }).vehicles;
 // An ambulance (src/ambulance.js) at WGS84 47.561340, 7.585408, facing as from 47.561249, 7.585620
 // to 47.561237, 7.585649.
 const ambulances = createAmbulances(parked([{ x: 46.3, z: -458.0, heading: 1.02 }]), boost, world);
@@ -1095,54 +1088,8 @@ const zoo = createZoo(
   tree.clear,
 );
 scene.add(...zoo.meshes);
-// An old man in a cap sitting on a cloth on the Rhine's bank in St. Johann (WGS84 47.565768,
-// 7.583695), tilted forward with the slope, tossing bread to a swan family that looks at him: a
-// cygnet among its parents.
-const [feederX, feederZ] = fromWGS84(47.565768, 7.583695);
-const family = [
-  [47.565727, 7.583781, 1.5],
-  [47.565771, 7.583791, 0.9],
-  [47.565822, 7.583738, 1.5],
-].map(([lat, lon, size]) => {
-  const [x, z] = fromWGS84(lat, lon);
-  const heading = Math.atan2(feederX - x, feederZ - z);
-  return { x, y: heightAt(x, z), z, heading, size, young: size < 1 };
-});
-// Facing the cygnet, tilted as the ground falls over 1 m that way.
-const facing = Math.atan2(family[1].x - feederX, family[1].z - feederZ);
-const feederY = heightAt(feederX, feederZ);
-const feeder = {
-  x: feederX,
-  y: feederY,
-  z: feederZ,
-  heading: facing,
-  tilt: Math.atan(feederY - heightAt(feederX + Math.sin(facing), feederZ + Math.cos(facing))),
-};
-// The bread leaves his right hand (as src/people.js has it sitting, leaning back, the arm ahead)
-// each time his arm is furthest ahead (phase 0).
-const hand = new THREE.Vector3(-0.28, 0.83, 0.31)
-  .applyEuler(new THREE.Euler(feeder.tilt, facing, 0, "YXZ"))
-  .add(new THREE.Vector3(feederX, feederY + TOWEL, feederZ));
-const swans = createSwans(family, hand, (2 * Math.PI) / TOSS, Math.PI / 2 / TOSS);
-scene.add(
-  ...swans.meshes,
-  towel(feeder, 0x24539e, new THREE.BoxGeometry(1.1, 0.02, 1.5).translate(0, TOWEL - 0.01, 0.35)),
-  ...createPeople(
-    [{ ...feeder, y: feeder.y + TOWEL, pose: "sit" }],
-    [
-      {
-        body: "man",
-        skin: 0xe8c4a8,
-        hair: 0xd0d0d0,
-        top: 0x6b5a45,
-        bottom: 0x8a8070,
-        shoes: 0x3a2a1c,
-        hat: 0x2f3b4c,
-        head: "cap",
-      },
-    ],
-  ),
-);
+// The old man feeding swans on the Rhine's bank (src/catalog.js).
+const feeding = build("S1", { heightAt, towel, TOWEL });
 // Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
 // as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
 // bridge whose sidewalk runs along its edge; never on the water: there on the highest deck at or
@@ -1202,7 +1149,7 @@ const walkers = createWalkers(
   [clique.zones, fireTrucks.map(({ zone }) => zone), keptOff],
   (near) => [
     ...tree.trunks(near),
-    ...basilisks.filter(({ x, z }) => near(x, z)).map(({ x, z }) => [x, z, BASIN]),
+    ...CATALOG.L1.places.filter(({ x, z }) => near(x, z)).map(({ x, z }) => [x, z, BASIN]),
   ],
   space,
 );
@@ -1563,7 +1510,6 @@ const fireboats = createBoats("fire", boat(109, -568.1, 0.62), boost, onWater);
 const policeBoats = createBoats("police", boat(324.4, -526.5, -2.53), boost, onWater);
 scene.add(
   ...[
-    ...police,
     ...ambulances,
     ...fireTrucks,
     ...motorcycles,
@@ -2245,12 +2191,14 @@ function open(x, y, z, tx, tz) {
   return !structures.wall(wallFrom.set(x, y + 1, z), wallTo.set(tx, y + 1, tz), true);
 }
 const way = [0, 0];
-// Null if x, y, z is in no danger (the clique's zones not counted if march), else the shortest
+// Null if x, y, z is in no danger (the clique's zones not counted if march; none under the
+// water's surface, swimming), else the shortest
 // way out ([x, z]) within reach metres, open all the way (open): across one of the dangers there,
 // to either side, turn radians off straight across, CLEAR and clear more metres beyond it and on
 // until out of all, rather not across another (CROSS); only if there is none, as far out of one
 // on its own side as it may; [0, 0] if not even that.
 function danger(x, y, z, reach, march, clear = 0, turn = 0) {
+  if (y < WATER - 0.1) return null; // swimming
   zoneCount = 0;
   [asked[0], asked[1]] = [x, z];
   const { xz, y: ys, of, head, blockers, halves } = traffic;
@@ -3191,7 +3139,7 @@ renderer.setAnimationLoop((time) => {
   ferries.update(afloat);
   ships.update(afloat, dt);
   zoo.update(time / 1000);
-  swans.update(time / 1000);
+  feeding.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);
   planes.update(time / 1000, flier, flown);

@@ -4,6 +4,7 @@
 // they talk, and dressing again where it comes out. Every NAKED-th has no bag: in swimwear all the
 // way, it swims down crawling. Men swim in trunks, women in swimsuits. Some drift in groups of
 // friends side by side (on land in twos side by side, PAIR metres apart), one behind catching up.
+// On land they flee from traffic as all people do (src/people.js, dodge), not in the water.
 // In the water each keeps one of LANES lanes, LANE metres apart from the line towards the river; on
 // land the passers-by keep a little left of the path's middle and the joggers a little right, so
 // joggers pass them; going in or out of the water they go in single file. None comes nearer than
@@ -15,6 +16,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { createCrowd, mix } from "./people.js";
+import { PATIENCE } from "./space.js";
 import { swan } from "./zoo.js";
 
 // Passers-by and joggers, each half men, half women.
@@ -31,10 +33,11 @@ const SWIM = 1.7; // metres per second, with the current
 const [WALK, RUN] = [1.3, 2.8]; // metres per second
 const [STRIDE, RUN_STRIDE] = [4.5, 2.6]; // radians of the walk, of the run, per metre
 const [LANES, LANE] = [5, 1.5]; // lanes in the water, metres apart
-const SHORE = [0.35, -0.35]; // metres left of the path's middle: the passers-by's, the joggers'
-// Metres across within which two keep to one lane: less than LANE, so a group stays side by side,
-// more than its drift and its bag's swaying let others come.
-const APART = 1.3;
+const SHORE = [0.45, -0.45]; // metres left of the path's middle: the passers-by's, the joggers'
+// Metres across within which two keep to one lane: in the water less than LANE, so a group stays
+// side by side, more than its drift and its bag's swaying let others come; on land less than
+// between the passers-by's and the joggers' sides, so joggers pass them.
+const [APART, APART_LAND] = [1.3, 0.8];
 const GAP = 2.5; // metres
 const DRESS = 6; // seconds changing clothes, standing on the way, those behind waiting
 // A ferry's hull sweeps BAND metres along the swimmers' way either side of its line (or its way
@@ -275,8 +278,8 @@ export function createSwimmers(loop, ground, water, ferries, space) {
     ],
   ];
   const crowds = {
-    player: createCrowd("player", WALKERS / 2 + JOGGERS, false),
-    woman: createCrowd("woman", WALKERS / 2, false),
+    player: createCrowd("player", WALKERS / 2 + JOGGERS),
+    woman: createCrowd("woman", WALKERS / 2),
   };
   const filled = { player: 0, woman: 0 };
   const people = kinds.flatMap(([body, gait, , list]) =>
@@ -331,6 +334,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
       dressing: 0, // seconds left changing clothes
       pose: "",
       side: 0, // metres, its way's left of the loop where it is (offset)
+      held: 0, // seconds blocked on land on end (space)
       x: 0,
       z: 0,
     });
@@ -432,7 +436,9 @@ export function createSwimmers(loop, ground, water, ferries, space) {
       const wet = swum[i];
       if (m.bag && m.bathing !== null && bathing[i] !== m.bathing) m.dressing = DRESS;
       m.bathing = bathing[i];
-      let step = m.dressing ? 0 : (wet ? SWIM : m.pace) * dt;
+      // Fleeing from traffic (src/people.js, dodge), it waits on its way; its figure runs.
+      const fleeing = m.crowd.away(m.i);
+      let step = m.dressing || fleeing ? 0 : (wet ? SWIM : m.pace) * dt;
       m.dressing = Math.max(0, m.dressing - dt);
       // Going in or out: a segment with one end on the bank.
       const shore = bathing[i] && !(points[i].wet && points[(i + 1) % points.length].wet);
@@ -459,13 +465,16 @@ export function createSwimmers(loop, ground, water, ferries, space) {
         const gap = (other.s - m.s + total) % total;
         if (gap - GAP > step) break;
         if (!shore && other.first === m.first && (other.rank - m.rank) % 2) continue; // a pair
-        if (shore || Math.abs(other.side - m.side) < APART) step = Math.max(0, gap - GAP);
+        const lane = wet ? APART : APART_LAND;
+        if (shore || Math.abs(other.side - m.side) < lane) step = Math.max(0, gap - GAP);
       }
-      // On land not into another (space): standing instead.
+      // On land not into another (space): standing instead, but squeezing past after PATIENCE
+      // seconds so.
       if (step && !wet) {
         const on = (m.s + step) % total;
         const { x, z } = at(on, offset(m, on));
-        if (space.blocked(m, ROOM, m.x, m.z, x, z)) step = 0;
+        m.held = space.blocked(m, ROOM, m.x, m.z, x, z) ? m.held + dt : 0;
+        if (m.held && m.held < PATIENCE) step = 0;
       }
       m.s = (m.s + step) % total;
       if (!wet) m.phase += step * m.stride;
@@ -477,8 +486,10 @@ export function createSwimmers(loop, ground, water, ferries, space) {
       const { j, x, z } = spot;
       let heading = spot.heading;
       const lean = m.dressing ? 0 : m.lean; // on land
-      // For the cyclists (src/runners.js).
-      Object.assign(m, { heading, speed: dt && step / dt, gone: swum[j] && !m.dressing });
+      // For the cyclists (src/runners.js) and space (src/space.js): gone while in the water or
+      // fleeing.
+      const gone = fleeing || (swum[j] && !m.dressing);
+      Object.assign(m, { heading, speed: dt && step / dt, gone });
       if (swum[j] && !m.dressing) {
         const { y } = spot; // the water's surface
         if (m.bag) {
@@ -488,7 +499,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
         } else m.crowd.place(m.i, x, y - SINK, z, heading, m.phase, 1, TILT);
       } else {
         const y = ground(x, z);
-        m.crowd.place(m.i, x, y, z, heading, m.phase, 1, lean);
+        if (!fleeing) m.crowd.place(m.i, x, y, z, heading, m.phase, 1, lean);
         // On the back, upright, like a rucksack, leaning forward with it.
         const [up, ahead] = [Math.cos(lean), Math.sin(lean)];
         const along = CARRY[0] * ahead - CARRY[1] * up;
@@ -499,7 +510,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
         );
       }
       [m.x, m.z] = [x, z];
-      if (!m.bag) place.y = -1000; // none
+      if (!m.bag || fleeing) place.y = -1000; // none, or hidden while it runs
       matrix.makeRotationY(heading);
       if (!swum[j] || m.dressing) matrix.multiply(leaning.makeRotationX(lean)).multiply(upright);
       bags.setMatrixAt(m.k, matrix.setPosition(place));

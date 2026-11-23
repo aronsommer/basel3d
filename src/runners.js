@@ -7,15 +7,20 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BIKE, bikeFrame, PEDAL } from "./bike.js";
 import { part } from "./parts.js";
 import { createCrowd, mix } from "./people.js";
+import { PATIENCE } from "./space.js";
 
 const TURN = 3; // radians a second they turn at most
 const SIDE = 1.5; // metres a second they move across, to keep right or to pass
-// Metres apart across the path they keep at least, metres further left they pass on, metres
-// ahead they look (and a second's way more); metres a second they slow down and speed up by each
+// Metres apart across the path they keep at least (SLACK more, and as far ahead as when moving
+// out, to move back in after passing, so one at the edge does not make them sway), metres further
+// left they pass on, metres ahead they look (and a second's way more), metres behind one ahead
+// they stay (nearer, at half its speed); metres a second they slow down and speed up by each
 // second.
 const WIDTH = 0.9;
+const SLACK = 0.5;
 const PASS = 1.4;
 const LOOK = 4;
+const KEEP = 3.5;
 const [BRAKE, START] = [5, 1.5];
 // Out of traffic's way: metres across at most, metres a second they move across, seconds calm till
 // they move back.
@@ -25,10 +30,11 @@ const [DODGE, DASH, CALM] = [6, 4, 2];
 const [TWOS, TOGETHER] = [3, 1];
 // Metres around within which they look at people.
 const NEAR = 15;
-// Metres round its rear and front wheel none else comes within (src/space.js); seconds one stands
-// (going slower than STILL metres a second) while it would go, before it turns round.
+const APART = 6; // metres along the way, at least, between riders where they appear
+// Metres round its rear and front wheel none else comes within (src/space.js); metres a second
+// below which one held behind another waits (update).
 const ROOM = 0.35;
-const [STUCK, STILL] = [3, 0.1];
+const HELD = 0.1;
 // Bikes SCALE times the girl's (her rider's body scaled with it).
 const SCALE = 1.6;
 
@@ -122,12 +128,13 @@ function locate({ stretch, s, right }) {
 // A mover on a stretch: { stretch, s, way: ±1 along it, top: metres a second it would go, pace:
 // as it goes, keep: metres right of the middle as it goes, pass: metres further left while
 // passing, right: as now, along the stretch, dodge: where right it goes out of traffic's way (null
-// if not), calm: seconds since, rolled: metres it went, stuck: seconds standing (move), x, y, z,
-// heading; for space its rear wheel's room (radius, group: itself) and front: its front wheel's },
-// facing on.
+// if not), calm: seconds since, rolled: metres it went, held: seconds blocked on end (move),
+// waited: seconds held behind someone on end, x, y, z, heading; for space its rear wheel's room
+// (radius, group: itself) and front: its front wheel's }, facing on.
 function mover(stretch, s, way, top, keep, ground) {
   const m = { stretch, s: THREE.MathUtils.clamp(s, 0, stretch.length), way, top, pace: top, keep };
-  Object.assign(m, { pass: 0, right: way * keep, dodge: null, calm: 0, rolled: 0, stuck: 0 });
+  Object.assign(m, { pass: 0, right: way * keep, dodge: null, calm: 0, rolled: 0, held: 0 });
+  m.waited = 0;
   const [x, z, dx, dz] = locate(m);
   // Its front wheel's room: set as it first moves.
   Object.assign(m, {
@@ -139,30 +146,31 @@ function mover(stretch, s, way, top, keep, ground) {
 }
 // Metres o is ahead of m along m's way.
 const ahead = (m, o) => (o.s - m.s) * m.way;
-// Metres one of people (p: x, z) is ahead of m along its heading, and right of it; null if far.
+// Metres one of people (p: x, z) is ahead of m along its way on the stretch (not its heading,
+// which turns as it moves across), and right of it; null if far.
 function near(m, p) {
   const [dx, dz] = [p.x - m.x, p.z - m.z];
   if (p.gone || !(Math.abs(dx) + Math.abs(dz) < NEAR)) return null;
-  const [hx, hz] = [Math.sin(m.heading), Math.cos(m.heading)];
+  const [, , sx, sz] = spot(m.stretch, m.s);
+  const length = m.way * (Math.hypot(sx, sz) || 1);
+  const [hx, hz] = [sx / length, sz / length];
   return [dx * hx + dz * hz, dz * hx - dx * hz];
 }
-// Whether none of others but m, nor of people, is within WIDTH of right across and from to to
-// metres ahead of m.
-const clear = (m, others, people, right, from, to) =>
+// Whether none of others but m, nor of people, is within wide (WIDTH unless given) of right across
+// and from to to metres ahead of m.
+const clear = (m, others, people, right, from, to, wide = WIDTH) =>
   !others.some(
     (o) =>
       o !== m &&
       o.stretch === m.stretch &&
-      Math.abs(o.right - right) < WIDTH &&
+      Math.abs(o.right - right) < wide &&
       ahead(m, o) > from &&
       ahead(m, o) < to,
   ) &&
   !people.some((list) =>
     list.some((p) => {
       const at = near(m, p);
-      return (
-        at && Math.abs(at[1] - (right - m.right) * m.way) < WIDTH && at[0] > from && at[0] < to
-      );
+      return at && Math.abs(at[1] - (right - m.right) * m.way) < wide && at[0] > from && at[0] < to;
     }),
   );
 // The metres a second m goes at most, wanting speed, among others and people (lists of { x, z,
@@ -190,16 +198,16 @@ function among(m, others, people, speed) {
       m.pass = 0; // one coming the other way: back in, not to meet it head on
     else if (!m.pass && clear(m, others, people, m.way * (m.keep - PASS), -2, 2 * look))
       m.pass = PASS;
-    return Math.max(0, theirs);
+    return Math.max(0, theirs) * (front < KEEP ? 0.5 : 1); // dropping back
   }
-  if (m.pass && clear(m, others, people, m.way * m.keep, -3, look)) m.pass = 0;
+  if (m.pass && clear(m, others, people, m.way * m.keep, -3, 2 * look, WIDTH + SLACK)) m.pass = 0;
   return speed;
 }
 // On dt seconds towards wanted metres a second, round at the ends, moving across to keep right
 // after turning round and to pass, or fast out of traffic's way; not where its rear or front wheel
-// (reach metres ahead) would come into another (space): stopping instead. Standing while eager (no
-// traffic in its way), blocked or held behind someone, it turns round after STUCK seconds.
-function move(m, wanted, dt, ground, space, reach, eager) {
+// (reach metres ahead) would come into another (space): stopping instead, but squeezing past after
+// PATIENCE seconds so.
+function move(m, wanted, dt, ground, space, reach) {
   const { stretch } = m;
   const before = [m.s, m.way, m.right];
   m.pace += THREE.MathUtils.clamp(wanted - m.pace, -BRAKE * dt, START * dt);
@@ -217,13 +225,12 @@ function move(m, wanted, dt, ground, space, reach, eager) {
   const blocked =
     space.blocked(m, ROOM, m.x, m.z, x, z) ||
     space.blocked(m, ROOM, front.x, front.z, x + ux, z + uz);
-  if (blocked) {
+  m.held = blocked ? m.held + dt : 0;
+  if (blocked && m.held < PATIENCE) {
     [m.s, m.way, m.right] = before;
     m.pace = 0;
     [x, z] = [m.x, m.z];
   } else m.rolled += m.pace * dt;
-  m.stuck = eager && (blocked || m.pace < STILL) ? m.stuck + dt : 0;
-  if (m.stuck > STUCK) [m.way, m.stuck] = [-m.way, 0];
   if (x !== m.x || z !== m.z) {
     const turn = Math.atan2(x - m.x, z - m.z) - m.heading;
     const by = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -240,11 +247,17 @@ function move(m, wanted, dt, ground, space, reach, eager) {
 export function createRunners(routes, ground, danger, space) {
   const stretches = routes.map(stretchOf);
   const total = stretches.reduce((sum, { length }) => sum + length, 0);
-  // A stretch, the longer the likelier, and a spot on it.
+  // A stretch, the longer the likelier, and a spot on it not within APART metres of one placed
+  // (if one is found).
+  const placed = [];
   const somewhere = () => {
-    let r = Math.random() * total;
-    const stretch = stretches.find(({ length }) => (r -= length) < 0) ?? stretches[0];
-    return [stretch, Math.random() * stretch.length];
+    for (let tries = 0; ; tries++) {
+      let r = Math.random() * total;
+      const stretch = stretches.find(({ length }) => (r -= length) < 0) ?? stretches[0];
+      const s = Math.random() * stretch.length;
+      const free = placed.every(([t, u]) => t !== stretch || Math.abs(u - s) >= APART);
+      if (free || tries === 20) return placed[placed.push([stretch, s]) - 1];
+    }
   };
 
   // Riders, men and women in turn, on each kind of vehicle (RIDES); its frames in one mesh, for the
@@ -274,13 +287,13 @@ export function createRunners(routes, ground, danger, space) {
       // The second of a pair of scooters beside the first.
       const first = pose === "scoot" && k % (2 * TWOS) === 1 && riders[k - 1];
       const [stretch, s] = first ? [first.stretch, first.s] : somewhere();
-      const rider = {
-        ...(first
+      // The mover itself, not a copy: its front wheel's room names it (group).
+      const rider = Object.assign(
+        first
           ? mover(stretch, s, first.way, first.top, first.keep - TOGETHER, ground)
-          : mover(stretch, s, pick([-1, 1]), random(...speed), random(...lane), ground)),
-        crowd: crowds[k % 2 ? "woman" : "man"],
-        index: k >> 1,
-      };
+          : mover(stretch, s, pick([-1, 1]), random(...speed), random(...lane), ground),
+        { crowd: crowds[k % 2 ? "woman" : "man"], index: k >> 1 },
+      );
       rider.crowd.dress(rider.index, looks[k], pose);
       frames.setColorAt(k, color.set(colours[k % colours.length]));
       riders.push(rider);
@@ -322,7 +335,10 @@ export function createRunners(routes, ground, danger, space) {
           const look = LOOK + r.pace;
           const [ax, az] = [r.x + Math.sin(r.heading) * look, r.z + Math.cos(r.heading) * look];
           const wanted = out || danger(ax, r.y, az, 0) ? 0 : r.top;
-          move(r, among(r, all, people, wanted), dt, ground, space, base * size, wanted > 0);
+          // Held behind someone (among) PATIENCE seconds on end, it goes on anyway.
+          const may = among(r, all, people, wanted);
+          r.waited = wanted && may < HELD ? r.waited + dt : 0;
+          move(r, r.waited > PATIENCE ? wanted : may, dt, ground, space, base * size);
           // Pitched as the ground under its rear and front wheels.
           const reach = base * size;
           const front = ground(
