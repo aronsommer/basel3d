@@ -5,9 +5,9 @@
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
 // and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
 // part hides and shows it, to see what it costs; then "Aerial" shows the aerial photo as the
-// ground, and at the bottom "God mode" (src/main.js, godAt), neither ticked at first. All of it
-// lives here, the menu entry in index.html and the styles in style.css (#dev-box, #dev), so it can
-// be taken out whole (but godAt).
+// ground, "God mode" (src/main.js, godAt) and at the bottom "Riders", none ticked at first. All
+// of it lives here, the menu entry in index.html and the styles in style.css (#dev-box, #dev), so
+// it can be taken out whole (but godAt and showRiders).
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -16,8 +16,8 @@ const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 
 // A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
 // aerial(on): shows the aerial photo or the map again, its promise done when it does; god(on):
-// turns God mode on or off.
-export function createDev(renderer, render, parts, aerial, god) {
+// turns God mode on or off; riders(on): shows the riders on all vehicles or only on the one ridden.
+export function createDev(renderer, render, parts, aerial, god, riders) {
   const box = document.getElementById("dev-box");
   try {
     box.checked = localStorage.getItem(KEY) === "1";
@@ -48,18 +48,24 @@ export function createDev(renderer, render, parts, aerial, god) {
     });
     return input;
   });
-  const photoLabel = add("label");
-  const photo = photoLabel.appendChild(element("input", { type: "checkbox" }));
-  photoLabel.append("Aerial");
-  photo.addEventListener("change", async () => {
+  // A box below, not ticked, calling change(ticked) when ticked or unticked.
+  const toggle = (name, change) => {
+    const label = add("label");
+    const input = label.appendChild(element("input", { type: "checkbox" }));
+    label.append(name);
+    input.addEventListener("change", () => change(input.checked));
+    return input;
+  };
+  const photo = toggle("Aerial", async (on) => {
     photo.disabled = true; // until it is shown
-    await aerial(photo.checked);
+    await aerial(on);
     photo.disabled = false;
   });
-  const godLabel = add("label");
-  const godBox = godLabel.appendChild(element("input", { type: "checkbox" }));
-  godLabel.append("God mode");
-  godBox.addEventListener("change", () => god(godBox.checked));
+  // Unticked again with the Dev panel.
+  const modes = [
+    [toggle("God mode", god), god],
+    [toggle("Riders", riders), riders],
+  ];
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.
   const button = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
@@ -85,7 +91,7 @@ export function createDev(renderer, render, parts, aerial, god) {
     renderer.info.autoReset = !box.checked;
     panel.hidden = !box.checked;
     for (const input of boxes) input.checked = true;
-    god((godBox.checked = false));
+    for (const [input, change] of modes) change((input.checked = false));
     for (const [, objects] of parts) for (const object of objects) object.visible = true;
     rescale(0);
     [frames, timed, cpu, gpu, since, fresh] = [0, 0, 0, 0, performance.now(), true];

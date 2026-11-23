@@ -1,17 +1,17 @@
-// Sport motorcycles: a red front fairing, tank and raised tail, a dark engine and frame between
-// the wheels, flat wide tyres on gold five-spoke rims, a silver exhaust; driven as in
-// src/drive.js, leaning into turns, with a crouched rider in black leathers while driven.
+// Sport motorcycles: a front fairing, tank and raised tail in their colour (red unless told), a
+// dark engine and frame between the wheels, flat wide tyres on gold five-spoke rims, a silver
+// exhaust; driven as in src/drive.js, leaning into turns; a crouched rider in black leathers.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part, profile } from "./parts.js";
 import { createDriving } from "./drive.js";
 
-const AXLES = 1.4; // metres between them
-// Front, back: radius and width in metres.
+// Front, back: radius, width and z of the axle in metres; the front one at the fork's foot.
 const WHEELS = [
-  { radius: 0.33, width: 0.13 },
-  { radius: 0.36, width: 0.24 },
+  { radius: 0.33, width: 0.13, z: 0.766 },
+  { radius: 0.36, width: 0.24, z: -0.7 },
 ];
+const AXLES = WHEELS[0].z - WHEELS[1].z; // metres between them
 // Radians a wheel is shown turning per frame at most: turning faster, its tread stripes (15°
 // apart) would seem to stand or turn back, as wheels in films.
 const SPIN = 0.06;
@@ -33,13 +33,15 @@ const SPEC = {
   spin: 0,
   react: 7,
   axles: AXLES,
-  half: 1.05,
+  half: 1.1,
   width: 0.8,
 };
 
-// One per place ({ x, y, z, heading }), each { group, material, update, half, width }; they share
-// their geometries and all materials but their own (so one is highlighted alone). boost(position):
-// how much larger to draw one far away; world: as for createDriving (src/drive.js).
+// One per place ({ x, y, z, heading, color? }), each { group, material, update, half, width,
+// driver (the rider's mesh, hidden; src/main.js shows it) };
+// those of a colour share their geometries, all share the materials but their own (so one is
+// highlighted alone). boost(position): how much larger to draw one far away; world: as for
+// createDriving (src/drive.js).
 export function createMotorcycles(places, boost, world) {
   const RED = 0xd8141e;
   const WHITE = 0xf2f2f2;
@@ -51,85 +53,95 @@ export function createMotorcycles(places, boost, world) {
   const box = ([w, h, d], color, p, angle = 0) =>
     part(new THREE.BoxGeometry(w, h, d).rotateX(angle), color, p);
   const side = (points, width, color) => part(profile(points, width), color, [0, 0, 0]);
-  const bike = mergeGeometries([
-    // Front fairing, pointed, under a dark windscreen; its lower edge above the front wheel.
-    side(
-      [
-        [0.4, 0.62],
-        [0.55, 0.98],
-        [0.74, 1.04],
-        [1.02, 0.84],
-        [0.98, 0.72],
-        [0.6, 0.72],
-      ],
-      0.5,
-      RED,
-    ),
-    box([0.14, 0.03, 0.4], RED, [0, 2 * WHEELS[0].radius + 0.03, AXLES / 2]), // mudguard
-    box([0.34, 0.03, 0.3], DARK, [0, 1.06, 0.84], 1.0), // windscreen
-    side(
-      [
-        [-0.1, 0.86],
-        [0.12, 1.0],
-        [0.45, 1.03],
-        [0.56, 0.9],
-        [0.3, 0.72],
-        [-0.05, 0.72],
-      ],
-      0.42,
-      RED,
-    ), // tank
-    // The raised tail with a white stripe, open below to show the back wheel.
-    side(
-      [
-        [-1.02, 1.02],
-        [-0.45, 0.93],
-        [-0.12, 0.88],
-        [-0.12, 0.8],
-        [-0.55, 0.82],
-        [-1.02, 0.96],
-      ],
-      0.26,
-      RED,
-    ),
-    box([0.27, 0.02, 0.5], WHITE, [0, 0.97, -0.72], 0.17), // stripe on the tail
-    box([0.3, 0.06, 0.52], DARK, [0, 0.92, -0.36], -0.08), // seat
-    box([0.32, 0.36, 0.52], ENGINE, [0, 0.5, 0.06]), // engine
-    box([0.36, 0.08, 0.5], DARK, [0, 0.31, 0.12]), // belly pan
-    box([0.1, 0.08, 0.7], DARK, [0, 0.82, 0.1], 0.35), // frame
-    ...[-1, 1].flatMap((x) => [
-      box([0.04, 0.7, 0.05], METAL, [x * 0.09, 0.66, 0.63], -0.4), // fork
-      box([0.04, 0.06, 0.64], DARK, [x * 0.15, 0.41, -0.4], -0.23), // swingarm, outside the back tyre
-      box([0.06, 0.04, 0.12], DARK, [x * 0.24, 1.0, 0.52]), // handlebar
-      box([0.06, 0.04, 0.1], METAL, [x * 0.2, 0.42, -0.22]), // foot peg
-    ]),
-    part(
-      new THREE.CylinderGeometry(0.06, 0.075, 0.45, 8).rotateX(Math.PI / 2 + 0.3),
-      METAL,
-      [0.2, 0.62, -0.62],
-    ), // exhaust, rising to the back, beside the back wheel
-    // Its opening at the back end: dark inside a rim. The exhaust's axis is tilted 0.3 radians
-    // from z, its back end at (0.2, 0.687, -0.835).
-    part(
-      new THREE.CircleGeometry(0.058, 10).rotateY(Math.PI).rotateX(0.3),
-      DARK,
-      [0.2, 0.688, -0.838],
-    ),
-    part(new THREE.TorusGeometry(0.066, 0.012, 4, 10).rotateX(0.3), METAL, [0.2, 0.687, -0.835]),
-  ]);
+  const bike = (paint) =>
+    mergeGeometries([
+      // Front fairing, pointed, under a dark windscreen; its lower edge above the front wheel.
+      side(
+        [
+          [0.4, 0.62],
+          [0.55, 0.98],
+          [0.74, 1.04],
+          [1.02, 0.84],
+          [0.98, 0.72],
+          [0.6, 0.72],
+        ],
+        0.5,
+        paint,
+      ),
+      box([0.14, 0.03, 0.4], paint, [0, 2 * WHEELS[0].radius + 0.03, WHEELS[0].z]), // mudguard
+      box([0.34, 0.03, 0.3], DARK, [0, 1.06, 0.84], 1.0), // windscreen
+      side(
+        [
+          [-0.1, 0.86],
+          [0.12, 1.0],
+          [0.45, 1.03],
+          [0.56, 0.9],
+          [0.3, 0.72],
+          [-0.05, 0.72],
+        ],
+        0.42,
+        paint,
+      ), // tank
+      // The raised tail with a white stripe, open below to show the back wheel.
+      side(
+        [
+          [-1.02, 1.02],
+          [-0.45, 0.93],
+          [-0.12, 0.88],
+          [-0.12, 0.8],
+          [-0.55, 0.82],
+          [-1.02, 0.96],
+        ],
+        0.26,
+        paint,
+      ),
+      box([0.27, 0.02, 0.5], WHITE, [0, 0.97, -0.72], 0.17), // stripe on the tail
+      box([0.3, 0.08, 0.42], DARK, [0, 0.91, -0.26]), // seat, level, from the tank to the stripe
+      box([0.32, 0.36, 0.52], ENGINE, [0, 0.5, 0.06]), // engine
+      box([0.36, 0.08, 0.5], DARK, [0, 0.31, 0.12]), // belly pan
+      box([0.1, 0.08, 0.46], DARK, [0, 0.78, 0.215], 0.35), // frame, from the fairing into the tank
+      ...[-1, 1].flatMap((x) => [
+        // The fork, its top at y 0.982, z 0.494, its foot at the front wheel's axle.
+        box([0.04, 0.7, 0.05], METAL, [x * 0.09, 0.66, 0.63], -0.4),
+        box([0.04, 0.06, 0.64], DARK, [x * 0.15, 0.41, -0.4], -0.23), // swingarm, outside the back tyre
+        box([0.22, 0.03, 0.03], METAL, [x * 0.2, 0.99, 0.5]), // handlebar, out from the fork's top
+        box([0.09, 0.045, 0.045], DARK, [x * 0.26, 0.99, 0.5]), // grip
+        box([0.06, 0.04, 0.1], METAL, [x * 0.2, 0.42, -0.22]), // foot peg
+      ]),
+      part(
+        new THREE.CylinderGeometry(0.06, 0.075, 0.45, 8).rotateX(Math.PI / 2 + 0.3),
+        METAL,
+        [0.2, 0.62, -0.62],
+      ), // exhaust, rising to the back, beside the back wheel
+      // Its opening at the back end: dark inside a rim. The exhaust's axis is tilted 0.3 radians
+      // from z, its back end at (0.2, 0.687, -0.835).
+      part(
+        new THREE.CircleGeometry(0.058, 10).rotateY(Math.PI).rotateX(0.3),
+        DARK,
+        [0.2, 0.688, -0.838],
+      ),
+      part(new THREE.TorusGeometry(0.066, 0.012, 4, 10).rotateX(0.3), METAL, [0.2, 0.687, -0.835]),
+    ]);
   // The rider, crouched over the tank, from hips to hands; each limb runs between its joints.
-  const rider = mergeGeometries([
-    box([0.34, 0.58, 0.2], DARK, [0, 1.135, -0.1], 0.87), // body
-    box([0.3, 0.12, 0.3], RED, [0, 0.95, -0.3]), // hips
-    part(new THREE.IcosahedronGeometry(0.15, 1), WHITE, [0, 1.43, 0.24]), // helmet
-    box([0.2, 0.07, 0.04], DARK, [0, 1.43, 0.38]), // visor
-    ...[-1, 1].flatMap((x) => [
-      box([0.09, 0.09, 0.46], DARK, [x * 0.22, 1.18, 0.31], 0.56), // arm
-      box([0.14, 0.14, 0.44], DARK, [x * 0.165, 0.875, -0.09], 0.26), // thigh
-      box([0.11, 0.45, 0.11], DARK, [x * 0.185, 0.66, -0.04], 0.79), // shin
-      box([0.1, 0.08, 0.2], DARK, [x * 0.2, 0.47, -0.16]), // boot
-    ]),
-  ]);
+  const rider = (paint) =>
+    mergeGeometries([
+      box([0.34, 0.58, 0.2], DARK, [0, 1.135, -0.1], 0.87), // body
+      box([0.3, 0.12, 0.3], paint, [0, 0.95, -0.3]), // hips
+      part(new THREE.IcosahedronGeometry(0.15, 1), WHITE, [0, 1.43, 0.24]), // helmet
+      box([0.2, 0.07, 0.04], DARK, [0, 1.43, 0.38]), // visor
+      ...[-1, 1].flatMap((x) => [
+        box([0.09, 0.09, 0.46], DARK, [x * 0.22, 1.18, 0.31], 0.56), // arm
+        box([0.14, 0.14, 0.44], DARK, [x * 0.165, 0.875, -0.09], 0.26), // thigh
+        box([0.11, 0.45, 0.11], DARK, [x * 0.185, 0.66, -0.04], 0.79), // shin
+        box([0.1, 0.08, 0.2], DARK, [x * 0.2, 0.47, -0.16]), // boot
+      ]),
+    ]);
+  // Per colour, the bike and its rider (whose hips are in it), made when first needed.
+  const shapes = new Map();
+  const shapesOf = (paint) => {
+    if (!shapes.has(paint)) shapes.set(paint, [bike(paint), rider(paint)]);
+    return shapes.get(paint);
+  };
   // Head and tail light, unlit so they glow.
   const lamps = mergeGeometries([
     box([0.2, 0.06, 0.02], 0xffffff, [0, 0.79, 1.005], -0.3),
@@ -179,13 +191,14 @@ export function createMotorcycles(places, boost, world) {
     const group = new THREE.Group();
     group.rotation.order = "YXZ"; // heading first, then pitch
     const model = new THREE.Group();
-    const driver = new THREE.Mesh(rider, material);
-    model.add(new THREE.Mesh(bike, material), new THREE.Mesh(lamps, lampMaterial), driver);
+    const [body, seated] = shapesOf(place.color ?? RED);
+    const driver = new THREE.Mesh(seated, material);
+    model.add(new THREE.Mesh(body, material), new THREE.Mesh(lamps, lampMaterial), driver);
     group.add(model);
     // Front, back.
     const wheels = tyres.map((tyre, k) => {
       const wheel = new THREE.Mesh(tyre, material);
-      wheel.position.set(0, WHEELS[k].radius, ((k ? -1 : 1) * AXLES) / 2);
+      wheel.position.set(0, WHEELS[k].radius, WHEELS[k].z);
       wheel.rotation.order = "YXZ"; // steered, then turning
       model.add(wheel);
       return wheel;
@@ -195,7 +208,7 @@ export function createMotorcycles(places, boost, world) {
     let lift = 0; // radians the front is up
     let rolled = 0; // s.rolled at the last frame
 
-    // Driven by input (createDriving), else in its place, upright and without its rider.
+    // Driven by input (createDriving), else in its place, upright.
     function update(seconds, dt, input) {
       driving.step(dt, input);
       // Leaning into the turn as far as it steers, so both go together; positive to the right.
@@ -205,11 +218,11 @@ export function createMotorcycles(places, boost, world) {
       const rise = THREE.MathUtils.lerp(WHEELIE, LIFT, Math.min(1, s.speed / WHEELIE_UNTIL));
       lift = input ? lift + ((rising ? rise : 0) - lift) * Math.min(1, dt * 8) : 0;
       model.rotation.x = -lift;
-      model.position.set(0, (Math.sin(lift) * AXLES) / 2, ((Math.cos(lift) - 1) * AXLES) / 2);
+      const back = -WHEELS[1].z;
+      model.position.set(0, Math.sin(lift) * back, (Math.cos(lift) - 1) * back);
       group.position.set(s.x, s.y, s.z);
       group.rotation.set(s.pitch, s.heading, 0);
       group.scale.setScalar(boost(group.position));
-      driver.visible = !!input;
       wheels.forEach((wheel, k) => {
         const turned = (s.rolled - rolled) / WHEELS[k].radius;
         wheel.rotation.x += THREE.MathUtils.clamp(turned, -SPIN, SPIN);
@@ -219,6 +232,7 @@ export function createMotorcycles(places, boost, world) {
     }
     update(0, 0, null); // in place before the first frame
 
-    return { group, material, update, half: SPEC.half, width: SPEC.width };
+    driver.visible = false;
+    return { group, material, update, half: SPEC.half, width: SPEC.width, driver };
   }
 }

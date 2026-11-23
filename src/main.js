@@ -22,6 +22,7 @@ import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
 import { createDriving } from "./drive.js";
 import { createMotorcycles } from "./motorcycle.js";
+import { createQuads } from "./quad.js";
 import { createTanks } from "./tank.js";
 import { createBike } from "./bike.js";
 import { createLawn } from "./lawn.js";
@@ -810,7 +811,8 @@ const parked = (places) =>
 // Police vans (src/police.js) in St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke,
 // both facing south, and on the Claraplatz by the men there (LV95 2611656.5, 1267907.4), facing
 // southwest, an unmarked one 3 m to its left and 3 m back; a motorcycle (src/motorcycle.js) at
-// WGS84 47.562470, 7.592271 facing the Claraplatz; a
+// WGS84 47.562470, 7.592271 and a poison green one at 47.561632, 7.593178, and a quad
+// (src/quad.js) at 47.561701, 7.593144, all facing the men on the Claraplatz; a
 // tank (src/tank.js) in the yard of the Kaserne facing east; a drone (src/drone.js) 2 m over the
 // Münster's roof (LV95 2611577.4, 1267321.0, 301.3), facing north over the Rhine. It flies down to roofs (structures.top) as well.
 const police = createPolice(
@@ -824,10 +826,14 @@ const police = createPolice(
   world,
 );
 const motorcycles = createMotorcycles(
-  parked([{ x: 562.5, z: -584.6, heading: 0.88 }]),
+  parked([
+    { x: 562.5, z: -584.6, heading: 0.88 },
+    { x: 631.0, z: -491.6, heading: 2.13, color: 0x7ee000 },
+  ]),
   boost,
   world,
 );
+const quads = createQuads(parked([{ x: 628.4, z: -499.3, heading: 1.85 }]), boost, world);
 // People (src/people.js) at LV95 points, each facing toward
 // (turned up to SPREAD radians away, each a little otherwise) or else the others within NEAR
 // metres, or alone k radians from south.
@@ -1431,9 +1437,16 @@ const boat = (x, z, heading) => [{ x, y: heightAt(x, z), z, heading }];
 const fireboats = createBoats("fire", boat(109, -568.1, 0.62), boost, onWater);
 const policeBoats = createBoats("police", boat(324.4, -526.5, -2.53), boost, onWater);
 scene.add(
-  ...[...police, ...motorcycles, ...tanks, ...dinos, ...drones, ...fireboats, ...policeBoats].map(
-    (vehicle) => vehicle.group,
-  ),
+  ...[
+    ...police,
+    ...motorcycles,
+    ...quads,
+    ...tanks,
+    ...dinos,
+    ...drones,
+    ...fireboats,
+    ...policeBoats,
+  ].map((vehicle) => vehicle.group),
 );
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
@@ -1994,7 +2007,7 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the jet, the sea
-// monster, the UFO, a police car, a motorcycle, the tank, a boat or the drone to ride along; while
+// monster, the UFO, a police car, a motorcycle, the quad, the tank, a boat or the drone to ride along; while
 // riding, but not steering, a click or tap on another one changes to it. A finger also finds one
 // up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
@@ -2012,11 +2025,12 @@ const jetRide = riders([
   { object: jet.group, materials: [jet.material], eye: [0, 8, -48], ahead: [0, 2.6, 40] },
 ]);
 // What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the
-// motorcycles, the tanks, the dinosaur and the boats, from behind and above; the drones through their own
+// motorcycles, the quads, the tanks, the dinosaur and the boats, from behind and above; the drones through their own
 // camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
+  [quads, [0, 2.6, -6], [0, 0.6, 5]],
   [tanks, [0, 5, -16], [0, 2, 14]],
   [dinos, [0, 30, -55], [0, 8, 20]],
   [fireboats, [0, 9, -24], [0, 3, 20]],
@@ -2275,7 +2289,7 @@ addEventListener("keydown", (e) => {
 });
 // Steering the helicopters, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
 // ←/→ turn; the buttons at the bottom hold the arrow keys while pressed. Q or the stop button
-// stops or goes on. The police cars, motorcycles and the tank are driven with the same keys and
+// stops or goes on. The police cars, motorcycles, the quad and the tank are driven with the same keys and
 // buttons, without stop (the tank with fire).
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
@@ -2438,9 +2452,9 @@ function shoot(seconds) {
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
 // only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
-// as browsers allow copying only then), else destroys or rebuilds in God mode (godAt), else sets
-// one down (setDown), else is recorded while recording (src/points.js), else rides what is there;
-// nothing while steering.
+// as browsers allow copying only then), else is recorded while recording (src/points.js), else
+// destroys or rebuilds in God mode (godAt), else sets one down (setDown), else rides what is
+// there; nothing while steering.
 let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
 renderer.domElement.addEventListener(
   "pointerdown",
@@ -2451,9 +2465,9 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
+  if (pointsPanel.click(e.clientX, e.clientY)) return;
   if (god) return godAt(e.clientX, e.clientY);
   if (placing) return setDown(e.clientX, e.clientY);
-  if (pointsPanel.click(e.clientX, e.clientY)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
 });
@@ -2580,17 +2594,19 @@ function vehicleOn(clientX, clientY) {
 }
 
 // The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
-// checked at most once per frame, only after the mouse moved, and not while dragging or steering.
+// checked at most once per frame, only after the mouse moved, and not while dragging or steering
+// nor while clicks set one down, destroy (God mode) or record points: then it gets a crosshair.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
 });
 function updateHover() {
   if (!hover) return;
-  const found = pointers.size || steered() || placing || god ? null : vehicleAt(hover.x, hover.y);
+  const aiming = placing || god || pointsPanel.recording(); // clicks pick a point, not a vehicle
+  const found = pointers.size || steered() || aiming ? null : vehicleAt(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  renderer.domElement.style.cursor = placing || god ? "crosshair" : found ? "pointer" : "";
+  renderer.domElement.style.cursor = aiming ? "crosshair" : found ? "pointer" : "";
 }
 
 // The roof, bridge or ground at a screen point (px), or null.
@@ -2813,6 +2829,8 @@ render(true);
 render(false);
 for (const object of culled) object.frustumCulled = true;
 
+// "Riders" in the Dev panel: the riders on all vehicles that have one, not only on the one ridden.
+let showRiders = false;
 // Draws a frame, with the Dev panel (src/dev.js) while it is ticked.
 const drawFrame = createDev(
   renderer,
@@ -2824,6 +2842,7 @@ const drawFrame = createDev(
   ],
   (on) => showGround(on ? "photo" : "map"),
   (on) => (god = on),
+  (on) => (showRiders = on),
 );
 // Moves the view over the middle of scene points, looking the same way, out as far as shows them
 // all with FIT around them (as seen from above), but not nearer.
@@ -2898,13 +2917,11 @@ renderer.setAnimationLoop((time) => {
   for (const rega of regas) rega.update(time / 1000, flier === rega ? flown : null);
   ufo.update(time / 1000, dt, flier === ufo ? flown : null);
   for (const [vehicles, ride] of drives)
-    vehicles.forEach((vehicle, v) =>
-      vehicle.update(
-        time / 1000,
-        dt,
-        riding?.ride === ride && riding.vehicle === v ? steering() : null,
-      ),
-    );
+    vehicles.forEach((vehicle, v) => {
+      const ridden = riding?.ride === ride && riding.vehicle === v;
+      vehicle.update(time / 1000, dt, ridden ? steering() : null);
+      if (vehicle.driver) vehicle.driver.visible = ridden || showRiders;
+    });
   if (riding?.ride === footRide) onFoot.step(dt, steering());
   drive(dt);
   flee(dt);

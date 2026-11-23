@@ -22,8 +22,8 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
     .appendChild(Object.assign(document.createElement("div"), { id: "points" }));
   const add = (textContent) =>
     panel.appendChild(Object.assign(document.createElement("button"), { textContent }));
-  const paste = add("Paste points");
   const record = add("Record points");
+  const paste = add("Paste points");
   const undo = add("Undo");
   const copyAll = add("Copy points");
   const points = []; // { point, mark }
@@ -94,10 +94,13 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
     }),
   );
 
+  const recording = () => on && !panel.hidden;
   return {
+    // Whether clicks mark points now.
+    recording,
     // Marks the point at a click while recording; whether it did.
     click(x, y) {
-      if (!on || panel.hidden) return false;
+      if (!recording()) return false;
       const point = pointAt(x, y);
       if (point) place(point);
       sync();
