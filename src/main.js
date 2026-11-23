@@ -21,6 +21,7 @@ import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
 import { createAmbulances } from "./ambulance.js";
+import { createFireTrucks } from "./firetruck.js";
 import { createDriving } from "./drive.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createQuads } from "./quad.js";
@@ -34,6 +35,7 @@ import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createStation } from "./station.js";
+import { createFireStation, GREY } from "./firestation.js";
 import { createPride, dress, prideShader } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
 import { createSwans, createZoo } from "./zoo.js";
@@ -830,6 +832,14 @@ const police = createPolice(
 // An ambulance (src/ambulance.js) at WGS84 47.561340, 7.585408, facing as from 47.561249, 7.585620
 // to 47.561237, 7.585649.
 const ambulances = createAmbulances(parked([{ x: 46.3, z: -458.0, heading: 1.02 }]), boost, world);
+// The turntable ladder (src/firetruck.js) out of the fourth gate from the left of the fire
+// station's long building (src/firestation.js), nearest the exit at WGS84 47.556211, 7.582375 to
+// 47.556197, 7.582437: its back 1 m before it, square to its front.
+const fireTrucks = createFireTrucks(
+  parked([{ x: -180.97, z: 117.81, heading: -0.344 }]),
+  boost,
+  world,
+);
 const motorcycles = createMotorcycles(
   parked([
     { x: 562.5, z: -584.6, heading: 0.88 },
@@ -1160,7 +1170,7 @@ const walkers = createWalkers(
     ),
   },
   walkGround,
-  clique.zones,
+  [clique.zones, fireTrucks.map(({ zone }) => zone)],
 );
 scene.add(...walkers.meshes);
 // Their loops in the layer "Walks", on the bridge or ground.
@@ -1338,6 +1348,42 @@ if (station) {
   scene.add(...meshes);
   onRoofs.set(station.number, meshes);
 }
+// The fire station's buildings grey, with gates and its name (src/firestation.js) on their fronts
+// measured on the model: the one at WGS84 47.556285, 7.583173 and the long one at 47.556228,
+// 7.582426, whose wings are one building with it.
+for (const [inside, front] of [
+  [
+    { x: -125.5, z: 105.2 },
+    {
+      corners: [
+        [-132.32, 117.69],
+        [-114.19, 96.61],
+      ],
+      foot: 20.4,
+      street: 2.8,
+      band: 10.2,
+    },
+  ],
+  [
+    { x: -175.8, z: 111.2 },
+    {
+      corners: [
+        [-197.09, 106.73],
+        [-156.45, 121.28],
+      ],
+      foot: 20.5,
+      street: 3.2,
+      band: 11.3,
+    },
+  ],
+]) {
+  const roof = roofOver(inside); // none if it is destroyed
+  if (!roof) continue;
+  structures.paint(roof.number, { wall: GREY });
+  const mesh = createFireStation(front);
+  scene.add(mesh);
+  onRoofs.set(roof.number, [mesh]);
+}
 // A rainbow flag (src/pride.js) on the tip of each of the Münster's towers: its building's highest
 // vertex within 3 m of a point on the Georgsturm's (WGS84 47.556347, 7.591933) and on the
 // Martinsturm's spire (47.556214, 7.592074), flying from the one towards the other: to the right as
@@ -1474,6 +1520,7 @@ scene.add(
   ...[
     ...police,
     ...ambulances,
+    ...fireTrucks,
     ...motorcycles,
     ...quads,
     ...tanks,
@@ -2043,7 +2090,7 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the jet, the sea
-// monster, the UFO, a police car, the ambulance, a motorcycle, the quad, the tank, a boat or the drone to ride along; while
+// monster, the UFO, a police car, the ambulance, the fire truck, a motorcycle, the quad, the tank, a boat or the drone to ride along; while
 // riding, but not steering, a click or tap on another one changes to it. A finger also finds one
 // up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
@@ -2060,12 +2107,13 @@ const ufoRide = riders([
 const jetRide = riders([
   { object: jet.group, materials: [jet.material], eye: [0, 8, -48], ahead: [0, 2.6, 40] },
 ]);
-// What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the ambulance, the
-// motorcycles, the quads, the tanks, the dinosaur and the boats, from behind and above; the drones through their own
-// camera (look).
+// What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the ambulance, the fire truck, the
+// motorcycles, the quads, the tanks, the dinosaur and the boats, from behind and above; the fire truck from its own eye
+// and ahead; the drones through their own camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [ambulances, [0, 3.8, -10], [0, 1.5, 9]],
+  [fireTrucks],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
   [quads, [0, 2.6, -6], [0, 0.6, 5]],
   [tanks, [0, 5, -16], [0, 2, 14]],
@@ -2075,9 +2123,14 @@ const drives = [
   [drones],
 ].map(([vehicles, eye, ahead]) => {
   const ride = riders(
-    vehicles.map(({ group, material }) => ({ object: group, materials: [material], eye, ahead })),
+    vehicles.map(({ group, material, ...own }) => ({
+      object: group,
+      materials: [material],
+      eye: eye ?? own.eye,
+      ahead: ahead ?? own.ahead,
+    })),
   );
-  if (!eye) ride.cab = (v, view) => vehicles[v].look(view);
+  if (vehicles[0]?.look) ride.cab = (v, view) => vehicles[v].look(view);
   return [vehicles, ride];
 });
 // People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
@@ -2260,6 +2313,7 @@ const gunner = () => (riding?.ride === tankRide ? tanks[riding.vehicle] : null);
 // looking around.
 const armed = () => (flying() && !pilot().unarmed) || gunner() !== null;
 const droneRide = drives.find(([vehicles]) => vehicles === drones)[1];
+const fireRide = drives.find(([vehicles]) => vehicles === fireTrucks)[1];
 // Walking oneself: after the button with the figure, a click or tap on the ground or a bridge
 // (not a building or the water) sets one down there, facing as the camera; walked as driven in
 // src/drive.js, at most a run, the water a wall, always the way one looks; seen from EYE_HEIGHT,
@@ -2327,11 +2381,13 @@ addEventListener("keydown", (e) => {
 // Steering the helicopters, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
 // ←/→ turn; the buttons at the bottom hold the arrow keys while pressed. Q or the stop button
 // stops or goes on. The police cars, motorcycles, the quad and the tank are driven with the same
-// keys and buttons, without stop (the tank with fire).
+// keys and buttons, without stop (the tank with fire); the fire truck with both, stop switching to
+// its ladder and back, fire spraying water.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
-  if (e.code === "Space" && armed()) e.preventDefault(); // fires, presses nothing else
+  // Fires or sprays, presses nothing else.
+  if (e.code === "Space" && (armed() || riding?.ride === fireRide)) e.preventDefault();
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear()); // the keyups come to another window
@@ -2350,14 +2406,17 @@ for (const button of steerBox.querySelectorAll("[data-key]")) {
 let stopped = false;
 const stopButton = document.getElementById("stop");
 const fireButton = steerBox.querySelector('[data-key="Space"]');
+// On the fire truck it switches to its ladder and back, the water button there only then.
 function stop(on) {
   stopped = on;
-  stopButton.firstChild.data = on ? "Go" : "Stop";
+  const ladder = riding?.ride === fireRide;
+  stopButton.firstChild.data = ladder ? (on ? "Drive" : "Work") : on ? "Go" : "Stop";
+  if (ladder) fireButton.hidden = !on;
 }
 stopButton.addEventListener("click", () => stop(!stopped));
 addEventListener("keydown", (e) => {
   const hovers = (flying() && !pilot().plane) || riding?.ride === droneRide;
-  if (e.code === "KeyQ" && hovers && !e.repeat) stop(!stopped);
+  if (e.code === "KeyQ" && (hovers || riding?.ride === fireRide) && !e.repeat) stop(!stopped);
 });
 function steering() {
   const held = (...codes) => (codes.some((code) => keys.has(code)) ? 1 : 0);
@@ -2365,6 +2424,7 @@ function steering() {
     climb: held("KeyW", "ArrowUp") - held("KeyS", "ArrowDown"),
     turn: held("KeyA", "ArrowLeft") - held("KeyD", "ArrowRight"),
     stop: stopped,
+    fire: keys.has("Space") || keys.has("Mouse"),
   };
 }
 
@@ -2384,7 +2444,8 @@ const BOLT_GAP = 0.12; // seconds
 const SHELL_GAP = 1; // seconds
 const AHEAD = 900; // metres along a craft's nose, the point its crosshair is aimed through
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (armed() && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
+  const aims = armed() || ladderView(); // the fire truck's water too
+  if (aims && e.pointerType === "mouse" && e.button === 0) keys.add("Mouse");
 });
 addEventListener("pointerup", (e) => {
   if (e.pointerType === "mouse") keys.delete("Mouse");
@@ -2547,8 +2608,12 @@ function ride(found, clientX, clientY) {
   camera.updateProjectionMatrix();
   const driving = found.ride === footRide || drives.some(([, ride]) => ride === found.ride);
   steerBox.hidden = !pilots.has(found.ride) && !driving;
-  stopButton.hidden = driving ? found.ride !== droneRide : !!pilots.get(found.ride)?.plane;
+  stopButton.hidden = driving
+    ? ![droneRide, fireRide].includes(found.ride)
+    : !!pilots.get(found.ride)?.plane;
   fireButton.hidden = driving ? found.ride !== tankRide : !!pilots.get(found.ride)?.unarmed;
+  fireButton.firstChild.data = found.ride === fireRide ? "Water" : "Fire";
+  stop(false);
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
   head.yaw = head.pitch = 0;
@@ -2561,11 +2626,43 @@ const PITCH = 0.25; // radians
 const LOOK = 1.2; // radians
 const head = { yaw: 0, pitch: 0 }; // radians, left and up
 let dragged = null; // { x, y } of the primary pointer while dragging
+// The fire truck's camera orbit (src/firetruck.js) while its ladder is worked (stopped): dragging
+// turns it around the ladder and tilts it, ORBITING radians per px; the wheel or two fingers zoom.
+const ORBITING = 0.006;
+const ladderView = () =>
+  riding?.ride === fireRide && stopped ? fireTrucks[riding.vehicle].orbit : null;
+const fingers = new Map(); // pointerId → [x, y], of those down on the scene
+const spread = () =>
+  Math.hypot(...[...fingers.values()].reduce(([x, y], [a, b]) => [x - a, y - b]));
 renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (riding && !steered() && e.isPrimary) dragged = { x: e.clientX, y: e.clientY };
+  fingers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (riding && (!steered() || ladderView()) && e.isPrimary)
+    dragged = { x: e.clientX, y: e.clientY };
+});
+// Dragging with the right button turns it without spraying (the left one sprays: steering's fire).
+renderer.domElement.addEventListener("contextmenu", (e) => {
+  if (ladderView()) e.preventDefault();
+});
+renderer.domElement.addEventListener("wheel", (e) => {
+  const view = ladderView();
+  if (view) view.distance *= Math.exp(e.deltaY * 0.001);
 });
 addEventListener("pointermove", (e) => {
+  const view = ladderView();
+  if (fingers.has(e.pointerId)) {
+    const before = fingers.size === 2 && spread();
+    fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (before && view) view.distance *= before / spread();
+  }
   if (!dragged || !e.isPrimary) return;
+  if (view) {
+    if (fingers.size < 2) {
+      view.turn -= (e.clientX - dragged.x) * ORBITING;
+      view.tilt += (e.clientY - dragged.y) * ORBITING;
+    }
+    dragged = { x: e.clientX, y: e.clientY };
+    return;
+  }
   // Radians per px, so the scene follows the pointer.
   const turn = THREE.MathUtils.degToRad(camera.fov) / innerHeight;
   const up = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
@@ -2610,6 +2707,7 @@ renderer.domElement.addEventListener("mousemove", (e) => {
 });
 for (const type of ["pointerup", "pointercancel"])
   addEventListener(type, (e) => {
+    fingers.delete(e.pointerId);
     if (e.isPrimary) dragged = null;
   });
 // Turns the camera, just placed by cab, by the head.

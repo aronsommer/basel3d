@@ -4,8 +4,9 @@
 // pace, a little right of the loop, so those meeting pass each other; some with a child or a dog
 // beside them. One further than RADIUS reappears near that edge (in the whole circle after a jump
 // of the centre); all are hidden while the camera is further than SHOWN from the centre. They walk
-// round the zones kept off (the Fasnacht clique's rows and members), stepping aside in a bow (BOW); where that
-// is too far, as it crosses their way, they stop before it, watching it pass.
+// round the zones kept off (the Fasnacht clique's rows and members, the fire truck), stepping
+// aside in a bow (BOW); where that is too far, as it crosses their way, they stop before it,
+// watching it pass, and turn back after BOW.back seconds.
 import * as THREE from "three";
 import { createCrowd } from "./people.js";
 
@@ -26,13 +27,13 @@ const BESIDE = { child: [-0.6, 0], dog: [0.6, 0.5] };
 const EVERY = { child: 7, dog: 9 };
 // Walking round zones: metres kept off them (a child or dog beside too), looked ahead, at most
 // stepped aside, per second stepped aside; metres from a zone's back beyond which it is not
-// looked at; seconds one waiting stands still before it looks again.
-const BOW = { margin: 1.2, look: 4, most: 5, speed: 1.2, near: 40, hold: 2 };
+// looked at; seconds one waiting stands still before it looks again, and before it turns back.
+const BOW = { margin: 1.2, look: 4, most: 5, speed: 1.2, near: 40, hold: 2, back: 8 };
 
 // buffer: walks.bin; x0, z0: the scene point of the area's north-west corner; people: looks in
 // turn (bodies "man" and "woman"), the children's too; dogs: theirs in turn; ground(x, z, y): the
 // height walked on there, from near y, the highest there for y = Infinity, where one appears;
-// zones: those kept off, each back x, z, way x, z (unit), length and half width.
+// zones: lists of those kept off, each back x, z, way x, z (unit), length and half width.
 export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones) {
   // Each loop's points as x, z, and the offset of each point to the right of the loop's way, so
   // that, scaled, the lines between them stay that far right of the loop's (mitred).
@@ -104,6 +105,7 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones) {
       heading: 0,
       bow: 0,
       hold: 0,
+      waited: 0,
       watch: [0, 0],
       pose: "walk",
     });
@@ -138,26 +140,27 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones) {
       const [x, z, dx, dz] = spot(w, w.right, ahead);
       const length = Math.hypot(dx, dz);
       const [nx, nz] = [-dz / length, dx / length];
-      for (const zone of zones) {
-        const [ox, oz] = [x - zone[0], z - zone[1]];
-        if (Math.abs(ox) + Math.abs(oz) > BOW.near) continue;
-        let [t0, t1] = [-Infinity, Infinity];
-        // Across, where it is along the zone and beside it.
-        for (const [v, p, lo, hi] of [
-          [ox * zone[2] + oz * zone[3], nx * zone[2] + nz * zone[3], -m, zone[4] + m],
-          [ox * zone[3] - oz * zone[2], nx * zone[3] - nz * zone[2], -zone[5] - m, zone[5] + m],
-        ]) {
-          if (Math.abs(p) < 1e-9) {
-            if (v < lo || v > hi) t0 = Infinity;
-            continue;
+      for (const list of zones)
+        for (const zone of list) {
+          const [ox, oz] = [x - zone[0], z - zone[1]];
+          if (Math.abs(ox) + Math.abs(oz) > BOW.near) continue;
+          let [t0, t1] = [-Infinity, Infinity];
+          // Across, where it is along the zone and beside it.
+          for (const [v, p, lo, hi] of [
+            [ox * zone[2] + oz * zone[3], nx * zone[2] + nz * zone[3], -m, zone[4] + m],
+            [ox * zone[3] - oz * zone[2], nx * zone[3] - nz * zone[2], -zone[5] - m, zone[5] + m],
+          ]) {
+            if (Math.abs(p) < 1e-9) {
+              if (v < lo || v > hi) t0 = Infinity;
+              continue;
+            }
+            const [a, b] = [(lo - v) / p, (hi - v) / p];
+            [t0, t1] = [Math.max(t0, Math.min(a, b)), Math.min(t1, Math.max(a, b))];
           }
-          const [a, b] = [(lo - v) / p, (hi - v) / p];
-          [t0, t1] = [Math.max(t0, Math.min(a, b)), Math.min(t1, Math.max(a, b))];
+          if (t0 >= t1) continue;
+          if (!spans.length) [w.watch[0], w.watch[1]] = [zone[0], zone[1]];
+          spans.push(t0, t1);
         }
-        if (t0 >= t1) continue;
-        if (!spans.length) [w.watch[0], w.watch[1]] = [zone[0], zone[1]];
-        spans.push(t0, t1);
-      }
     }
     // The nearest place to that side free of all spans.
     const free = (side) => {
@@ -207,6 +210,7 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones) {
         z,
         bow: 0,
         hold: 0,
+        waited: 0,
       });
       w.y = ground(x, z, Infinity);
       w.heading = Math.atan2(...spot(w, w.right, 0).slice(2));
@@ -239,6 +243,21 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones) {
         const target = (w.hold -= dt) > 0 ? null : aside(w);
         if (target === null && w.hold <= 0) w.hold = BOW.hold;
         const waits = target === null;
+        // Turning back: the other way along its stretch, where it stands (its bow mirrored).
+        w.waited = waits && !fleeing ? w.waited + dt : 0;
+        if (w.waited > BOW.back) {
+          const { points } = w.loop;
+          const [a, b] = [w.at, next(w)];
+          const length = Math.hypot(points[b] - points[a], points[b + 1] - points[a + 1]);
+          Object.assign(w, {
+            at: b,
+            along: length - w.along,
+            step: -w.step,
+            bow: -2 * w.right - w.bow,
+            hold: 0,
+            waited: 0,
+          });
+        }
         const sideways = THREE.MathUtils.clamp(
           waits ? 0 : target - w.bow,
           -BOW.speed * dt,
