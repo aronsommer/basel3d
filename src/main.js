@@ -34,7 +34,7 @@ import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createStation } from "./station.js";
-import { createPride } from "./pride.js";
+import { createPride, dress, prideShader } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
 import { createSwans, createZoo } from "./zoo.js";
 import { createRunners } from "./runners.js";
@@ -327,8 +327,8 @@ scene.add(terrain);
 const structures = createBuildings(buildings.scene, bridges.scene, [terrain], renderer, camera);
 {
   // Facades on the walls (src/facade.js), the Novartis Pavillon's lights on walls and roofs
-  // (src/pavilion.js), before the highlight createBuildings set. Their own cache keys, as the
-  // functions read the same.
+  // (src/pavilion.js), a building dressed in the rainbow's stripes (src/pride.js), before the
+  // highlight createBuildings set. Their own cache keys, as the functions read the same.
   const extend = (material, ...shaders) => {
     const highlight = material.onBeforeCompile;
     material.onBeforeCompile = (shader, renderer) => {
@@ -337,8 +337,8 @@ const structures = createBuildings(buildings.scene, bridges.scene, [terrain], re
     };
     material.customProgramCacheKey = () => shaders.map((add) => add.name).join();
   };
-  extend(materials.wall, facadeShader, pavilionShader);
-  extend(materials.roof, pavilionShader);
+  extend(materials.wall, facadeShader, pavilionShader, prideShader);
+  extend(materials.roof, pavilionShader, prideShader);
 }
 const deckMaps = createDecks(bridges.scene, materials.bridge);
 if (map) map.changed = mapChanged;
@@ -1355,6 +1355,17 @@ for (const [x, z] of spires) {
   const flag = createPride(...tip, prideHeading);
   scene.add(flag);
   onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
+}
+// The Elisabethenkirche, under its nave's roof at WGS84 47.552741, 7.590989, dressed in the
+// rainbow's stripes from its foot to its spire's tip.
+const elisabethen = roofOver({ x: 468.2, z: 497.3 }); // none if it is destroyed
+if (elisabethen) {
+  const { number } = elisabethen;
+  let [bottom, top] = [Infinity, -Infinity];
+  for (const { positions: p } of structures.triangles([number]).get(number) ?? [])
+    for (let i = 1; i < p.length; i += 3)
+      [bottom, top] = [Math.min(bottom, p[i]), Math.max(top, p[i])];
+  dress(number, bottom, top);
 }
 // The Badischer Bahnhof's platform roofs, each under one of these points, as dark as its building's
 // roof (LV95 2612676.3, 1268528.5).
