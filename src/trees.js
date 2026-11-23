@@ -18,7 +18,8 @@ export function createTrees(positions, canopy, terrainInfo, heightAt) {
     g.deleteAttribute("uv");
     return g;
   };
-  const trunk = new THREE.CylinderGeometry(0.04, 0.06, 0.5, 5, 1, true);
+  const TRUNK = 0.06; // radius at the ground of a trunk 1 unit wide
+  const trunk = new THREE.CylinderGeometry(0.04, TRUNK, 0.5, 5, 1, true);
   trunk.translate(0, 0.25, 0);
   const CROWN = 0.33; // radius of a crown 1 unit wide
   const crown = new THREE.IcosahedronGeometry(CROWN);
@@ -97,5 +98,15 @@ export function createTrees(positions, canopy, terrainInfo, heightAt) {
     mesh.computeBoundingBox();
     return mesh;
   });
-  return { meshes, near, middle, far, clear };
+  // [x, z, its trunk's radius at the ground] of each tree standing where near(x, z).
+  const trunks = (near) => {
+    const list = [];
+    for (let i = 0; i < trees.length / 3; i++)
+      if (near(trees[3 * i], trees[3 * i + 1])) {
+        const { x, z, width } = treeAt(i);
+        list.push([x, z, TRUNK * width]);
+      }
+    return list;
+  };
+  return { meshes, near, middle, far, clear, trunks };
 }

@@ -1,6 +1,7 @@
 // Cyclists and e-scooter riders to and fro along routes on the Rhine's banks: men and women on
-// bikes (src/bike.js) and e-scooters. Each keeps to the right and passes one slower ahead on the
-// left when that is clear, else keeps behind it; they brake for traffic and wait.
+// bikes (src/bike.js) and e-scooters, some scooters in twos side by side (TWOS). Each keeps to the
+// right and passes one slower ahead (or someone walking, people) on the left when that is clear,
+// else keeps behind it; they brake for traffic and wait.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BIKE, bikeFrame, PEDAL } from "./bike.js";
@@ -19,6 +20,15 @@ const [BRAKE, START] = [5, 1.5];
 // Out of traffic's way: metres across at most, metres a second they move across, seconds calm till
 // they move back.
 const [DODGE, DASH, CALM] = [6, 4, 2];
+// Of the scooters, every TWOS-th pair rides side by side, the second TOGETHER metres left of the
+// first.
+const [TWOS, TOGETHER] = [3, 1];
+// Metres around within which they look at people.
+const NEAR = 15;
+// Metres round its rear and front wheel none else comes within (src/space.js); seconds one blocked
+// there stands before it turns round.
+const ROOM = 0.35;
+const STUCK = 3;
 // Bikes SCALE times the girl's (her rider's body scaled with it).
 const SCALE = 1.6;
 
@@ -112,17 +122,33 @@ function locate({ stretch, s, right }) {
 // A mover on a stretch: { stretch, s, way: ±1 along it, top: metres a second it would go, pace:
 // as it goes, keep: metres right of the middle as it goes, pass: metres further left while
 // passing, right: as now, along the stretch, dodge: where right it goes out of traffic's way (null
-// if not), calm: seconds since, rolled: metres it went, x, y, z, heading }, facing on.
+// if not), calm: seconds since, rolled: metres it went, stuck: seconds blocked, x, y, z, heading;
+// for space its rear wheel's room (radius, group: itself) and front: its front wheel's }, facing
+// on.
 function mover(stretch, s, way, top, keep, ground) {
   const m = { stretch, s: THREE.MathUtils.clamp(s, 0, stretch.length), way, top, pace: top, keep };
-  Object.assign(m, { pass: 0, right: way * keep, dodge: null, calm: 0, rolled: 0 });
+  Object.assign(m, { pass: 0, right: way * keep, dodge: null, calm: 0, rolled: 0, stuck: 0 });
   const [x, z, dx, dz] = locate(m);
+  // Its front wheel's room: set as it first moves.
+  Object.assign(m, {
+    radius: ROOM,
+    group: m,
+    front: { x: Infinity, z: 0, radius: ROOM, group: m },
+  });
   return Object.assign(m, { x, y: ground(x, z), z, heading: Math.atan2(way * dx, way * dz) });
 }
 // Metres o is ahead of m along m's way.
 const ahead = (m, o) => (o.s - m.s) * m.way;
-// Whether none of others but m is within WIDTH of right across and from to to metres ahead of m.
-const clear = (m, others, right, from, to) =>
+// Metres one of people (p: x, z) is ahead of m along its heading, and right of it; null if far.
+function near(m, p) {
+  const [dx, dz] = [p.x - m.x, p.z - m.z];
+  if (p.gone || !(Math.abs(dx) + Math.abs(dz) < NEAR)) return null;
+  const [hx, hz] = [Math.sin(m.heading), Math.cos(m.heading)];
+  return [dx * hx + dz * hz, dz * hx - dx * hz];
+}
+// Whether none of others but m, nor of people, is within WIDTH of right across and from to to
+// metres ahead of m.
+const clear = (m, others, people, right, from, to) =>
   !others.some(
     (o) =>
       o !== m &&
@@ -130,36 +156,54 @@ const clear = (m, others, right, from, to) =>
       Math.abs(o.right - right) < WIDTH &&
       ahead(m, o) > from &&
       ahead(m, o) < to,
+  ) &&
+  !people.some((list) =>
+    list.some((p) => {
+      const at = near(m, p);
+      return (
+        at && Math.abs(at[1] - (right - m.right) * m.way) < WIDTH && at[0] > from && at[0] < to
+      );
+    }),
   );
-// The metres a second m goes at most, wanting speed, among others: behind the nearest in its way
-// ahead and slower it moves out to pass when that is clear ahead, else keeps to its speed; it moves
-// back in once clear there, or at once if that one comes the other way (and waits).
-function among(m, others, speed) {
+// The metres a second m goes at most, wanting speed, among others and people (lists of { x, z,
+// heading, speed, gone }; the gone not counted): behind the nearest in its way ahead and slower it
+// moves out to pass when that is clear ahead, else keeps to its speed; it moves back in once clear
+// there, or at once if that one comes the other way (and waits; but out round one walking).
+function among(m, others, people, speed) {
   const look = LOOK + m.pace;
-  let front = null;
+  // Metres to the nearest ahead, its speed along m's way, whether it is one of people.
+  let [front, theirs, person] = [Infinity, 0, false];
   for (const o of others) {
     if (o === m || o.stretch !== m.stretch || Math.abs(o.right - m.right) >= WIDTH) continue;
     const d = ahead(m, o);
-    if (d > 0 && d < look && (!front || d < ahead(m, front))) front = o;
+    if (d > 0 && d < look && d < front) [front, theirs] = [d, o.pace * o.way * m.way];
   }
-  if (front) {
-    const theirs = front.pace * front.way * m.way; // its speed along m's way
+  for (const list of people)
+    for (const p of list) {
+      const at = near(m, p);
+      if (at && at[0] > 0 && at[0] < look && at[0] < front && Math.abs(at[1]) < WIDTH)
+        [front, theirs, person] = [at[0], p.speed * Math.cos(p.heading - m.heading), true];
+    }
+  if (front < Infinity) {
     if (theirs >= speed) return speed;
-    if (theirs <= 0)
+    if (theirs <= 0 && !person)
       m.pass = 0; // one coming the other way: back in, not to meet it head on
-    else if (!m.pass && clear(m, others, m.way * (m.keep - PASS), -2, 2 * look)) m.pass = PASS;
+    else if (!m.pass && clear(m, others, people, m.way * (m.keep - PASS), -2, 2 * look))
+      m.pass = PASS;
     return Math.max(0, theirs);
   }
-  if (m.pass && clear(m, others, m.way * m.keep, -3, look)) m.pass = 0;
+  if (m.pass && clear(m, others, people, m.way * m.keep, -3, look)) m.pass = 0;
   return speed;
 }
 // On dt seconds towards wanted metres a second, round at the ends, moving across to keep right
-// after turning round and to pass, or fast out of traffic's way.
-function move(m, wanted, dt, ground) {
+// after turning round and to pass, or fast out of traffic's way; not where its rear or front wheel
+// (reach metres ahead) would come into another (space): stopping instead, and turning round after
+// STUCK seconds so.
+function move(m, wanted, dt, ground, space, reach) {
   const { stretch } = m;
+  const before = [m.s, m.way, m.right];
   m.pace += THREE.MathUtils.clamp(wanted - m.pace, -BRAKE * dt, START * dt);
   m.s += m.way * m.pace * dt;
-  m.rolled += m.pace * dt;
   if (m.s < 0 || m.s > stretch.length) {
     m.way = -m.way;
     m.s = THREE.MathUtils.clamp(m.s, 0, stretch.length);
@@ -167,19 +211,35 @@ function move(m, wanted, dt, ground) {
   const right = m.dodge ?? m.way * (m.keep - m.pass);
   const side = (m.dodge === null ? SIDE : DASH) * dt;
   m.right += THREE.MathUtils.clamp(right - m.right, -side, side);
-  const [x, z] = locate(m);
+  let [x, z] = locate(m);
+  const { front } = m;
+  const [ux, uz] = [Math.sin(m.heading) * reach, Math.cos(m.heading) * reach];
+  if (
+    space.blocked(m, ROOM, m.x, m.z, x, z) ||
+    space.blocked(m, ROOM, front.x, front.z, x + ux, z + uz)
+  ) {
+    [m.s, m.way, m.right] = before;
+    m.pace = 0;
+    if ((m.stuck += dt) > STUCK) [m.way, m.stuck] = [-m.way, 0];
+    [x, z] = [m.x, m.z];
+  } else {
+    m.stuck = 0;
+    m.rolled += m.pace * dt;
+  }
   if (x !== m.x || z !== m.z) {
     const turn = Math.atan2(x - m.x, z - m.z) - m.heading;
     const by = Math.atan2(Math.sin(turn), Math.cos(turn));
     m.heading += THREE.MathUtils.clamp(by, -TURN * dt, TURN * dt);
   }
   Object.assign(m, { x, y: ground(x, z), z });
+  [front.x, front.z] = [x + Math.sin(m.heading) * reach, z + Math.cos(m.heading) * reach];
 }
 
 // The cyclists and e-scooter riders on these routes (each [x, z] points); ground(x, z):
 // the height there; danger(x, y, z, reach): null if no traffic is there, else the shortest way out
-// of it ([x, z]) within reach metres (src/main.js). { meshes, update(dt) }.
-export function createRunners(routes, ground, danger) {
+// of it ([x, z]) within reach metres (src/main.js); space: src/space.js's. { meshes, update(dt,
+// people) }: people as for among.
+export function createRunners(routes, ground, danger, space) {
   const stretches = routes.map(stretchOf);
   const total = stretches.reduce((sum, { length }) => sum + length, 0);
   // A stretch, the longer the likelier, and a spot on it.
@@ -211,17 +271,22 @@ export function createRunners(routes, ground, danger) {
       },
       count,
     );
-    const riders = Array.from({ length: count }, (_, k) => {
-      const [stretch, s] = somewhere();
+    const riders = [];
+    for (let k = 0; k < count; k++) {
+      // The second of a pair of scooters beside the first.
+      const first = pose === "scoot" && k % (2 * TWOS) === 1 && riders[k - 1];
+      const [stretch, s] = first ? [first.stretch, first.s] : somewhere();
       const rider = {
-        ...mover(stretch, s, pick([-1, 1]), random(...speed), random(...lane), ground),
+        ...(first
+          ? mover(stretch, s, first.way, first.top, first.keep - TOGETHER, ground)
+          : mover(stretch, s, pick([-1, 1]), random(...speed), random(...lane), ground)),
         crowd: crowds[k % 2 ? "woman" : "man"],
         index: k >> 1,
       };
       rider.crowd.dress(rider.index, looks[k], pose);
       frames.setColorAt(k, color.set(colours[k % colours.length]));
-      return rider;
-    });
+      riders.push(rider);
+    }
     const wheels =
       ride === RIDES.bike && new THREE.InstancedMesh(BIKE.wheels[0][0], material, 2 * count);
     const meshes = [frames, crowds.man.mesh, crowds.woman.mesh, ...(wheels ? [wheels] : [])];
@@ -230,6 +295,8 @@ export function createRunners(routes, ground, danger) {
   const meshes = kinds.flatMap((kind) => kind.meshes);
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
   const all = kinds.flatMap(({ riders }) => riders);
+  space.add(all);
+  space.add(all.map(({ front }) => front));
 
   const [matrix, wheel, spin] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
   const [turn, seat, position, scale] = [
@@ -241,7 +308,7 @@ export function createRunners(routes, ground, danger) {
   const quaternion = new THREE.Quaternion();
   return {
     meshes,
-    update(dt) {
+    update(dt, people) {
       for (const { ride, riders, frames, wheels } of kinds) {
         const { size, base, seat: at, rider, lean } = ride;
         scale.setScalar(size);
@@ -257,7 +324,7 @@ export function createRunners(routes, ground, danger) {
           const look = LOOK + r.pace;
           const [ax, az] = [r.x + Math.sin(r.heading) * look, r.z + Math.cos(r.heading) * look];
           const wanted = out || danger(ax, r.y, az, 0) ? 0 : r.top;
-          move(r, among(r, all, wanted), dt, ground);
+          move(r, among(r, all, people, wanted), dt, ground, space, base * size);
           // Pitched as the ground under its rear and front wheels.
           const reach = base * size;
           const front = ground(

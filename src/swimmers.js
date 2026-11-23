@@ -3,7 +3,7 @@
 // into the bag, drifting down it upright, arms on the bag ahead, turning a little to each other as
 // they talk, and dressing again where it comes out. Every NAKED-th has no bag: in swimwear all the
 // way, it swims down crawling. Men swim in trunks, women in swimsuits. Some drift in groups of
-// friends side by side (on land one behind the other), one behind catching up.
+// friends side by side (on land in twos side by side, PAIR metres apart), one behind catching up.
 // In the water each keeps one of LANES lanes, LANE metres apart from the line towards the river; on
 // land the passers-by keep a little left of the path's middle and the joggers a little right, so
 // joggers pass them; going in or out of the water they go in single file. None comes nearer than
@@ -25,6 +25,8 @@ const NAKED = 8;
 // other.
 const GROUPS = [1, 2, 3, 1, 2, 4];
 const [BESIDE, CATCH] = [0.3, 1.25];
+const PAIR = 0.8; // metres
+const ROOM = 0.3; // metres round one on land none else comes within (src/space.js)
 const SWIM = 1.7; // metres per second, with the current
 const [WALK, RUN] = [1.3, 2.8]; // metres per second
 const [STRIDE, RUN_STRIDE] = [4.5, 2.6]; // radians of the walk, of the run, per metre
@@ -54,6 +56,7 @@ const [FLOAT, HOLD, BAG, SWAY] = [1.3, 0.95, 0.08, 0.35];
 const DRIFT = 0.3; // metres one drifts slowly left and right of its lane, with its group
 const [TILT, SINK, REACH] = [1.4, 0.15, 2.3];
 const LEAN = 0.12; // radians a jogger leans forward
+const CARRY = [1.2, 0.34]; // metres the bag's middle is up and behind one on land, leaning with it
 const SHALLOW = 0.6; // metres over the Rhine's surface the bank's lowest steps are swum from
 // Bright, to be seen on the Rhine: mostly red, orange and pink, some yellow, green, a dark blue.
 const BAGS = [0xff1744, 0xff6d00, 0xff00a8, 0x00e676, 0xff4081, 0xffea00, 0xff9100, 0x1a237e];
@@ -105,8 +108,9 @@ function looks(lists, count, swimwear, caps = false) {
 
 // loop: [x, z] points round, in the water where the ground is at most SHALLOW over water;
 // ground(x, z): the height there; ferries: src/ferries.js's (their line from a along r for length, mesh).
-// { meshes, update(dt) }.
-export function createSwimmers(loop, ground, water, ferries) {
+// space: src/space.js's, where they are and keep room on land. { meshes, update(dt), people: each
+// with x, z, heading, speed and whether gone (in the water) }.
+export function createSwimmers(loop, ground, water, ferries, space) {
   // Per point its height and whether it is in the water; the distances along the loop.
   const points = loop.map(([x, z]) => ({ x, z, y: ground(x, z) }));
   points.forEach((p) => (p.wet = p.y <= water + SHALLOW));
@@ -299,7 +303,7 @@ export function createSwimmers(loop, ground, water, ferries) {
     bags.setColorAt(k, colour.set(BAGS[k % BAGS.length]));
     m.bag = k % NAKED !== NAKED - 1;
     if (!m.bag) m.looks = [m.looks[1], m.looks[1]];
-    [m.k, m.first, m.rank] = [k, m, 0]; // alone: its own group's first
+    [m.k, m.first, m.rank, m.partner] = [k, m, 0, null]; // alone: its own group's first
   });
   // The groups, each of passers-by or joggers with a bag: in lanes side by side behind the first.
   for (const gait of ["walk", "run"]) {
@@ -307,7 +311,9 @@ export function createSwimmers(loop, ground, water, ferries) {
     for (let n = 0, g = 0; n < list.length; n += GROUPS[g++ % GROUPS.length])
       list
         .slice(n, n + GROUPS[g % GROUPS.length])
-        .forEach((m, rank, group) => Object.assign(m, { first: group[0], rank }));
+        .forEach((m, rank, group) =>
+          Object.assign(m, { first: group[0], rank, partner: rank % 2 ? group[rank - 1] : null }),
+        );
   }
   const sizes = new Map();
   for (const { first } of people) sizes.set(first, (sizes.get(first) ?? 0) + 1);
@@ -318,6 +324,8 @@ export function createSwimmers(loop, ground, water, ferries) {
     Object.assign(m, {
       s: ((((first.k * 11) % people.length) * total) / people.length - rank * GAP + total) % total,
       lane: ((first.k * 3) % (LANES - size + 1)) + rank, // the group's lanes side by side
+      // On land, beside its partner: further from the joggers' or walkers' side.
+      shore: m.shore + (rank % 2) * PAIR * (m.gait === "run" ? -1 : 1),
       phase: k * 1.7,
       bathing: null, // whether it was in swimwear
       dressing: 0, // seconds left changing clothes
@@ -329,6 +337,7 @@ export function createSwimmers(loop, ground, water, ferries) {
   });
   const [matrix, place] = [new THREE.Matrix4(), new THREE.Vector3()];
   const upright = new THREE.Matrix4().makeRotationX(Math.PI / 2); // the bag, carried
+  const leaning = new THREE.Matrix4();
   let clock = 0; // seconds, for the swaying
 
   // The swans' round: two straights of reach metres, from AWAY into the swum stretch, joined by
@@ -439,11 +448,24 @@ export function createSwimmers(loop, ground, water, ferries) {
           if (behind > BESIDE && behind < total / 2) step *= CATCH;
         }
       }
+      // On land beside its partner: catching up with it, or slowing for it.
+      if (!wet && !shore && m.partner && step) {
+        const lag = ((m.partner.s - m.s + 1.5 * total) % total) - total / 2;
+        if (lag > BESIDE) step *= CATCH;
+        else if (lag < -BESIDE) step /= CATCH;
+      }
       for (let k = 1; k < order.length && step; k++) {
         const other = order[(n + k) % order.length];
         const gap = (other.s - m.s + total) % total;
         if (gap - GAP > step) break;
+        if (!shore && other.first === m.first && (other.rank - m.rank) % 2) continue; // a pair
         if (shore || Math.abs(other.side - m.side) < APART) step = Math.max(0, gap - GAP);
+      }
+      // On land not into another (space): standing instead.
+      if (step && !wet) {
+        const on = (m.s + step) % total;
+        const { x, z } = at(on, offset(m, on));
+        if (space.blocked(m, ROOM, m.x, m.z, x, z)) step = 0;
       }
       m.s = (m.s + step) % total;
       if (!wet) m.phase += step * m.stride;
@@ -454,6 +476,9 @@ export function createSwimmers(loop, ground, water, ferries) {
       const spot = at(m.s, m.side);
       const { j, x, z } = spot;
       let heading = spot.heading;
+      const lean = m.dressing ? 0 : m.lean; // on land
+      // For the cyclists (src/runners.js).
+      Object.assign(m, { heading, speed: dt && step / dt, gone: swum[j] && !m.dressing });
       if (swum[j] && !m.dressing) {
         const { y } = spot; // the water's surface
         if (m.bag) {
@@ -463,14 +488,20 @@ export function createSwimmers(loop, ground, water, ferries) {
         } else m.crowd.place(m.i, x, y - SINK, z, heading, m.phase, 1, TILT);
       } else {
         const y = ground(x, z);
-        m.crowd.place(m.i, x, y, z, heading, m.phase, 1, m.dressing ? 0 : m.lean);
-        // On the back, upright, like a rucksack.
-        place.set(x - Math.sin(heading) * 0.36, y + 1.2, z - Math.cos(heading) * 0.36);
+        m.crowd.place(m.i, x, y, z, heading, m.phase, 1, lean);
+        // On the back, upright, like a rucksack, leaning forward with it.
+        const [up, ahead] = [Math.cos(lean), Math.sin(lean)];
+        const along = CARRY[0] * ahead - CARRY[1] * up;
+        place.set(
+          x + Math.sin(heading) * along,
+          y + CARRY[0] * up + CARRY[1] * ahead,
+          z + Math.cos(heading) * along,
+        );
       }
       [m.x, m.z] = [x, z];
       if (!m.bag) place.y = -1000; // none
       matrix.makeRotationY(heading);
-      if (!swum[j] || m.dressing) matrix.multiply(upright);
+      if (!swum[j] || m.dressing) matrix.multiply(leaning.makeRotationX(lean)).multiply(upright);
       bags.setMatrixAt(m.k, matrix.setPosition(place));
     }
     bags.instanceMatrix.needsUpdate = true;
@@ -479,5 +510,7 @@ export function createSwimmers(loop, ground, water, ferries) {
   update(0);
   const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags, flock];
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
-  return { meshes, update };
+  for (const m of people) Object.assign(m, { radius: ROOM, group: m });
+  space.add(people);
+  return { meshes, update, people };
 }

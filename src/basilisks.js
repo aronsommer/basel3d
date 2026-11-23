@@ -50,6 +50,7 @@ const SLAB = 0.12; // metres the stone slab is high
 const RIM = SLAB + 0.937; // metres up the basin's rim
 const LEVEL = SLAB + 0.9; // and its water
 const H = 0.51; // metres the basilisk is high, its wings' tips
+export const BASIN = 0.462; // metres, the basin's radius
 const AT = new THREE.Vector3(0, RIM + 0.05, -0.37); // the middle of its foot, on its plinth
 const TURN = -0.6; // radians its head is turned to its right
 // The basilisk's parts are given in H from the middle of its foot, its head's turned by TURN.
@@ -143,7 +144,7 @@ const FOUNTAIN = mergeGeometries([
         [0.42, 0.76],
         [0.431, 0.84],
         [0.459, 0.88],
-        [0.462, RIM - SLAB],
+        [BASIN, RIM - SLAB],
         [0.43, RIM - SLAB],
         [0.425, LEVEL - SLAB],
       ].map(([r, y]) => new THREE.Vector2(r, y)),

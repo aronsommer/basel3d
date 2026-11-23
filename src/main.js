@@ -34,13 +34,14 @@ import { createDrones } from "./drone.js";
 import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
-import { BASILISKS, createBasilisks } from "./basilisks.js";
+import { BASILISKS, BASIN, createBasilisks } from "./basilisks.js";
 import { createStation } from "./station.js";
 import { createFireStation, GREY } from "./firestation.js";
 import { createPride, dress, prideShader } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
 import { createSwans, createZoo } from "./zoo.js";
 import { createRunners } from "./runners.js";
+import { createSpace } from "./space.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
@@ -280,7 +281,24 @@ const passage = (() => {
   const river = terrainAt(...point(length / 2, -PASSAGE.reach));
   return { a, ux, uz, length, half, bank, y0, y1, river, local, point };
 })();
-const treePositions = new Uint16Array(treesBuffer);
+// The Basiliskbrunnen (src/basilisks.js) at x, z; the single trees but those within CLEARED
+// metres of one, which would hide it, or of a spot of UNTREED ([latitude, longitude]).
+const fountains = BASILISKS.map(([lat, lon]) => fromWGS84(lat, lon));
+const UNTREED = [
+  [47.562538, 7.58905],
+  [47.562355, 7.589198],
+];
+const CLEARED = 3;
+const treePositions = (() => {
+  const cleared = [...fountains, ...UNTREED.map(([lat, lon]) => fromWGS84(lat, lon))];
+  const [all, kept] = [new Uint16Array(treesBuffer), []];
+  for (let i = 0; i < all.length; i += 2) {
+    const [x, z] = [terrainInfo.x0 + all[i] / 8, terrainInfo.z0 + all[i + 1] / 8];
+    if (cleared.every(([cx, cz]) => (cx - x) ** 2 + (cz - z) ** 2 >= CLEARED ** 2))
+      kept.push(all[i], all[i + 1]);
+  }
+  return Uint16Array.from(kept);
+})();
 const canopyTrees = new Uint16Array(canopyBuffer);
 const gltfLoader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const [glb, bridges, waterMask] = await Promise.all([
@@ -595,10 +613,12 @@ const towardsRhine = (x, z) => {
     if (sx || sz) return Math.atan2(sx, sz);
   }
 };
-const basilisks = BASILISKS.map(([lat, lon], k) => {
-  const [x, z] = fromWGS84(lat, lon);
-  return { x, y: heightAt(x, z), z, heading: towardsRhine(x, z) ?? k * 2.4 };
-});
+const basilisks = fountains.map(([x, z], k) => ({
+  x,
+  y: heightAt(x, z),
+  z,
+  heading: towardsRhine(x, z) ?? k * 2.4,
+}));
 scene.add(createBasilisks(basilisks));
 // The decks of all standing bridges (deckOf), made when first needed.
 let roads = null;
@@ -613,12 +633,14 @@ scene.add(...ships.meshes);
 // Cyclists and e-scooter riders (src/runners.js) along the Rhine's Kleinbasel bank
 // (src/rheinweg.js), braking for what the people flee from (danger).
 const rheinweg = RHEINWEG.map(([lat, lon]) => fromWGS84(lat, lon));
-const runners = createRunners([rheinweg], heightAt, danger);
+// Where those on foot and on wheels keep room from each other (src/space.js).
+const space = createSpace();
+const runners = createRunners([rheinweg], heightAt, danger, space);
 scene.add(...runners.meshes);
 // Passers-by and joggers who swim down the Rhine (src/swimmers.js) on their round
 // (src/rheinweg.js), waiting for the ferries and swimming aside from them, and swans beside them.
 const rheinrunde = RHEINRUNDE.map(([lat, lon]) => fromWGS84(lat, lon));
-const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries);
+const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries, space);
 scene.add(...swimmers.meshes);
 // A Fasnacht clique (src/fasnacht.js) marching round the Marktplatz, along its middle east of the
 // tram tracks, 8 m or more from them.
@@ -1142,6 +1164,7 @@ const walkGround = (x, z, y) => {
     }
   return Math.max(below, below > WATER || reached > -Infinity ? reached : highest);
 };
+const keptOff = []; // where walkers keep off the vehicles above (footprints, below)
 const walkers = createWalkers(
   walksBuffer,
   terrainInfo.x0,
@@ -1176,9 +1199,16 @@ const walkers = createWalkers(
     ),
   },
   walkGround,
-  [clique.zones, fireTrucks.map(({ zone }) => zone)],
+  [clique.zones, fireTrucks.map(({ zone }) => zone), keptOff],
+  (near) => [
+    ...tree.trunks(near),
+    ...basilisks.filter(({ x, z }) => near(x, z)).map(({ x, z }) => [x, z, BASIN]),
+  ],
+  space,
 );
 scene.add(...walkers.meshes);
+// Those on foot the cyclists (src/runners.js) keep off.
+const pedestrians = [swimmers.people, walkers.members];
 // Their loops in the layer "Walks", on the bridge or ground.
 kindLines.walk = Object.assign(
   checkLines(walkers.stretches.flatMap(([x, z]) => [x, walkGround(x, z, Infinity) + 0.3, z])),
@@ -2286,6 +2316,17 @@ function danger(x, y, z, reach, march, clear = 0, turn = 0) {
   }
   return way;
 }
+// The vehicles above as zones walkers keep off (keptOff): each one's footprint, back x, z, way x,
+// z, length and half width; far off while it is more than DANGER.level over the ground.
+keptOff.push(...driven.map(() => new Float64Array(6)));
+function footprints() {
+  driven.forEach(({ vehicle: { group, half, width } }, d) => {
+    const { position: p, rotation, scale } = group;
+    const [ux, uz, h] = [Math.sin(rotation.y), Math.cos(rotation.y), half * scale.x];
+    if (p.y - walkGround(p.x, p.z, p.y) > DANGER.level) keptOff[d][0] = Infinity;
+    else keptOff[d].set([p.x - ux * h, p.z - uz * h, ux, uz, 2 * h, (width / 2) * scale.x]);
+  });
+}
 // Figures flee after all has moved this frame, from the vehicles above at their speed along
 // their heading.
 function flee(dt) {
@@ -3120,8 +3161,10 @@ renderer.setAnimationLoop((time) => {
   peopleTime.value = time / 1000;
   const now = new Date();
   clockTime.value = (now / 1000 - now.getTimezoneOffset() * 60) % 86400;
+  footprints();
+  space.update();
   walkers.update(dt, riding ? camera.position : orbit.target, camera.position);
-  runners.update(dt);
+  runners.update(dt, pedestrians);
   swimmers.update(dt);
   clique.update(dt);
   training.update(dt);
