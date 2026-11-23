@@ -426,6 +426,14 @@ function sample(ring) {
     }
     carry -= length;
   }
+  // The loop is closed, so the points left open at its start, before any height was known (on a
+  // bridge, its deck compared with the terrain below), go by the height at its end.
+  let end = points.findLast((q) => !Number.isNaN(q.y))?.y;
+  for (const p of points) {
+    if (!Number.isNaN(p.y) || end === undefined) break;
+    const deck = top(p);
+    if (Math.abs(deck - end) < ON_DECK) end = p.y = Math.max(deck, heightAt(p.x, p.z));
+  }
   // Short tunnels (underpasses, the terrain having the ground under bridges) stay on the
   // terrain, so nothing vanishes in them.
   for (let k = 0; k < tunnels.length;) {

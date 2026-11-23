@@ -540,6 +540,12 @@ p {
       "ArrowLeft ArrowDown ArrowRight"
       "Space Space Space";
   }
+  /* Without the Space button its row goes, so ←, ↓ and → take its place. */
+  #steer:has([data-key="Space"][hidden]) {
+    grid-template-areas:
+      "Stop ArrowUp ."
+      "ArrowLeft ArrowDown ArrowRight";
+  }
   /* The buttons smaller, as they only show the keys. */
   #steer button {
     width: 36px;

@@ -25,6 +25,7 @@ import { createFireTrucks } from "./firetruck.js";
 import { createDriving } from "./drive.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createQuads } from "./quad.js";
+import { createXrts } from "./xrt.js";
 import { createTanks } from "./tank.js";
 import { createBike } from "./bike.js";
 import { createLawn } from "./lawn.js";
@@ -849,6 +850,9 @@ const motorcycles = createMotorcycles(
   world,
 );
 const quads = createQuads(parked([{ x: 628.4, z: -499.3, heading: 1.85 }]), boost, world);
+// A life-size Traxxas XRT (src/xrt.js) in the St. Johanns-Park at WGS84 47.567823,
+// 7.582330, facing east to the Rhine.
+const xrts = createXrts(parked([{ x: -186.7, z: -1178.4, heading: Math.PI / 2 }]), boost, world);
 // People (src/people.js) at LV95 points, each facing toward
 // (turned up to SPREAD radians away, each a little otherwise) or else the others within NEAR
 // metres, or alone k radians from south.
@@ -1523,6 +1527,7 @@ scene.add(
     ...fireTrucks,
     ...motorcycles,
     ...quads,
+    ...xrts,
     ...tanks,
     ...dinos,
     ...drones,
@@ -2090,7 +2095,7 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the jet, the sea
-// monster, the UFO, a police car, the ambulance, the fire truck, a motorcycle, the quad, the tank, a boat or the drone to ride along; while
+// monster, the UFO, a police car, the ambulance, the fire truck, a motorcycle, the quad, the XRT, the tank, a boat or the drone to ride along; while
 // riding, but not steering, a click or tap on another one changes to it. A finger also finds one
 // up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
@@ -2108,14 +2113,15 @@ const jetRide = riders([
   { object: jet.group, materials: [jet.material], eye: [0, 8, -48], ahead: [0, 2.6, 40] },
 ]);
 // What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the ambulance, the fire truck, the
-// motorcycles, the quads, the tanks, the dinosaur and the boats, from behind and above; the fire truck from its own eye
-// and ahead; the drones through their own camera (look).
+// motorcycles, the quads, the XRT, the tanks, the dinosaur and the boats, from behind and above; the fire truck from its own eye
+// and ahead; the XRT and the drones through their own camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
   [ambulances, [0, 3.8, -10], [0, 1.5, 9]],
   [fireTrucks],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
   [quads, [0, 2.6, -6], [0, 0.6, 5]],
+  [xrts],
   [tanks, [0, 5, -16], [0, 2, 14]],
   [dinos, [0, 30, -55], [0, 8, 20]],
   [fireboats, [0, 9, -24], [0, 3, 20]],
@@ -2314,6 +2320,7 @@ const gunner = () => (riding?.ride === tankRide ? tanks[riding.vehicle] : null);
 const armed = () => (flying() && !pilot().unarmed) || gunner() !== null;
 const droneRide = drives.find(([vehicles]) => vehicles === drones)[1];
 const fireRide = drives.find(([vehicles]) => vehicles === fireTrucks)[1];
+const flipRide = drives.find(([vehicles]) => vehicles === xrts)[1];
 // Walking oneself: after the button with the figure, a click or tap on the ground or a bridge
 // (not a building or the water) sets one down there, facing as the camera; walked as driven in
 // src/drive.js, at most a run, the water a wall, always the way one looks; seen from EYE_HEIGHT,
@@ -2380,14 +2387,15 @@ addEventListener("keydown", (e) => {
 });
 // Steering the helicopters, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
 // ←/→ turn; the buttons at the bottom hold the arrow keys while pressed. Q or the stop button
-// stops or goes on. The police cars, motorcycles, the quad and the tank are driven with the same
+// stops or goes on. The police cars, motorcycles, the quad, the XRT and the tank are driven with the same
 // keys and buttons, without stop (the tank with fire); the fire truck with both, stop switching to
-// its ladder and back, fire spraying water.
+// its ladder and back, fire spraying water; the XRT with fire as Flip, a backflip.
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
-  // Fires or sprays, presses nothing else.
-  if (e.code === "Space" && (armed() || riding?.ride === fireRide)) e.preventDefault();
+  // Fires, sprays or flips, presses nothing else.
+  if (e.code === "Space" && (armed() || [fireRide, flipRide].includes(riding?.ride)))
+    e.preventDefault();
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => keys.clear()); // the keyups come to another window
@@ -2611,8 +2619,11 @@ function ride(found, clientX, clientY) {
   stopButton.hidden = driving
     ? ![droneRide, fireRide].includes(found.ride)
     : !!pilots.get(found.ride)?.plane;
-  fireButton.hidden = driving ? found.ride !== tankRide : !!pilots.get(found.ride)?.unarmed;
-  fireButton.firstChild.data = found.ride === fireRide ? "Water" : "Fire";
+  fireButton.hidden = driving
+    ? ![tankRide, flipRide].includes(found.ride)
+    : !!pilots.get(found.ride)?.unarmed;
+  fireButton.firstChild.data =
+    found.ride === fireRide ? "Water" : found.ride === flipRide ? "Flip" : "Fire";
   stop(false);
   flown = null; // from where it is
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now

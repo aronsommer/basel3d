@@ -17,7 +17,7 @@
  },
  "cars.bin": {
   "size": 269341,
-  "hash": "5310e0a3"
+  "hash": "6ce5f433"
  },
  "cars.json": {
   "size": 13330,
@@ -328,8 +328,8 @@
   "hash": "2a472e6c"
  },
  "walks.bin": {
-  "size": 58898,
-  "hash": "925bf146"
+  "size": 58776,
+  "hash": "b7e942af"
  },
  "water.ktx2": {
   "size": 227833,
