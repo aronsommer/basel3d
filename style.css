@@ -256,7 +256,7 @@ p {
   width: 16px;
   height: 16px;
   margin: 0;
-  accent-color: #ff00ff;
+  accent-color: #f1f5f9;
   cursor: pointer;
 }
 /* The settings, the names, the lines and the panels apart from each other. */
@@ -265,15 +265,9 @@ p {
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.3);
 }
-/* "All" neutral, as it stands for lines of all colours; "Names", "Fullscreen", "Mouse aim" and
-   the panels neutral, as they show none. */
-#menu #trams,
-#menu #names-box,
-#menu #fullscreen-box,
-#menu #aim-box,
-#menu #points-box,
-#menu #dev-box {
-  accent-color: #f1f5f9;
+/* Neutral but the boxes of the magenta check lines (each tram line's box takes its colour). */
+#menu input[data-kind] {
+  accent-color: #ff00ff;
 }
 /* "Mouse aim" not where the steering buttons are for thumbs (#steer below, by the same rule). */
 @media not (pointer: fine) {

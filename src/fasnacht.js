@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
-import { DRUM_ARMS, PIVOTS, createCrowd, peopleTime } from "./people.js";
+import { DRUM_ARMS, MAJOR_ARM, PIVOTS, createCrowd, peopleTime } from "./people.js";
 import { night } from "./daylight.js";
 
 const SPEED = 0.8; // metres per second
@@ -28,9 +28,10 @@ const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a];
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const rod = (r, length) => new THREE.CylinderGeometry(r, r, length, 8);
 // The mask over the head (its top at 1.85 m), with its wig; the lantern on it; a piccolo at the
-// mask's mouth, under its nose, out to the right (-x), where both hands hold it (src/people.js, pose pipe); a
-// drum hung tilted ahead of the thighs, its upper head facing up and right; the drum major's staff
-// held ahead in the right hand.
+// mask's mouth, under its nose, out to the right (-x), where both hands hold it (src/people.js,
+// pose pipe); a drum hung tilted ahead of the thighs, its upper head facing up and right; the drum
+// major's staff, held upright by its middle in the right hand (HAND), raised and lowered with the
+// arm.
 const MASK = mergeGeometries([
   part(box(0.38, 0.48, 0.38), 0xf3dcc0, [0, 1.74, 0.02]),
   part(box(0.1, 0.13, 0.2), 0xd83a3a, [0, 1.7, 0.27]), // nose
@@ -45,12 +46,11 @@ const DRUM = mergeGeometries([
   part(rod(0.21, 0.36).rotateZ(0.45), 0xc62828, [0.08, 0.7, 0.3]),
   part(rod(0.215, 0.03).rotateZ(0.45), 0xf5f5f5, [0.002, 0.862, 0.3]), // the upper head
 ]);
-// The drumsticks, turning with the arms about the shoulders (PIVOTS[1] m up): each from BEHIND
-// metres behind the hand to the spot on the drum's head it strikes with its arm lowest (STRIKE, by
+// The drumsticks, turning with the arms about the shoulders (PIVOTS[1] m up): each from the
+// hand to the spot on the drum's head it strikes with its arm lowest (STRIKE, by
 // side: the right -1, the left 1). HAND: per body the hand's metres out and up, the arm hanging.
 const STICK = part(rod(0.012, 1).translate(0, 0.5, 0), 0x4e342e, [0, 0, 0]);
-const BEHIND = 0.06;
-const STRIKE = { [-1]: [-0.078, 0.913, 0.33], 1: [0.082, 0.835, 0.33] };
+const STRIKE = { [-1]: [-0.078, 0.835, 0.33], 1: [0.082, 0.913, 0.33] };
 const HAND = { man: [0.28, 0.92], woman: [0.235, 0.92] };
 const [lift, turned] = [new THREE.Matrix4(), new THREE.Matrix4()];
 // Into m: turning by a radians about the shoulders (as src/people.js turns the arms).
@@ -68,21 +68,20 @@ const STICKS = Object.fromEntries(
         swing(lowest, new THREE.Matrix4()),
       );
       const way = new THREE.Vector3(...STRIKE[s]).sub(hand);
-      const length = way.length() + BEHIND;
+      const length = way.length();
       const along = new THREE.Quaternion().setFromUnitVectors(
         new THREE.Vector3(0, 1, 0),
         way.normalize(),
       );
       const stick = new THREE.Matrix4().compose(hand, along, new THREE.Vector3(1, length, 1));
-      stick.multiply(new THREE.Matrix4().makeTranslation(0, -BEHIND / length, 0));
       return swing(-lowest, new THREE.Matrix4()).multiply(stick);
     });
     return [body, sides];
   }),
 );
 const STAFF = mergeGeometries([
-  part(rod(0.02, 1.8), 0x6d4c41, [-0.29, 0.95, 0.32]),
-  part(new THREE.SphereGeometry(0.08, 10, 8), 0xffd54f, [-0.29, 1.9, 0.32]),
+  part(rod(0.02, 1.8), 0x6d4c41, [0, 0, 0]),
+  part(new THREE.SphereGeometry(0.08, 10, 8), 0xffd54f, [0, 0.95, 0]),
 ]);
 
 // The loop: from a to b ([x, z]) and back, WIDE either side, round at the ends. ground(x, z): the
@@ -125,7 +124,7 @@ export function createClique([a, b], ground) {
     createCrowd(body, members.filter((_, i) => i % 2 === k).length, false),
   );
   members.forEach((m, i) => {
-    Object.assign(m, { crowd: crowds[i % 2], i: i >> 1, sticks: STICKS[bodies[i % 2]] });
+    Object.assign(m, { crowd: crowds[i % 2], i: i >> 1, body: bodies[i % 2] });
     const skin = SKIN[i % SKIN.length];
     m.crowd.dress(m.i, { skin, hair: 0x2a1d14, ...(m.pose === "major" ? MAJOR : COSTUME) }, m.pose);
   });
@@ -141,11 +140,11 @@ export function createClique([a, b], ground) {
     [meshOf(LANTERN, members.length, glowing), () => true],
     [meshOf(PICCOLO, members.filter((m) => m.pose === "pipe").length), (m) => m.pose === "pipe"],
     [meshOf(DRUM, members.filter((m) => m.pose === "drum").length), (m) => m.pose === "drum"],
-    [meshOf(STAFF, 1), (m) => m.pose === "major"],
   ];
   const lanterns = carried[1][0];
   const sticks = meshOf(STICK, 2 * members.filter((m) => m.pose === "drum").length);
-  const [matrix, swung] = [new THREE.Matrix4(), new THREE.Matrix4()];
+  const staff = meshOf(STAFF, 1);
+  const [matrix, swung, arm] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
   let [front, phase] = [0, 0];
 
   function update(dt) {
@@ -160,17 +159,22 @@ export function createClique([a, b], ground) {
       matrix.makeRotationY(heading).setPosition(x, y, z);
       carried.forEach(([mesh, has], k) => has(m) && mesh.setMatrixAt(counts[k]++, matrix));
       if (m.pose === "drum")
-        m.sticks.forEach((rest, k) => {
+        STICKS[m.body].forEach((rest, k) => {
           const s = 2 * k - 1;
           const a =
             DRUM_ARMS[0] + DRUM_ARMS[1] * Math.sin(peopleTime.value * DRUM_ARMS[2] + s * 1.5708);
-          sticks.setMatrixAt(
-            stick++,
-            swung.multiplyMatrices(matrix, swing(a, swung.clone())).multiply(rest),
-          );
+          sticks.setMatrixAt(stick++, swung.multiplyMatrices(matrix, swing(a, arm)).multiply(rest));
         });
+      if (m.pose === "major") {
+        const a = MAJOR_ARM[0] + MAJOR_ARM[1] * Math.sin(phase);
+        const [out, up] = HAND[m.body];
+        const grip = up - PIVOTS[1];
+        arm.makeTranslation(-out, PIVOTS[1] + grip * Math.cos(a), grip * Math.sin(a));
+        staff.setMatrixAt(0, swung.multiplyMatrices(matrix, arm));
+      }
     }
-    for (const [mesh] of [...carried, [sticks]]) mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of [...carried.map(([mesh]) => mesh), sticks, staff])
+      mesh.instanceMatrix.needsUpdate = true;
     rows.forEach(([behind, half], r) => {
       const [x, z, heading] = at(front - behind, 0);
       const [ux, uz] = [Math.sin(heading), Math.cos(heading)];
@@ -181,7 +185,12 @@ export function createClique([a, b], ground) {
     glowing.emissiveIntensity = 2 * night.value;
   }
   update(0);
-  const meshes = [...crowds.map(({ mesh }) => mesh), ...carried.map(([mesh]) => mesh), sticks];
+  const meshes = [
+    ...crowds.map(({ mesh }) => mesh),
+    ...carried.map(([mesh]) => mesh),
+    sticks,
+    staff,
+  ];
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
   return { meshes, update, zones };
 }

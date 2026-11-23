@@ -26,6 +26,15 @@ basel3d/
 ├── style.css          styles of the page
 ├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
+├── src/geo.js         scene x, z <-> LV95 and WGS84
+├── src/lines.js       lines to check the ways of what moves
+├── src/riders.js      riding along on single objects: the camera's eye, the highlight
+├── src/movers.js      trams, trains and cars on their loops, and the traffic's grid
+├── src/ships.js       ships and whales on the Rhine
+├── src/aircraft.js    the airliners, the helicopter and flying them
+├── src/birds.js       flocks of birds
+├── src/serpent.js     the sea serpent
+├── src/trees.js       the trees, near detailed, far as cones
 ├── src/buildings.js   buildings and bridges as single objects: picking, hits, highlight, hide
 ├── src/city.js        the buildings' meshes from basel.bin
 ├── src/cityfile.js    reads basel.bin
@@ -131,7 +140,7 @@ Run out of order, a script stops with an error where a file it reads is missing 
 
 ## What moves
 
-Everything that moves is built in the viewer itself ([src/main.js](src/main.js)), in a low-poly style and without model files. It is moved every frame in `update` functions. The paths that must be correct are computed in advance by converters.
+Everything that moves is built in the viewer itself ([src/main.js](src/main.js) and the modules in `src/`), in a low-poly style and without model files. It is moved every frame in `update` functions. The paths that must be correct are computed in advance by converters.
 
 - **Trams, trains and cars** (`createMovers` with the values per kind in `KINDS`, paths from `tools/paths.mjs`: `npm run trams`, `trains`, `cars`):
   - Each path is a closed loop on which the vehicles run endlessly. They follow the network of OSM ways (one-way roads and roundabouts only in their direction), never turn back, and turn from one way segment to the next by at most 60° (trams, shallow switches), 45° (trains) or 120° (cars).
@@ -155,7 +164,7 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js))
 - **Day and night** (`src/daylight.js`): "Night" in the menu switches to a mild blue dusk, eased over 1.5 s: the moon's bluish light, stars, darker clouds and water, about 42 % of the windows glowing warm and all shopfronts (far away the walls glow by that share), the lamps of trams, trains and cars shining three times as bright and the Fasnacht clique's head lanterns lit. The browser remembers the choice (`localStorage`, key `basel3d.night`). By day all is as before there were nights.
 - **Cyclists and e-scooter riders** (`src/runners.js`): to and fro along the Rheinweg on the Kleinbasel bank (`src/rheinweg.js`), keeping right, passing slower ones on the left, braking for traffic.
 - **Rhine swimmers** (`src/swimmers.js`): 104 passers-by and joggers on a round (`RHEINRUNDE` in `src/rheinweg.js`): up the Rheinweg and the Solitude to the steps by the Museum Tinguely, a bright dry bag on the back like a rucksack, there into the Rhine from its lowest step, down it along the Kleinbasel bank and out of it just above the St. Johann ferry's landing by the Dreirosenbrücke. Changing clothes takes them 6 s on the bank: men swim in trunks, women in swimsuits, their clothes in the bag. In the water they drift upright in five lanes 1.5 m apart, arms stretched ahead on the bag, turning to each other and drifting a little sideways; some in groups of two to four side by side, one behind catching up. Every eighth has no bag and crawls down in swimwear, walking back in it. On land passers-by keep a little left of the path's middle, joggers a little right and pass them; in and out of the water they go in single file, none nearer than 2.5 m behind another in its lane. Before a ferry's line none swims into the band its hull sweeps (11 m either side) while the ferry is within 30 m, one in it hurries out, one within 10 m of a hull swims faster, and none swims with its hands against one. Ships keep 22 m or more from their line.
-- **Fasnacht clique** (`src/fasnacht.js`): 15 marching in step round the Marktplatz, along its middle 6.7 m or more from the tram tracks: the drum major with his staff, two rows of four pipers with piccolos, two rows of three drummers with Basel drums, all in one costume and mask (Larve: a big painted head with a red nose and a wig). The pipers hold their piccolos at the mouth, out to the right; the drummers' sticks strike the drums. Passers-by give it a wide berth, as they do traffic. At night each mask carries a lit head lantern, as at the Morgestraich.
+- **Fasnacht clique** (`src/fasnacht.js`): 15 marching in step round the Marktplatz, along its middle 6.7 m or more from the tram tracks: the drum major with his staff, two rows of four pipers with piccolos, two rows of three drummers with Basel drums, all in one costume and mask (Larve: a big painted head with a red nose and a wig). The pipers hold their piccolos at the mouth, out to the right; the drummers' sticks strike the drums. Passers-by walk round it in a bow, or, where it crosses their way, stop and watch it pass. At night each mask carries a lit head lantern, as at the Morgestraich.
 
 ## Controls
 

@@ -115,7 +115,7 @@ function road(length, width, wheel, axles, [head, tail], parts) {
     ...axles.map((z) => piece(tyre, DARK, [0, wheel, z])),
     block(0.15 - w, head, l, w - 0.15, head + 0.1, l + 0.02, HEAD, 3),
     block(0.15 - w, tail, -l - 0.02, w - 0.15, tail + 0.1, -l, TAIL, 4),
-  ]).scale(1, 1, 1 / length); // as long as the vehicle (createMovers)
+  ]).scale(1, 1, 1 / length); // as long as the vehicle (src/movers.js)
 }
 // Each: its share of all road vehicles, its length (metres), its colours and its shape.
 export const ROAD = [

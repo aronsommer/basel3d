@@ -36,7 +36,7 @@ const FORWARD = 0.2;
 // stretched over the head (ahead, tilted to lie in the water) and turning round in turn, the legs
 // kicking; pipe, drum and major, marching (the legs as walking): the upper arms a little ahead,
 // the forearms up to a piccolo held out to the right under the mouth; the arms beating a drum fast
-// in turn; the right arm ahead to a staff and the left swinging.
+// in turn; the right arm raising and lowering a staff in step and the left swinging.
 const POSES = [
   "stand",
   "walk",
@@ -73,6 +73,9 @@ const PIPE_ARMS = [1.17, -2.12, 0.73, 0.07];
 // Drumming: the arms' radians (as a), at rest and beating either way, and the beat (radians a
 // second), the arms in turn.
 export const DRUM_ARMS = [-0.9, 0.25, 14];
+// The drum major's right arm, raising and lowering the staff in step: radians (as a) at rest and
+// either way, by the walk's phase.
+export const MAJOR_ARM = [-1.4, 0.8];
 // Radians a second of the sitting one's tossing arm, furthest ahead at 1.5708 (+ its phase).
 export const TOSS = 1.5;
 
@@ -298,7 +301,7 @@ material.onBeforeCompile = (shader) => {
           : pose >= 14 && limb != 2 ? -${LEG} * sin(phase) * side
           : pose == 14 ? -0.85
           : pose == 15 ? ${DRUM_ARMS[0]} + ${DRUM_ARMS[1]} * sin(t * float(${DRUM_ARMS[2]}) + side * 1.5708)
-          : pose == 16 ? (side < 0.0 ? -0.5 : ${ARM} * sin(phase) * side)
+          : pose == 16 ? (side < 0.0 ? ${MAJOR_ARM[0]} + ${MAJOR_ARM[1]} * sin(phase) : ${ARM} * sin(phase) * side)
           : 0.0;
         if (pose == 14 && limb == 2 && transformed.y < ${PIPE_ARMS[0]}) {
           // Piping: the forearm turned up at the elbow and to the right, onto the piccolo.

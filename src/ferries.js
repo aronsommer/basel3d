@@ -35,7 +35,10 @@ const ABOVE = 6; // and above the ground there
 const SAG = 2; // metres the cable hangs down in its middle
 const PIECES = 16; // straight pieces of a cable
 const OUT = 8; // metres the masts stand beyond the landings
-const IN = 3; // metres short of the landings (OSM's, at the water's edge) the ferry rests
+// Metres short of the landings (OSM's, at the water's edge) the ferry rests, at least, and further
+// out while the bank under its side there is more than HIDE above the water (it would hide it).
+const IN = 3;
+const HIDE = 0.3;
 const SPEED = 1.5; // metres per second crossing, on average
 const REST = 15; // seconds at each landing
 const TURN = 0.45; // radians the bow turns towards the other bank halfway over
@@ -161,14 +164,28 @@ export function createFerries(place, heightAt, boost) {
     const point = new THREE.Vector3();
     for (let k = 0; k < PIECES; k++)
       for (const j of [k, k + 1]) cables.push(...cable(j / PIECES, point).toArray());
+    // Where it rests, metres from each landing: its side over the water all along its length.
+    const [rest0, rest1] = [0, 1].map((k) => {
+      const [lx, lz] = k ? [bx, bz] : [ax, az];
+      const s = k ? -1 : 1; // from the landing out over the water
+      // Whether the bank hides its side towards the landing, at its stern, middle and bow.
+      const hidden = (d) =>
+        [PLAN[0][1], 0, PLAN[4][1]].some((u) => {
+          const out = s * (d - PLAN[2][0]);
+          return heightAt(lx + r.x * out + up.x * u, lz + r.z * out + up.z * u) > water + HIDE;
+        });
+      let d = IN;
+      while (d < length / 2 && hidden(d)) d += 0.5;
+      return d;
+    });
     // Over after resting, gently away and in, and back again.
-    const span = length - 2 * IN;
+    const span = length - rest0 - rest1;
     const cross = span / SPEED;
     const cycle = 2 * (REST + cross);
     const ease = THREE.MathUtils.smoothstep;
     const at = (seconds) => {
       const t = (seconds + i * LATE) % cycle;
-      return IN + span * (ease(t, REST, REST + cross) - ease(t, 2 * REST + cross, cycle));
+      return rest0 + span * (ease(t, REST, REST + cross) - ease(t, 2 * REST + cross, cycle));
     };
     const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const mesh = new THREE.Mesh(BOAT, material);
