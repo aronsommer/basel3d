@@ -406,6 +406,22 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       }
       return found;
     },
+    // Per building (not bridge) whose bounding box comes within reach of x, z seen from above, but
+    // hidden ones: [its number, its walls (surfacesOf)].
+    walls(x, z, reach) {
+      if (!boxes) measure();
+      const found = new Map();
+      for (let cx = cellOf(x - reach); cx <= cellOf(x + reach); cx++)
+        for (let cz = cellOf(z - reach); cz <= cellOf(z + reach); cz++)
+          for (const n of cells.get(cellKey(cx, cz)) ?? NONE) {
+            const b = 6 * n;
+            if (n >= count || found.has(n) || !meshesOf[n].length) continue;
+            if (x < boxes[b] - reach || x > boxes[b + 3] + reach) continue;
+            if (z < boxes[b + 2] - reach || z > boxes[b + 5] + reach) continue;
+            found.set(n, [n, surfacesOf(n).walls]);
+          }
+      return [...found.values()];
+    },
     // The number of the building (not a bridge) with the widest bounding box whose middle is within
     // reach of x, z; -1 if none.
     widest(x, z, reach) {

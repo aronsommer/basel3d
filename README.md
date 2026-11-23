@@ -46,6 +46,7 @@ basel3d/
 ├── src/rails.js       the rails and sleepers on the map's tracks, worked out by the shader
 ├── src/passage.js     the Unterer Rheinweg's passage under the Mittlere Brücke, which swissALTI3D fills up to the deck: the viewer lays its own ground in place of the terrain there: a straight, level floor and the bank beside it, falling into the Rhine
 ├── src/explosions.js  blowing up a building or bridge: flying faces, fire, smoke, bang, scorched ground
+├── src/graffiti.js    graffiti: every tag and piece, on the walls and roofs it names
 ├── src/facade.js      windows, shopfronts and balconies drawn onto the walls by the shader; at night some windows glow
 ├── src/daylight.js    day and night: the sun's way, its light, the sky's, fog's and water's colours, the moon, stars
 ├── src/rheinweg.js    the Rhine's Kleinbasel bank: the riders' Rheinweg and the swimmers' round
@@ -75,6 +76,7 @@ basel3d/
 │   ├── ships.bin      circuit of the ships on the Rhine as 3D points (tools/ships.mjs)
 │   ├── walks.bin      loops on the sidewalks around the inner city's blocks, for the pedestrians (tools/walks.mjs)
 │   ├── names.json     quarters, towns and landmarks with their place (tools/names.mjs)
+│   ├── CherryBombOne.woff2  the graffiti's font (Cherry Bomb One), its Latin letters
 │   └── size.json      size and hash of each file, for the loading percentage and cache
 ├── tools/             converters that generate public/
 │   ├── area.mjs       shared area and coordinates
@@ -184,6 +186,7 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js) 
 - Map, water and ferries: © OpenStreetMap contributors, ODbL.
 - Basiliskbrunnen: source: Industrielle Werke Basel (IWB), data.bs.ch. Free to use with attribution; commercial use only with their permission.
 - Font: Inter by The Inter Project Authors, SIL Open Font License 1.1.
+- Font: Cherry Bomb One by Satsuyako, SIL Open Font License 1.1.
 
 ---
 

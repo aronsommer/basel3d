@@ -47,6 +47,7 @@ import { createDaylight } from "./daylight.js";
 import { createJet } from "./jet.js";
 import { TOSS, createPeople, dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
+import { createGraffiti } from "./graffiti.js";
 import { createDev } from "./dev.js";
 import { createPoints } from "./points.js";
 import { copy } from "./copy.js";
@@ -1284,7 +1285,8 @@ function alongBuilding(number, near) {
   const [base, quarter] = [Math.atan2(s, c) / 4, Math.PI / 2];
   return base + Math.round((near - base) / quarter) * quarter;
 }
-// What stands on a roof comes down to the ground there when destroy() blows its building up.
+// What stands on a roof comes down to the ground there, and graffiti on its walls go, when
+// destroy() blows its building up.
 const grounding = new Map(); // building number → what to call then
 const landOn = (number, land, { x, z }) =>
   grounding.set(number, [...(grounding.get(number) ?? []), () => land(heightAt(x, z))]);
@@ -1406,6 +1408,14 @@ for (const [x, z] of spires) {
   scene.add(flag);
   onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
 }
+// Graffiti on walls (src/graffiti.js).
+load(["CherryBombOne.woff2"], () => {})
+  .then(([font]) => createGraffiti(font, structures, walkGround, roofOver))
+  .then(({ meshes, marks }) => {
+    scene.add(...meshes);
+    for (const [number, hide] of marks)
+      grounding.set(number, [...(grounding.get(number) ?? []), hide]);
+  });
 // The Elisabethenkirche, under its nave's roof at WGS84 47.552741, 7.590989, dressed in the
 // rainbow's stripes from its foot to its spire's tip.
 const elisabethen = roofOver({ x: 468.2, z: 497.3 }); // none if it is destroyed
