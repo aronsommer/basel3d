@@ -182,8 +182,8 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
         .replace(
           "#include <color_vertex>",
           `#include <color_vertex>
-          vLamp = only > 2.5 ? 1.0 : 0.0;
-          if (vLamp > 0.5) vColor.rgb = color.rgb;`,
+          vLamp = only > 2.5 && only < 4.5 ? 1.0 : 0.0;
+          if (only > 2.5) vColor.rgb = color.rgb;`,
         )
         .replace(
           "#include <begin_vertex>",

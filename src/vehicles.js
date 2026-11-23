@@ -4,7 +4,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part, profile } from "./parts.js";
 
 // A part (src/parts.js) of a vehicle of createMovers with only: 1 for the first car of a vehicle
-// only, 2 for the last one only, 3 and 4 the same for lamps (untinted and lit), 0 for every car.
+// only, 2 for the last one only, 3 and 4 the same for lamps (untinted and lit), 0 for every car,
+// 5 for every car untinted.
 function piece(geometry, color, at, only = 0) {
   const g = part(geometry, color, at);
   const flags = new Float32Array(g.attributes.position.count).fill(only);
@@ -36,13 +37,15 @@ function bar(x0, x1, ya, za, yb, zb, color, only) {
   );
 }
 // A side profile ([z, y] points) as a piece, width wide.
-const outline = (points, width, color) => piece(profile(points, width), color, [0, 0, 0]);
+const outline = (points, width, color, only) =>
+  piece(profile(points, width), color, [0, 0, 0], only);
 
 const DARK = 0x2a2d30; // skirts, bogies, tyres, pantographs
 const GLASS = 0x1f2a30;
-const LIGHT = 0xdadcd6; // roofs, tinted as the body
+const LIGHT = 0xdadcd6; // roofs, tinted as the body; rims of lorries and buses
 const HEAD = 0xfff4d6; // headlights
 const TAIL = 0xe01818;
+const SILVER = 0xb8bcc2; // rims
 
 // A tram car of length and height 1 along +z, from 0.1 to 1.1 above the path (scaled per car),
 // 2.3 m wide, after the Flexity of BVB and BLT: a dark skirt, the body with two windows and a door
@@ -105,19 +108,26 @@ export function trainCar(goods) {
   ]);
 }
 
-// Road vehicles in metres along +z, length long and centred on z = 0, on the path: wheels on the
-// given axles (z), head and tail lights across the front and back at the given heights.
-function road(length, width, wheel, axles, [head, tail], parts) {
+// Road vehicles in metres along +z, length long and centred on z = 0, on the path: wheels with
+// rims of the given colour (both untinted) on the given axles (z), head and tail lights across the
+// front and back at the given heights.
+function road(length, width, wheel, rim, axles, [head, tail], parts) {
   const [l, w] = [length / 2, width / 2];
-  const tyre = new THREE.CylinderGeometry(wheel, wheel, width + 0.04, 6).rotateZ(Math.PI / 2);
+  const axle = (radius, long) =>
+    new THREE.CylinderGeometry(radius, radius, long, 6).rotateZ(Math.PI / 2);
+  const [tyre, hub] = [axle(wheel, width + 0.04), axle(wheel * 0.6, width + 0.06)];
   return mergeGeometries([
     ...parts,
-    ...axles.map((z) => piece(tyre, DARK, [0, wheel, z])),
+    ...axles.flatMap((z) => [
+      piece(tyre, DARK, [0, wheel, z], 5),
+      piece(hub, rim, [0, wheel, z], 5),
+    ]),
     block(0.15 - w, head, l, w - 0.15, head + 0.1, l + 0.02, HEAD, 3),
     block(0.15 - w, tail, -l - 0.02, w - 0.15, tail + 0.1, -l, TAIL, 4),
   ]).scale(1, 1, 1 / length); // as long as the vehicle (src/movers.js)
 }
-// Each: its share of all road vehicles, its length (metres), its colours and its shape.
+// Each: its share of all road vehicles, its length (metres), its colours and its shape; its glass
+// untinted.
 export const ROAD = [
   // A car with a glass cabin under a roof.
   {
@@ -129,6 +139,7 @@ export const ROAD = [
         4.4,
         1.8,
         0.32,
+        SILVER,
         [1.35, -1.35],
         [0.62, 0.7],
         [
@@ -153,6 +164,7 @@ export const ROAD = [
             ],
             1.6,
             GLASS,
+            5,
           ),
           block(-0.78, 1.42, -1.2, 0.78, 1.47, 0.4, 0xffffff),
         ],
@@ -162,12 +174,13 @@ export const ROAD = [
   {
     share: 0.2,
     length: 4.7,
-    colors: [0x1c1f24, 0xb8bcc2, 0xf2f2f0, 0x2f6db5, 0x7a1e24, 0x3b5a3a],
+    colors: [0x464a51, 0xb8bcc2, 0xf2f2f0, 0x2f6db5, 0x7a1e24, 0x3b5a3a],
     shape: () =>
       road(
         4.7,
         1.9,
         0.38,
+        0xd0d3d8,
         [1.45, -1.45],
         [0.8, 0.85],
         [
@@ -191,6 +204,7 @@ export const ROAD = [
             ],
             1.74,
             GLASS,
+            5,
           ),
           block(-0.88, 1.7, -2.22, 0.88, 1.78, 0.78, 0xffffff),
         ],
@@ -206,6 +220,7 @@ export const ROAD = [
         4.4,
         1.9,
         0.33,
+        0x55585d,
         [1.35, -1.35],
         [0.45, 0.6],
         [
@@ -230,6 +245,7 @@ export const ROAD = [
             ],
             1.5,
             GLASS,
+            5,
           ),
           block(-0.72, 1.18, -0.9, 0.72, 1.22, 0, 0xffffff),
           block(-0.85, 0.84, -2.2, 0.85, 0.95, -1.95, DARK),
@@ -246,6 +262,7 @@ export const ROAD = [
         5.2,
         2,
         0.34,
+        SILVER,
         [1.75, -1.75],
         [0.8, 0.9],
         [
@@ -269,6 +286,7 @@ export const ROAD = [
             ],
             1.96,
             GLASS,
+            5,
           ),
           outline(
             [
@@ -293,6 +311,7 @@ export const ROAD = [
         8.5,
         2.5,
         0.5,
+        LIGHT,
         [3.2, -2.8],
         [1, 0.8],
         [
@@ -308,8 +327,8 @@ export const ROAD = [
             2.4,
             0xffffff,
           ),
-          block(-1.1, 1.75, 4.14, 1.1, 2.6, 4.17, GLASS),
-          block(-1.22, 1.8, 3, 1.22, 2.6, 4, GLASS),
+          block(-1.1, 1.75, 4.14, 1.1, 2.6, 4.17, GLASS, 5),
+          block(-1.22, 1.8, 3, 1.22, 2.6, 4, GLASS, 5),
           block(-1.2, 0.55, 4.15, 1.2, 0.85, 4.25, DARK),
           block(-1.25, 0.75, -4.25, 1.25, 3.5, 2.3, 0xffffff),
         ],
@@ -325,6 +344,7 @@ export const ROAD = [
         8,
         2.5,
         0.5,
+        LIGHT,
         [2.9, -2.4],
         [1, 0.8],
         [
@@ -340,8 +360,8 @@ export const ROAD = [
             2.4,
             0xffffff,
           ),
-          block(-1.1, 1.7, 3.89, 1.1, 2.5, 3.92, GLASS),
-          block(-1.22, 1.75, 2.8, 1.22, 2.5, 3.75, GLASS),
+          block(-1.1, 1.7, 3.89, 1.1, 2.5, 3.92, GLASS, 5),
+          block(-1.22, 1.75, 2.8, 1.22, 2.5, 3.75, GLASS, 5),
           block(-1.2, 0.55, 3.9, 1.2, 0.85, 4, DARK),
           block(-1.25, 0.75, -4, 1.25, 1, 2, 0xffffff),
           ...[-1, 1].map((s) => block(s * 1.25 - 0.08, 1, -4, s * 1.25 + 0.08, 2.1, 2, 0xffffff)),
@@ -360,13 +380,14 @@ export const ROAD = [
         12,
         2.55,
         0.5,
+        LIGHT,
         [3.6, -2.9],
         [0.6, 0.75],
         [
           block(-1.27, 0.35, -6, 1.27, 2.95, 6, 0xffffff),
-          block(-1.29, 1.3, -5.6, 1.29, 2.5, 5.4, GLASS),
-          block(-1.15, 1, 5.99, 1.15, 2.6, 6.02, GLASS),
-          ...[4.6, -0.2].map((z) => block(1.2, 0.4, z, 1.29, 2.5, z + 0.8, GLASS)),
+          block(-1.29, 1.3, -5.6, 1.29, 2.5, 5.4, GLASS, 5),
+          block(-1.15, 1, 5.99, 1.15, 2.6, 6.02, GLASS, 5),
+          ...[4.6, -0.2].map((z) => block(1.2, 0.4, z, 1.29, 2.5, z + 0.8, GLASS, 5)),
           block(-0.8, 2.95, -4, 0.8, 3.15, -1, LIGHT),
           block(-0.9, 2.65, 6, 0.9, 2.85, 6.03, 0xffb000, 3),
         ],
