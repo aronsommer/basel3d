@@ -4,9 +4,10 @@
 // refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
 // and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
-// part hides and shows it, to see what it costs; at the bottom "Aerial" shows the aerial
-// photo as the ground, not ticked at first. All of it lives here, the menu entry in index.html
-// and the styles in style.css (#dev-box, #dev), so it can be taken out whole.
+// part hides and shows it, to see what it costs; then "Aerial" shows the aerial photo as the
+// ground, and at the bottom "God mode" (src/main.js, godAt), neither ticked at first. All of it
+// lives here, the menu entry in index.html and the styles in style.css (#dev-box, #dev), so it can
+// be taken out whole (but godAt).
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -14,8 +15,9 @@ const SAMPLE = 5;
 const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 
 // A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
-// aerial(on): shows the aerial photo or the map again, its promise done when it does.
-export function createDev(renderer, render, parts, aerial) {
+// aerial(on): shows the aerial photo or the map again, its promise done when it does; god(on):
+// turns God mode on or off.
+export function createDev(renderer, render, parts, aerial, god) {
   const box = document.getElementById("dev-box");
   try {
     box.checked = localStorage.getItem(KEY) === "1";
@@ -54,6 +56,10 @@ export function createDev(renderer, render, parts, aerial) {
     await aerial(photo.checked);
     photo.disabled = false;
   });
+  const godLabel = add("label");
+  const godBox = godLabel.appendChild(element("input", { type: "checkbox" }));
+  godLabel.append("God mode");
+  godBox.addEventListener("change", () => god(godBox.checked));
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.
   const button = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
@@ -79,6 +85,7 @@ export function createDev(renderer, render, parts, aerial) {
     renderer.info.autoReset = !box.checked;
     panel.hidden = !box.checked;
     for (const input of boxes) input.checked = true;
+    god((godBox.checked = false));
     for (const [, objects] of parts) for (const object of objects) object.visible = true;
     rescale(0);
     [frames, timed, cpu, gpu, since, fresh] = [0, 0, 0, 0, performance.now(), true];

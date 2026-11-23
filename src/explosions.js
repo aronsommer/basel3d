@@ -15,6 +15,7 @@ const SPECK = 1; // m², faces smaller give no pieces (railings, edges): few in 
 const THICKNESS = 0.2; // of the pieces on average, in the pieces' width
 const CHUNKS = 5; // across a crashed craft, the chunks it is cut into
 const PUSH = 0.25; // of a crashed craft's speed its chunks keep
+const REACH = 5; // metres around a removed one's bounding box that removedAt finds it in
 const DARKER = 0.7; // the pieces' backs, of their colour; their sides shade from front to back
 
 // The pieces' flight, on the GPU: each vertex relative to its piece's centre (position), turning
@@ -46,7 +47,8 @@ const FIRES = 2000; // fire particles at most
 const BURNING = 1500;
 
 // heightAt(x, z): the terrain height; camera: where the bang is heard.
-export function createExplosions(scene, structures, heightAt, camera) {
+// unburnt: the number of a building that leaves no burning ground (-1: none).
+export function createExplosions(scene, structures, heightAt, camera, unburnt) {
   const running = new Set(); // per frame: step(dt), false when done
   const fire = createParticles(scene, camera, true, FIRES);
   const burning = []; // the flames burning for good, oldest first
@@ -480,6 +482,10 @@ export function createExplosions(scene, structures, heightAt, camera) {
     thump.stop(now + 0.7);
   }
 
+  // Whether the one with this number leaves burning ground: a building, but unburnt.
+  const burns = (number) => !structures.isBridge(number) && number !== unburnt;
+  // Per number removed, its bounding box from before.
+  const removed = new Map();
   // Hides the buildings and bridges with these numbers; returns per one not gone already (nor -1)
   // its number, parts (from structures.triangles), bounding box, middle, extent (metres across)
   // and scale.
@@ -491,6 +497,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
       for (const { positions } of parts)
         for (let i = 0; i < positions.length; i += 3)
           box.expandByPoint(new THREE.Vector3().fromArray(positions, i));
+      removed.set(number, box);
       const size = box.getSize(new THREE.Vector3());
       const extent = Math.max(size.x, size.z, 10);
       const scale = THREE.MathUtils.clamp(extent / 30, 0.8, 2);
@@ -507,7 +514,7 @@ export function createExplosions(scene, structures, heightAt, camera) {
       const { parts, box, middle, extent, scale } = gone;
       debris(parts, middle, scale);
       blast(box, scale, extent, THREE.MathUtils.clamp(Math.round(extent / 2), 12, 40));
-      if (!structures.isBridge(number)) burn(parts, scale);
+      if (burns(number)) burn(parts, scale);
       bang(camera.position.distanceTo(middle), scale);
       return true;
     },
@@ -532,9 +539,23 @@ export function createExplosions(scene, structures, heightAt, camera) {
     // ground burning; returns the numbers of those it removed.
     ruin(numbers) {
       const gone = remove(numbers);
-      for (const { number, parts, scale } of gone)
-        if (!structures.isBridge(number)) burn(parts, scale);
+      for (const { number, parts, scale } of gone) if (burns(number)) burn(parts, scale);
       return gone.map(({ number }) => number);
+    },
+    // The number of the removed one whose bounding box, seen from above, is nearest a scene
+    // point, at most REACH metres away; the smallest where several hold it; else -1.
+    removedAt({ x, z }) {
+      let [best, near, area] = [-1, REACH, Infinity];
+      for (const [number, { min, max }] of removed) {
+        const away = Math.hypot(
+          Math.max(min.x - x, 0, x - max.x),
+          Math.max(min.z - z, 0, z - max.z),
+        );
+        const size = (max.x - min.x) * (max.z - min.z);
+        if (away < near || (away === near && size < area))
+          [best, near, area] = [number, away, size];
+      }
+      return best;
     },
     update(dt) {
       for (const step of running) if (!step(dt)) running.delete(step);

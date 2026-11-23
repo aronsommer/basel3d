@@ -339,7 +339,18 @@ const structures = createBuildings(buildings.scene, bridges.scene, [terrain], re
 }
 const deckMaps = createDecks(bridges.scene, materials.bridge);
 if (map) map.changed = mapChanged;
-const explosions = createExplosions(scene, structures, heightAt, camera);
+// The Käppelijoch (LV95 2611379.7, 1267715.7), a building on the Mittlere Brücke (LV95
+// 2611375.9, 1267720.7): it blows up with the bridge (destroy) and leaves no burning ground in the
+// Rhine. Found before anything is hidden; -1 if not.
+const numberUnder = (model, [e, n]) => {
+  model.updateMatrixWorld();
+  const from = new THREE.Vector3(e - LV95[0], 2000, LV95[1] - n);
+  const hit = new THREE.Raycaster(from, new THREE.Vector3(0, -1, 0)).intersectObject(model)[0];
+  return hit ? hit.object.geometry.attributes._building.getX(hit.face.a) : -1;
+};
+const joch = numberUnder(buildings.scene, [2611379.7, 1267715.7]);
+const mittlere = numberUnder(bridges.scene, [2611375.9, 1267720.7]);
+const explosions = createExplosions(scene, structures, heightAt, camera, joch);
 // What is blown up stays so in this browser until "Rebuild Basel", as long as the models are the
 // same (by their sizes and totals), since the numbers belong to them. Rebuild forgets it and loads
 // the page again. destroyed holds only what was really removed, so the counter is exact.
@@ -441,24 +452,29 @@ function deckOf(triangles) {
 }
 // Blows up the building or bridge with this number (-1: none) and remembers it, if it was there;
 // vehicles vanish where a bridge was, people on its roof and Basel SBB's front with it, and the
-// helipads and the jet on it come down to the ground.
+// helipads and the jet on it come down to the ground, the Käppelijoch goes with its bridge.
 function destroy(number) {
   const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
   scene.remove(...(onRoofs.get(number) ?? []));
   for (const land of grounding.get(number) ?? []) land();
+  if (number === mittlere) destroy(joch);
   if (deck) for (const mover of movers) mover.cut(deck);
   if (deck) rails?.cut(deck);
   if (deck) brokenDecks.push(deck);
   if (deck) roads = null; // made anew without it
   destroyed.add(number);
   showCount();
+  save([...destroyed]);
+}
+// Stores these numbers as the ones destroyed; whether it could.
+function save(numbers) {
   try {
-    localStorage.setItem(
-      DESTROYED_KEY,
-      JSON.stringify({ models: MODELS, numbers: [...destroyed] }),
-    );
-  } catch {} // storage blocked
+    localStorage.setItem(DESTROYED_KEY, JSON.stringify({ models: MODELS, numbers }));
+    return true;
+  } catch {
+    return false; // storage blocked
+  }
 }
 const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy);
 
@@ -793,7 +809,8 @@ const parked = (places) =>
   });
 // Police vans (src/police.js) in St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke,
 // both facing south, and on the Claraplatz by the men there (LV95 2611656.5, 1267907.4), facing
-// southwest, an unmarked one 3 m to its left and 3 m back; a motorcycle (src/motorcycle.js) on the Mittlere Brücke facing Kleinbasel; a
+// southwest, an unmarked one 3 m to its left and 3 m back; a motorcycle (src/motorcycle.js) at
+// WGS84 47.562470, 7.592271 facing the Claraplatz; a
 // tank (src/tank.js) in the yard of the Kaserne facing east; a drone (src/drone.js) 2 m over the
 // Münster's roof (LV95 2611577.4, 1267321.0, 301.3), facing north over the Rhine. It flies down to roofs (structures.top) as well.
 const police = createPolice(
@@ -807,7 +824,7 @@ const police = createPolice(
   world,
 );
 const motorcycles = createMotorcycles(
-  parked([{ x: 375.9, z: -320.7, heading: 2.21 }]),
+  parked([{ x: 562.5, z: -584.6, heading: 0.88 }]),
   boost,
   world,
 );
@@ -2421,8 +2438,9 @@ function shoot(seconds) {
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
 // only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
-// as browsers allow copying only then), else is recorded while recording (src/points.js), else
-// rides what is there; nothing while steering.
+// as browsers allow copying only then), else destroys or rebuilds in God mode (godAt), else sets
+// one down (setDown), else is recorded while recording (src/points.js), else rides what is there;
+// nothing while steering.
 let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
 renderer.domElement.addEventListener(
   "pointerdown",
@@ -2433,11 +2451,23 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
+  if (god) return godAt(e.clientX, e.clientY);
   if (placing) return setDown(e.clientX, e.clientY);
   if (pointsPanel.click(e.clientX, e.clientY)) return;
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
 });
+// "God mode" in the Dev panel: a click or tap destroys the building or bridge there; elsewhere it
+// rebuilds the destroyed one there (explosions.removedAt) by storing the others alone and loading
+// the page again, so all comes back as after "Rebuild Basel".
+let god = false;
+function godAt(clientX, clientY) {
+  const number = structures.at(clientX, clientY);
+  if (number >= 0) return destroy(number);
+  const point = pointAt(clientX, clientY);
+  const gone = point ? explosions.removedAt(point) : -1;
+  if (gone >= 0 && save([...destroyed].filter((n) => n !== gone))) location.reload();
+}
 // Rides found ({ ride, vehicle }), clicked or tapped at a screen point.
 function ride(found, clientX, clientY) {
   if (!riding) {
@@ -2557,10 +2587,10 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 });
 function updateHover() {
   if (!hover) return;
-  const found = pointers.size || steered() || placing ? null : vehicleAt(hover.x, hover.y);
+  const found = pointers.size || steered() || placing || god ? null : vehicleAt(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  renderer.domElement.style.cursor = placing ? "crosshair" : found ? "pointer" : "";
+  renderer.domElement.style.cursor = placing || god ? "crosshair" : found ? "pointer" : "";
 }
 
 // The roof, bridge or ground at a screen point (px), or null.
@@ -2793,6 +2823,7 @@ const drawFrame = createDev(
     ["Terrain", [terrain]],
   ],
   (on) => showGround(on ? "photo" : "map"),
+  (on) => (god = on),
 );
 // Moves the view over the middle of scene points, looking the same way, out as far as shows them
 // all with FIT around them (as seen from above), but not nearer.
