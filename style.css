@@ -402,10 +402,23 @@ p {
   font-variant-numeric: tabular-nums;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
-/* The points marked in the Points panel (src/points.js), numbered. */
+/* The points marked in the Points panel (src/points.js), numbered, each a pin: one shape behind
+   the number, its square's corner turned down to a point, the other three corners round, so its
+   straight sides run on into the circle; that corner, 11px × √2 below the middle (TIP there), is
+   on the point. */
 #badges .mark {
   color: #fff;
+  box-shadow: none;
+}
+#badges .mark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: #1d242b;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 /* Above the mouse for a moment after C copied the coordinates there (src/main.js). */
 #copied {

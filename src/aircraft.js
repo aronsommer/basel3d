@@ -4,11 +4,13 @@ import { part } from "./parts.js";
 import { riders } from "./riders.js";
 
 // Two airliners circling over the city on an oval, one higher and the other way round, so they
-// are always in view. 1.5 times life size (and more far away, see boost), white with a blue tail,
-// no airline. Each is a craft to fly (createFlight), back on its oval at once when let go.
-export function createPlanes(boost, flight) {
+// are always in view, and one parked at each of parked ({ x, y, z, heading }: its wheels on y).
+// 1.5 times life size (and more far away, see boost), white with a blue tail, no airline. Each is
+// a craft to fly (createFlight), back on its oval or place at once when let go.
+export function createPlanes(boost, flight, parked = []) {
   const SPEED = 80; // metres per second
   const SCALE = 1.5;
+  const LIFT = 60; // metres
   // Along +z, in metres: fuselage, nose, wings, tailplane, fin, engines.
   const WHITE = 0xf2f2f0;
   const along = (g) => g.rotateX(Math.PI / 2); // its axis along z, its top ahead
@@ -40,6 +42,7 @@ export function createPlanes(boost, flight) {
   const flights = [
     { height: 700 - 250, direction: 1 },
     { height: 950 - 250, direction: -1 },
+    ...parked.map((place) => ({ place })),
   ].map((flight) => {
     const mesh = new THREE.Mesh(geometry, material.clone()); // its own, highlighted under the mouse
     mesh.rotation.order = "YXZ"; // heading, then pitch and bank in the plane's frame
@@ -57,16 +60,24 @@ export function createPlanes(boost, flight) {
       nose: 30, // metres from its middle to its nose
       unarmed: true,
       plane: true,
+      // Parked on the ground, it first rises straight up this far when boarded, as the jet does
+      // (else flying on level it meets the ground ahead at once), clear of what is round it.
+      lift: flight.place ? LIFT : 0,
     };
     return { ...flight, mesh, craft };
   });
   // Each placed by flown (createFlight) while it is the one flown (flier), else on its oval.
   const update = (seconds, flier, flown) => {
-    for (const { mesh, height, direction, craft } of flights) {
+    for (const { mesh, height, direction, craft, place } of flights) {
       mesh.scale.setScalar(boost(mesh.position));
       if (craft === flier) {
         mesh.position.set(flown.x, flown.y, flown.z);
         mesh.rotation.set(flown.nose - flight.LEVEL, flown.heading, -0.6 * flown.turn);
+        continue;
+      }
+      if (place) {
+        mesh.position.set(place.x, place.y + craft.low, place.z);
+        mesh.rotation.set(0, place.heading, 0);
         continue;
       }
       const a = (direction * seconds * SPEED) / ((RADII[0] + RADII[1]) / 2);

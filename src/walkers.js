@@ -1,5 +1,6 @@
 // Pedestrians on the loops of public/walks.bin (tools/walks.mjs), around the blocks and along the
-// footways of the inner city: COUNT of them within RADIUS of the view's centre, spread by length
+// footways of the inner city (or other loops as given): COUNT of them (unless given) within RADIUS
+// (unless given) of the view's centre, spread by length
 // (BUSY times as many on busy loops), none appearing within APART of another; each at its own
 // pace, its party all a little right of the loop, so those meeting pass each other; some in twos
 // or threes, with a child beside or on the shoulders, a pram, a buggy or a dog, in a wheelchair
@@ -117,8 +118,19 @@ const [MET, SPARE, MOST, DRIFT] = [40, 30, 4, 1];
 // height walked on there, from near y, the highest there for y = Infinity, where one appears;
 // zones: lists of those kept off, each back x, z, way x, z (unit), length and half width;
 // obstacles(near): [x, z, radius] of the round ones standing where near(x, z) (trees, fountains);
-// space: src/space.js's, where they are and keep room.
-export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, obstacles, space) {
+// space: src/space.js's, where they are and keep room; count, radius: instead of COUNT and RADIUS;
+// every: whether the parties are of each kind in turn (PARTIES), not by their SHARES.
+export function createWalkers(
+  buffer,
+  x0,
+  z0,
+  { people, dogs },
+  ground,
+  zones,
+  obstacles,
+  space,
+  { count = COUNT, radius = RADIUS, every = false } = {},
+) {
   // Each loop's points as x, z, and the offset of each point to the right of the loop's way, so
   // that, scaled, the lines between them stay that far right of the loop's (mitred).
   const data = new Uint16Array(buffer);
@@ -186,10 +198,13 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
   // The walkers, each with its party (PARTIES), the first leading: per member its look, figure
   // [crowd body, index], [right, ahead], size, stride, poses and its phase beyond the walker's.
   const counts = new Map();
-  const walkers = Array.from({ length: COUNT + SPARE }, (_, i) => {
-    if (i >= COUNT) return shape({ party: [], slow: 1 }); // spare, for those leaving a party
+  const kinds = Object.keys(PARTIES);
+  const walkers = Array.from({ length: count + SPARE }, (_, i) => {
+    if (i >= count) return shape({ party: [], slow: 1 }); // spare, for those leaving a party
     let r = Math.random();
-    const kind = Object.keys(SHARES).find((k) => (r -= SHARES[k]) < 0) ?? "alone";
+    const kind = every
+      ? kinds[i % kinds.length]
+      : (Object.keys(SHARES).find((k) => (r -= SHARES[k]) < 0) ?? "alone");
     const party = PARTIES[kind].map(
       ({
         look: k = 0,
@@ -446,12 +461,12 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
     }
     return speed;
   }
-  // Puts a walker on a loop near (cx, cz), from `from` to RADIUS away and not within APART of
+  // Puts a walker on a loop near (cx, cz), from `from` to radius away and not within APART of
   // another; false if no such place was found.
   function appear(w, cx, cz, from) {
     for (let tries = 0; tries < 20; tries++) {
       const angle = random(0, 2 * Math.PI);
-      const r = RADIUS * Math.sqrt(random(from, 1));
+      const r = radius * Math.sqrt(random(from, 1));
       const near = grid.get(key(cx + r * Math.cos(angle), cz + r * Math.sin(angle)));
       if (!near) continue;
       const [l, i] = near[Math.floor(Math.random() * near.length)];
@@ -504,8 +519,8 @@ export function createWalkers(buffer, x0, z0, { people, dogs }, ground, zones, o
       walkers.forEach((w) => {
         if (!w.party.length) return; // spare
         const away = Math.hypot(w.x - centre.x, w.z - centre.z);
-        if (!w.loop || away > RADIUS) {
-          const from = w.loop && away < 2 * RADIUS ? 0.8 : 0; // near the edge, unless it jumped
+        if (!w.loop || away > radius) {
+          const from = w.loop && away < 2 * radius ? 0.8 : 0; // near the edge, unless it jumped
           if (!appear(w, centre.x, centre.z, from)) {
             w.loop = null;
             for (const one of w.party) hide(one);

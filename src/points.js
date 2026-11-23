@@ -11,6 +11,7 @@ import { copy } from "./copy.js";
 
 const PANEL_KEY = "basel3d.pointsPanel"; // "1" (on) or "0"
 const POINTS_KEY = "basel3d.points"; // the marks' lines, as Copy points copies them
+const TIP = 11 * Math.SQRT2; // px from a mark's middle down to its tip, on its point (style.css)
 
 // pointAt(x, y): the scene point at a screen point (px), or null; toText(point): its line;
 // fromText(line): its point, or null; onScreen(point): { x, y, front }; show(points): moves the
@@ -120,7 +121,7 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       for (const { point, mark } of points) {
         const { x, y, front } = onScreen(point);
         mark.hidden = !front;
-        mark.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+        mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
       }
     },
   };

@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { PAVILION_BLACK, pavilionLights } from "./pavilion.js";
 import { fade, audio } from "./sound.js";
 
-const [CX, CZ] = [-201.4, -1885.9]; // scene x, z of its place
+const PLACE = [-201.4, -1885.9]; // scene x, z of its place
 const ABOVE = 7; // metres between its underside and what is below its place
 const NEAR = 60; // metres from its place within which it is drawn life size
 const GREEN = 0x39ff14; // neon green: the bolts, the guns' tips, strips and muzzle flashes
@@ -16,9 +16,9 @@ const MAX_BOLTS = 128; // in flight at most, and as many flashes
 const FLASH = 0.25; // seconds a flash lasts where a bolt ends
 
 // boost(position): how much larger to draw it far away (src/main.js); roof(x, z): the scene y of
-// the top there. Its material has vertex colours, which riders (src/main.js) turn off to
+// the top there; at: its place's scene x, z, unless PLACE. Its material has vertex colours, which riders (src/main.js) turn off to
 // highlight it; then it shows no light show.
-export function createUfo(boost, roof) {
+export function createUfo(boost, roof, [cx, cz] = PLACE) {
   // Its hull around y, in metres from its underside: flat and wide, a shallow cone below, a sharp
   // rim at 2 m, a long slope up to the canopy.
   const hull = new THREE.LatheGeometry(
@@ -127,7 +127,7 @@ export function createUfo(boost, roof) {
   );
   const group = new THREE.Group().add(body, canopy, ...cannons.map((c) => c.gun));
   group.rotation.order = "YXZ"; // heading first, then tilt in its frame
-  group.position.set(CX, roof(CX, CZ) + ABOVE, CZ);
+  group.position.set(cx, roof(cx, cz) + ABOVE, cz);
 
   // Bolts flying from the guns in turn (fire), fat and 24 m long, and flashes growing and shrinking
   // where they end; each kind in one draw call.
@@ -157,7 +157,7 @@ export function createUfo(boost, roof) {
   function update(seconds, dt, flown) {
     if (seconds >= nextRoof) {
       nextRoof = seconds + 5;
-      place.set(CX, roof(CX, CZ) + ABOVE, CZ);
+      place.set(cx, roof(cx, cz) + ABOVE, cz);
     }
     const { position, rotation } = group;
     if (flown) {

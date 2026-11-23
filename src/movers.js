@@ -25,7 +25,8 @@ export const carCell = (x, z) =>
 // Those on the parallel way of the other direction pass; those ahead and at crossings block.
 // Trams and trains go first: they wait only for each other, cars for all. Every path is a closed
 // loop that its vehicles run round forever, about SPACING apart (round trips of cars by their
-// share of the roads, so shared roads are not more crowded).
+// share of the roads, so shared roads are not more crowded); on a route marked every, its VARIANTS
+// in turn (at least one of each: tram colours, kinds of train, models of ROAD), not by chance.
 export function createMovers({ routes }, points, kind, traffic, { boost, camera, heightAt }) {
   const pick = (r, list) => list[Math.floor(r * list.length) % list.length];
   const KINDS = {
@@ -40,10 +41,12 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
       HALF: 1.15, // metres, half the width (tramCar)
       EYE: 2.4, // metres above the path, when riding
       models: () => [tramCar()],
-      variant: ({ operator }) => ({
+      // BLT yellow, BVB green (on a route marked every, in turn).
+      VARIANTS: 2,
+      variant: ({ operator, every }, _, k) => ({
         length: 8,
         height: 3,
-        color: operator === "BLT" ? 0xf2c400 : 0x2e8b3a, // BLT yellow, BVB green
+        color: (every ? k % 2 : operator === "BLT") ? 0xf2c400 : 0x2e8b3a,
       }),
     },
     train: {
@@ -57,9 +60,11 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
       HALF: 1.5,
       EYE: 2.6,
       models: () => [trainCar(false), trainCar(true)],
-      // White passenger trains, a quarter blue goods trains (green and yellow only for trams).
-      variant: (_, r) =>
-        r < 0.25
+      // White passenger trains, a quarter blue goods trains (green and yellow only for trams; on
+      // a route marked every, in turn).
+      VARIANTS: 2,
+      variant: ({ every }, r, k) =>
+        (every ? k % 2 : r < 0.25)
           ? { model: 1, length: 20, height: 3.6, color: 0x2f4f7f }
           : { length: 25, height: 4, color: 0xf2f2f0 },
     },
@@ -74,25 +79,29 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
       HALF: 1, // of most (ROAD)
       EYE: 1.2,
       models: () => ROAD.map(({ shape }) => shape()),
-      // A model of ROAD by its share, in one of its colours.
-      variant: (_, r) => {
-        let model = 0;
-        for (let below = ROAD[0].share; r >= below && model < ROAD.length - 1;)
+      VARIANTS: ROAD.length,
+      // A model of ROAD by its share (on a route marked every, the k-th in turn), in one of its
+      // colours.
+      variant: ({ every }, r, k) => {
+        let model = every ? k % ROAD.length : 0;
+        for (let below = ROAD[0].share; !every && r >= below && model < ROAD.length - 1;)
           below += ROAD[++model].share;
         const { length, colors } = ROAD[model];
         return { model, length, height: 1, color: pick((r * 7919) % 1, colors) };
       },
     },
   };
-  const { CARS, GAP, SPACING, SPEED, LOOK, ALONG, SIDE, HALF, EYE, models, variant } = KINDS[kind];
+  const { CARS, GAP, SPACING, SPEED, LOOK, ALONG, SIDE, HALF, EYE, models, VARIANTS, variant } =
+    KINDS[kind];
   // Far away the cars grow higher, but at most this much wider, so that cars on neighbouring tracks
   // and lanes never overlap.
   const MAX_WIDER = 1.4;
 
-  const lines = routes.map(({ ref, start, count, length, share, operator, parts }) => ({
+  const lines = routes.map(({ ref, start, count, length, share, operator, parts, every }) => ({
     start,
     count,
     operator,
+    every,
     length,
     share: share ?? length,
     step: length / count, // metres between points
@@ -120,14 +129,14 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
   const spot = new THREE.Vector3();
   const vehicles = [];
   for (const line of lines) {
-    const n = Math.max(1, Math.round(line.share / SPACING));
+    const n = Math.max(line.every ? VARIANTS : 1, Math.round(line.share / SPACING));
     for (let k = 0; k < n; k++) {
       const {
         length,
         height,
         color,
         model = 0,
-      } = variant(line, random(vehicles.length + k * 7919));
+      } = variant(line, random(vehicles.length + k * 7919), k);
       const total = CARS * (length + GAP);
       const d = (k * line.length) / n;
       const body = [];
