@@ -20,6 +20,10 @@ const ARM = 0.35;
 // Radians running: the legs swing by RUN_LEG each way, the arms by RUN_ARM around RUN_FORWARD
 // ahead; metres it bounces up each step.
 const [RUN_LEG, RUN_ARM, RUN_FORWARD, BOUNCE] = [0.75, 0.7, 0.3, 0.06];
+// Radians fleeing: the arms UP_ARM ahead (up over the head), flailing by FLAIL each way.
+const [UP_ARM, FLAIL] = [2.7, 0.3];
+// Radians the legs swing each way under a long dress while walking or running, not through it.
+const DRESS_LEG = 0.2;
 const SWING = 0.3;
 const FORWARD = 0.2;
 // Their poses: standing, the arms swinging a little; walking, legs and arms swinging; lying on the
@@ -36,7 +40,8 @@ const FORWARD = 0.2;
 // stretched over the head (ahead, tilted to lie in the water) and turning round in turn, the legs
 // kicking; pipe, drum and major, marching (the legs as walking): the upper arms a little ahead,
 // the forearms up to a piccolo held out to the right under the mouth; the arms beating a drum fast
-// in turn; the right arm raising and lowering a staff in step and the left swinging.
+// in turn; the right arm raising and lowering a staff in step and the left swinging; flee, as
+// running with the arms up over the head, flailing.
 const POSES = [
   "stand",
   "walk",
@@ -55,6 +60,7 @@ const POSES = [
   "pipe",
   "drum",
   "major",
+  "flee",
 ];
 // Lying on the back: tilted about its own x after the heading, its back on the ground (LIE metres
 // up), turned round, so it lies from its place along the heading, the head furthest.
@@ -282,8 +288,12 @@ material.onBeforeCompile = (shader) => {
         // Positive turns the limb back.
         int pose = int(more.w + 0.5);
         float t = peopleTime;
-        float a = pose == 1 ? (limb == 2 ? ${ARM} : -${LEG}) * sin(phase) * side
-          : pose == 10 ? (limb == 2 ? ${RUN_ARM} * sin(phase) * side - ${RUN_FORWARD}
+        bool dressed = (int(more.z) & ${1 << OPTIONS.indexOf("dress")}) != 0;
+        float a = dressed && limb == 1 && (pose == 1 || pose == 10 || pose >= 14)
+            ? -${DRESS_LEG} * sin(phase) * side
+          : pose == 1 ? (limb == 2 ? ${ARM} : -${LEG}) * sin(phase) * side
+          : pose == 17 && limb == 2 ? -${UP_ARM} + ${FLAIL} * sin(phase) * side
+          : pose == 10 || pose == 17 ? (limb == 2 ? ${RUN_ARM} * sin(phase) * side - ${RUN_FORWARD}
             : -${RUN_LEG} * sin(phase) * side)
           : pose == 11 ? (limb == 2 ? -0.6 : -0.12 * side)
           : pose == 0 && limb == 2 ? ${SWING} * sin(t * 2.0 + phase + side * 1.4) - ${FORWARD}
@@ -340,7 +350,8 @@ material.onBeforeCompile = (shader) => {
         );
         transformed.y += 0.05 * abs(sin(peopleTime * 2.0 + phase));
       }
-      if (int(more.w + 0.5) == 10) transformed.y += ${BOUNCE} * abs(sin(phase));
+      if (int(more.w + 0.5) == 10 || int(more.w + 0.5) == 17)
+        transformed.y += ${BOUNCE} * abs(sin(phase));
       if (int(more.w + 0.5) == 9) {
         if (abs(piece.y) != 1.0) {
           // All but the legs back about the hips.
@@ -360,7 +371,8 @@ material.onBeforeCompile = (shader) => {
 // The crowds whose figures flee from traffic (dodge).
 const fleeing = [];
 // Fleeing: running RUN metres per second, at most REACH metres from its place, back after CALM
-// seconds calm at its way's end, at BACK metres per second; STRIDE radians of the walk per metre.
+// seconds calm at its way's end, at BACK metres per second; radians of the run, of the walk per
+// metre (STRIDE); standing, it turns SPIN radians per second to face its place.
 // Each figure has its own pace (RUN and BACK times 0.6 to 1.4), CALM times 0.4 to 1.6, metres
 // beyond a danger (0 to AHEAD more) and radians its way out turns (up to TURN either way), so they
 // do not move as one.
@@ -368,10 +380,11 @@ const RUN = 7;
 const REACH = 15;
 const CALM = 2.5;
 const BACK = 1.3;
-const STRIDE = 4.5;
+const STRIDE = [2.6, 4.5];
 const AHEAD = 4;
 const TURN = 0.6;
-const [WALK, STAND] = ["walk", "stand"].map((pose) => POSES.indexOf(pose));
+const SPIN = 6;
+const [WALK, STAND, FLEE] = ["walk", "stand", "flee"].map((pose) => POSES.indexOf(pose));
 
 // count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
 // tilt: radians about its own x after the heading), hide(i), away(i): whether off its place
@@ -442,7 +455,7 @@ export function createCrowd(body, count, flee = true) {
 // metres, [0, 0] if none, so always for reach 0; march: whether only vehicles count; clear: extra
 // metres beyond the danger; turn: radians the way turns off straight across it) runs that way out, sought anew once there or when its end is in
 // danger too; calm again, it walks back. Off its place it stands on ground(x, z, y) upright,
-// running or walking, else standing (marching ones keep their pose).
+// running or walking, else standing and turning to face its place (marching ones keep their pose).
 export function dodge(dt, danger, ground) {
   for (const { count, home, off, own, put, poses, march } of fleeing)
     for (let i = 0; i < count; i++) {
@@ -467,12 +480,16 @@ export function dodge(dt, danger, ground) {
       if (step) {
         off[o + 2] = Math.atan2(dx, dz);
         [ox, oz] = step < left ? [ox + (dx / left) * step, oz + (dz / left) * step] : [tx, tz];
+      } else if (ox || oz) {
+        const a = Math.atan2(-ox, -oz) - off[o + 2];
+        const turn = a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+        off[o + 2] += Math.sign(turn) * Math.min(Math.abs(turn), SPIN * dt);
       }
       off.set([ox, oz], o);
       off.set([calm, tx, tz], o + 4);
       const back = !ox && !oz;
       if (back) off[o + 3] = off[o + 4] = 0;
-      const pose = back || march ? home[h + 7] : step ? WALK : STAND;
+      const pose = back || march ? home[h + 7] : !step ? STAND : calm ? WALK : FLEE;
       if (poses.array[4 * i + 3] !== pose) {
         poses.array[4 * i + 3] = pose;
         poses.needsUpdate = true;
@@ -480,7 +497,7 @@ export function dodge(dt, danger, ground) {
       if (back) put(i, ...home.subarray(h, h + 7));
       else {
         const [fx, fz] = [home[h] + ox, home[h + 2] + oz];
-        off[o + 3] += step * STRIDE;
+        off[o + 3] += step * STRIDE[calm ? 1 : 0];
         put(i, fx, ground(fx, fz, y), fz, off[o + 2], home[h + 4] + off[o + 3], home[h + 5], 0);
       }
     }

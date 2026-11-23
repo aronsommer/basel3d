@@ -2240,6 +2240,9 @@ function danger(x, y, z, reach, march, clear = 0, turn = 0) {
   for (let k = 0; k < 6 * zoneCount; k += 6) {
     const side = beside(k, x, z);
     if (!(Math.abs(side) < zones[k + 5])) continue;
+    // Beside a vehicle above's track (only in its steered metres), it never runs across it.
+    const d = -1 - zoneOf[k / 6];
+    const aside = d >= 0 && d < driven.length && Math.abs(side) > zones[k + 5] - DANGER.steered;
     for (const s of [-1, 1]) {
       const [ax, az] = [
         s * (zones[k + 3] * cos + zones[k + 2] * sin),
@@ -2255,8 +2258,8 @@ function danger(x, y, z, reach, march, clear = 0, turn = 0) {
         length /= 2;
         full = false;
       }
-      // Not out, it stays on its own side, at a wall rather than running back across.
-      if (!full && s * side < 0) continue;
+      // Not out or aside, it stays on its own side, at a wall rather than running back across.
+      if ((!full || aside) && s * side < 0) continue;
       const cost = full ? t + (t > out ? CROSS : 0) : TRAPPED + out - length;
       if (length <= TRY || cost >= best) continue;
       best = cost;
