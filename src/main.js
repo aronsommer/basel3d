@@ -1993,6 +1993,7 @@ function fly(dt) {
 
 // Gets off: back to the view from before riding.
 function getOff() {
+  if (mouseLook()) document.exitPointerLock();
   riding = null;
   onFoot = null;
   stop(false);
@@ -2225,8 +2226,8 @@ const armed = () => (flying() && !pilot().unarmed) || gunner() !== null;
 const droneRide = drives.find(([vehicles]) => vehicles === drones)[1];
 // Walking oneself: after the button with the figure, a click or tap on the ground or a bridge
 // (not a building or the water) sets one down there, facing as the camera; walked as driven in
-// src/drive.js, at most a run, the water a wall; seen from EYE_HEIGHT, looking level ahead.
-// Getting off takes one away.
+// src/drive.js, at most a run, the water a wall, always the way one looks; seen from EYE_HEIGHT,
+// looking ahead, up or down as the head is turned (head). Getting off takes one away.
 const ON_FOOT = {
   max: 7,
   back: 3,
@@ -2289,8 +2290,8 @@ addEventListener("keydown", (e) => {
 });
 // Steering the helicopters, the UFO or the drone while riding it: W/S or ↑/↓ up and down, A/D or
 // ←/→ turn; the buttons at the bottom hold the arrow keys while pressed. Q or the stop button
-// stops or goes on. The police cars, motorcycles, the quad and the tank are driven with the same keys and
-// buttons, without stop (the tank with fire).
+// stops or goes on. The police cars, motorcycles, the quad and the tank are driven with the same
+// keys and buttons, without stop (the tank with fire).
 const keys = new Set(); // codes of the keys held
 addEventListener("keydown", (e) => {
   keys.add(e.code);
@@ -2453,8 +2454,10 @@ const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
 // only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
 // as browsers allow copying only then), else is recorded while recording (src/points.js), else
-// destroys or rebuilds in God mode (godAt), else sets one down (setDown), else rides what is
-// there; nothing while steering.
+// destroys or rebuilds in God mode (godAt), else sets one down (setDown; with a mouse, captures
+// it: mouseLook), else rides what is there, else, walking with a mouse, captures it again;
+// nothing while steering. While it is captured, rides what the dot in the middle is on, if
+// anything.
 let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
 renderer.domElement.addEventListener(
   "pointerdown",
@@ -2462,14 +2465,27 @@ renderer.domElement.addEventListener(
 );
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (e.button !== 0 || stoppedGlide || steered()) return;
+  if (mouseLook()) {
+    // Gets on what the dot in the middle is on, freeing the mouse, if anything.
+    const found = vehicleAt(innerWidth / 2, innerHeight / 2);
+    if (!found) return;
+    document.exitPointerLock();
+    ride(found, innerWidth / 2, innerHeight / 2);
+    return;
+  }
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
   if (pointsPanel.click(e.clientX, e.clientY)) return;
   if (god) return godAt(e.clientX, e.clientY);
-  if (placing) return setDown(e.clientX, e.clientY);
+  if (placing) {
+    setDown(e.clientX, e.clientY);
+    if (mouse && riding?.ride === footRide) captureMouse();
+    return;
+  }
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
+  else if (mouse && riding?.ride === footRide) captureMouse();
 });
 // "God mode" in the Dev panel: a click or tap destroys the building or bridge there; elsewhere it
 // rebuilds the destroyed one there (explosions.removedAt) by storing the others alone and loading
@@ -2501,10 +2517,12 @@ function ride(found, clientX, clientY) {
   hover = { x: clientX, y: clientY }; // clears the highlight, as it is the one ridden now
   head.yaw = head.pitch = 0;
 }
-// Looking around while riding, but not while steering (steered): dragging turns the head, up to PITCH up or
-// down and sideways as far as no view ray points behind the camera, so the front of a tram, train
-// or car (just behind it) stays out of view; walking, sideways it turns oneself instead.
+// Looking around while riding, but not while steering (steered): dragging turns the head, up to
+// PITCH up or down and sideways as far as no view ray points behind the camera, so the front of a
+// tram, train or car (just behind it) stays out of view; walking, sideways it turns oneself
+// instead, and up or down LOOK.
 const PITCH = 0.25; // radians
+const LOOK = 1.2; // radians
 const head = { yaw: 0, pitch: 0 }; // radians, left and up
 let dragged = null; // { x, y } of the primary pointer while dragging
 renderer.domElement.addEventListener("pointerdown", (e) => {
@@ -2521,8 +2539,38 @@ addEventListener("pointermove", (e) => {
   const sideways = (e.clientX - dragged.x) * turn;
   if (riding?.ride === footRide) onFoot.state.heading += sideways;
   else head.yaw = THREE.MathUtils.clamp(head.yaw + sideways, -yaw, yaw);
-  head.pitch = THREE.MathUtils.clamp(head.pitch + (e.clientY - dragged.y) * turn, -PITCH, PITCH);
+  look(head.pitch + (e.clientY - dragged.y) * turn);
   dragged = { x: e.clientX, y: e.clientY };
+});
+// Turns the head up or down to pitch, as far as it goes.
+function look(pitch) {
+  const most = riding?.ride === footRide ? LOOK : PITCH;
+  head.pitch = THREE.MathUtils.clamp(pitch, -most, most);
+}
+// Walking, moving the mouse over the scene turns oneself and the head up or down, MOUSE_LOOK
+// radians per px, as in games (with a button held, dragging does). Being set down or clicking
+// the scene again captures the mouse (pointer lock), so it turns on past the screen's edge. Esc
+// frees it, and as browsers keep that key then, being freed gets off, but not by leaving the
+// window; meanwhile #esc tells so, as the Off button cannot be clicked, and #dot in the middle
+// shows what a click gets on (updateHover).
+const MOUSE_LOOK = 0.0025;
+const mouseLook = () => document.pointerLockElement === renderer.domElement;
+const captureMouse = () => renderer.domElement.requestPointerLock()?.catch(() => {}); // refused
+const escHint = document.getElementById("esc");
+const dot = document.getElementById("dot");
+document.addEventListener("pointerlockchange", () => {
+  escHint.hidden = dot.hidden = !mouseLook();
+  if (!mouseLook()) for (const ride of rides) ride.highlight(-1); // the dot's
+  if (!mouseLook() && riding?.ride === footRide && document.hasFocus()) getOff();
+});
+// Whether the last pointer was a mouse: a finger's tap brings a mousemove too, which must not turn.
+let byMouse = true;
+for (const type of ["pointerdown", "pointermove"])
+  addEventListener(type, (e) => (byMouse = e.pointerType === "mouse"));
+renderer.domElement.addEventListener("mousemove", (e) => {
+  if (riding?.ride !== footRide || !byMouse || (e.buttons && !mouseLook())) return;
+  onFoot.state.heading -= e.movementX * MOUSE_LOOK;
+  look(head.pitch - e.movementY * MOUSE_LOOK);
 });
 for (const type of ["pointerup", "pointercancel"])
   addEventListener(type, (e) => {
@@ -2596,11 +2644,13 @@ function vehicleOn(clientX, clientY) {
 // The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
 // checked at most once per frame, only after the mouse moved, and not while dragging or steering
 // nor while clicks set one down, destroy (God mode) or record points: then it gets a crosshair.
+// Walking with the mouse captured, the one under the dot in the middle, every frame.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (e.pointerType === "mouse") hover = { x: e.clientX, y: e.clientY };
 });
 function updateHover() {
+  if (mouseLook()) hover = { x: innerWidth / 2, y: innerHeight / 2 };
   if (!hover) return;
   const aiming = placing || god || pointsPanel.recording(); // clicks pick a point, not a vehicle
   const found = pointers.size || steered() || aiming ? null : vehicleAt(hover.x, hover.y);
