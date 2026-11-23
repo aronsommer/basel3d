@@ -104,6 +104,8 @@ const swanNeck = (color, beak) => [
   part(box(0.05, 0.05, 0.04), BLACK, [0, 0.72, 0.5]), // its knob
   ...eyes(0.025, 0.025, 0.055, 0.735, 0.47),
 ];
+// A swan, whole (src/swimmers.js has them on the Rhine).
+export const swan = [...swanBody(WHITE), ...swanNeck(WHITE, ORANGE)];
 const KINDS = {
   wolf: {
     body: wolf,
@@ -134,7 +136,7 @@ const KINDS = {
     },
   },
   swan: {
-    body: [...swanBody(WHITE), ...swanNeck(WHITE, ORANGE)],
+    body: swan,
     ring: 3,
     pace: 0.3,
     swims: true,

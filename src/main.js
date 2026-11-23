@@ -609,7 +609,7 @@ const rheinweg = RHEINWEG.map(([lat, lon]) => fromWGS84(lat, lon));
 const runners = createRunners([rheinweg], heightAt, danger);
 scene.add(...runners.meshes);
 // Passers-by and joggers who swim down the Rhine (src/swimmers.js) on their round
-// (src/rheinweg.js), waiting for the ferries and swimming aside from them.
+// (src/rheinweg.js), waiting for the ferries and swimming aside from them, and swans beside them.
 const rheinrunde = RHEINRUNDE.map(([lat, lon]) => fromWGS84(lat, lon));
 const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries);
 scene.add(...swimmers.meshes);

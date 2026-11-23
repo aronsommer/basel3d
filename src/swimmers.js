@@ -10,8 +10,12 @@
 // GAP metres behind another in its lane. Before a ferry's line none swims into the band its hull sweeps while
 // the ferry is near, any in it hurries out, any with a hull near swims on faster, and none swims
 // with its hands against one.
+// Beside them families of swans swim down with the current and back up against it, further out
+// (SWAN), waiting for the ferries as they do.
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { createCrowd, mix } from "./people.js";
+import { swan } from "./zoo.js";
 
 // Passers-by and joggers, each half men, half women.
 const [WALKERS, JOGGERS] = [64, 40];
@@ -56,6 +60,23 @@ const BAGS = [0xff1744, 0xff6d00, 0xff00a8, 0x00e676, 0xff4081, 0xffea00, 0xff91
 const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a, 0xc58c5c, 0x8a5634, 0x6b4128];
 const HAIR = [0x2a1d14, 0x111111, 0xe2c46e, 0x7a3a1a];
 const SWIMWEAR = [0xff1744, 0xff00a8, 0x00e5ff, 0x76ff03, 0xffea00, 0xff6d00, 0x2979ff, 0xd500f9];
+// Families of swans (sizes; under 1 a grey cygnet), one behind the other FILE metres apart, on a
+// round in the swum stretch, AWAY metres from its ends (off the steps and the St. Johann ferry's
+// line): down at SWIM in a lane SWAN[0] metres left of the loop, beside the swimmers' lanes, in a
+// half circle out to SWAN[1] and back up at UPSTREAM, as slow in the turns (bridge piers and the
+// ships' course well clear). Each keeps SWAN_GAP behind the one ahead, its beak BILL metres ahead
+// (before its size); a family drifts SWAN_DRIFT metres left and right.
+const FAMILIES = [
+  [1.5, 1.4],
+  [1.5, 0.8, 0.8, 1.4],
+  [1.4, 1.5],
+  [1.5, 0.9, 0.8, 0.9, 1.4],
+  [1.5, 1.5],
+  [1.4, 0.8, 1.5],
+];
+const [FILE, AWAY, SWAN, UPSTREAM] = [2.2, 60, [7.8, 9.8], 0.6];
+const [SWAN_GAP, BILL, SWAN_DRIFT] = [2, 0.6, 0.2];
+const CYGNET = 0x8a8278;
 
 // Metres from x, z to a ferry's hull.
 export function fromHull({ position, rotation }, x, z) {
@@ -156,6 +177,42 @@ export function createSwimmers(loop, ground, water, ferries) {
         fromSegment(mesh.position.x, mesh.position.z, points[i], points[(i + 1) % points.length]) <
         FAR,
     );
+  // How fast one at s along the loop, going dir (1 along it, -1 back), at x, z, its front reach
+  // metres ahead along ux, uz, may swim for the ferries: 0 waiting before a ferry's band or with
+  // its front at a hull, HURRY in a band or near a hull, else 1.
+  function forFerries(s, dir, x, z, ux, uz, reach) {
+    let [waiting, hurry] = [false, false];
+    crossings.forEach((c, f) => {
+      if (!c) return;
+      const { x: fx, z: fz } = ferries[f].mesh.position;
+      if (Math.hypot(fx - c[1], fz - c[2]) >= FERRY) return;
+      const ahead = (c[0] - s) * dir;
+      if (ahead > BAND && ahead <= BAND + WAIT) waiting = true;
+      else if (Math.abs(ahead) <= BAND) hurry = true;
+    });
+    for (const { mesh } of ferries) {
+      if (fromHull(mesh, x, z) >= NEAR) continue;
+      if (fromHull(mesh, x + ux * reach, z + uz * reach) < CLEAR) waiting = true;
+      else hurry = true;
+    }
+    return waiting ? 0 : hurry ? HURRY : 1;
+  }
+  // At distance s along the loop, side metres left of it: its segment, the place, the loop's
+  // height there (where swum, the water's surface) and its heading.
+  function at(s, side) {
+    const j = segment(s);
+    const [p, q] = [points[j], points[(j + 1) % points.length]];
+    const length = along[j + 1] - along[j];
+    const t = (s - along[j]) / length;
+    const [dx, dz] = [(q.x - p.x) / length, (q.z - p.z) / length];
+    return {
+      j,
+      x: p.x + (q.x - p.x) * t + dz * side,
+      y: p.y + (q.y - p.y) * t,
+      z: p.z + (q.z - p.z) * t - dx * side,
+      heading: Math.atan2(dx, dz),
+    };
+  }
 
   // Men in shorts and joggers in sports kit with the body "player" (hat: its sleeves and socks,
   // here bare), women passers-by with theirs (some in a dress); each [clothes, swimwear].
@@ -274,6 +331,71 @@ export function createSwimmers(loop, ground, water, ferries) {
   const upright = new THREE.Matrix4().makeRotationX(Math.PI / 2); // the bag, carried
   let clock = 0; // seconds, for the swaying
 
+  // The swans' round: two straights of reach metres, from AWAY into the swum stretch, joined by
+  // half circles; the families evenly spaced round it.
+  const begin = swum.findIndex((w, i) => w && !swum.at(i - 1));
+  let stretch = 0;
+  for (let i = begin; swum[i % points.length]; i++)
+    stretch += along[(i % points.length) + 1] - along[i % points.length];
+  const RADIUS = (SWAN[1] - SWAN[0]) / 2;
+  const reach = stretch - 2 * AWAY;
+  const half = reach + Math.PI * RADIUS;
+  const swans = FAMILIES.flatMap((sizes, f) =>
+    sizes.map((size, k) => ({
+      f,
+      size,
+      u: ((f * 2 * half) / FAMILIES.length - k * FILE + 2 * half) % (2 * half),
+    })),
+  );
+  // At u round the round: distance along the loop, metres left of it, going along it (dir 1) or
+  // back, its heading's turn from the loop's and its speed.
+  function round(u) {
+    const back = u >= half;
+    const dir = back ? -1 : 1;
+    const v = back ? u - half : u;
+    const turn = Math.max(0, (v - reach) / RADIUS); // radians into the turn
+    return {
+      s:
+        (along[begin] +
+          AWAY +
+          (back ? reach : 0) +
+          dir * (Math.min(v, reach) + RADIUS * Math.sin(turn))) %
+        total,
+      side: (SWAN[0] + SWAN[1]) / 2 - dir * RADIUS * Math.cos(turn),
+      dir,
+      turn: turn + (back ? Math.PI : 0),
+      speed: back || turn ? UPSTREAM : SWIM,
+    };
+  }
+  const flock = new THREE.InstancedMesh(
+    mergeGeometries(swan),
+    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+    swans.length,
+  );
+  flock.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  swans.forEach((w, k) => {
+    flock.setColorAt(k, colour.set(w.size < 1 ? CYGNET : 0xffffff));
+    Object.assign(w, { k, x: 0, z: 0, heading: 0 });
+  });
+  // Each in order round the round on as far as the one ahead lets it, then placed.
+  function paddle(dt) {
+    swans.sort((a, b) => a.u - b.u);
+    swans.forEach((w, n) => {
+      const { s, dir, speed } = round(w.u);
+      const [ux, uz] = [Math.sin(w.heading), Math.cos(w.heading)];
+      let step = speed * dt * forFerries(s, dir, w.x, w.z, ux, uz, BILL * w.size);
+      const gap = (swans[(n + 1) % swans.length].u - w.u + 2 * half) % (2 * half);
+      step = Math.min(step, Math.max(0, gap - SWAN_GAP));
+      w.u = (w.u + step) % (2 * half);
+      const now = round(w.u);
+      const spot = at(now.s, now.side + SWAN_DRIFT * Math.sin(clock * 0.2 + w.f));
+      [w.x, w.z, w.heading] = [spot.x, spot.z, spot.heading + now.turn];
+      matrix.makeRotationY(w.heading).scale(place.setScalar(w.size));
+      flock.setMatrixAt(w.k, matrix.setPosition(spot.x, spot.y, spot.z));
+    });
+    flock.instanceMatrix.needsUpdate = true;
+  }
+
   // One's way at distance s, metres left of the loop: its lane in the water, its side of the path
   // on land, eased between them where it goes in and out.
   function offset(m, s) {
@@ -306,27 +428,12 @@ export function createSwimmers(loop, ground, water, ferries) {
       // Going in or out: a segment with one end on the bank.
       const shore = bathing[i] && !(points[i].wet && points[(i + 1) % points.length].wet);
       if (bathing[i]) {
-        let [waiting, hurry] = [false, false];
-        if (along[i + 1] - m.s < WAIT && busy((i + 1) % points.length)) waiting = true;
-        if (busy(i)) hurry = true;
-        crossings.forEach((c, f) => {
-          if (!c) return;
-          const { x, z } = ferries[f].mesh.position;
-          if (Math.hypot(x - c[1], z - c[2]) >= FERRY) return;
-          if (m.s >= c[0] - BAND - WAIT && m.s < c[0] - BAND) waiting = true;
-          else if (Math.abs(m.s - c[0]) <= BAND) hurry = true;
-        });
         const [p, q] = [points[i], points[(i + 1) % points.length]];
         const length = along[i + 1] - along[i];
         const [ux, uz] = [(q.x - p.x) / length, (q.z - p.z) / length];
-        const reach = m.bag ? HOLD : REACH;
-        for (const { mesh } of ferries) {
-          if (fromHull(mesh, m.x, m.z) >= NEAR) continue;
-          if (fromHull(mesh, m.x + ux * reach, m.z + uz * reach) < CLEAR) waiting = true;
-          else hurry = true;
-        }
-        if (waiting) step = 0;
-        else if (hurry) step *= HURRY;
+        const ferry = forFerries(m.s, 1, m.x, m.z, ux, uz, m.bag ? HOLD : REACH);
+        if (!ferry || (along[i + 1] - m.s < WAIT && busy((i + 1) % points.length))) step = 0;
+        else if (ferry > 1 || busy(i)) step *= HURRY;
         else if (wet && m.first !== m) {
           const behind = (m.first.s - m.s + total) % total;
           if (behind > BESIDE && behind < total / 2) step *= CATCH;
@@ -343,16 +450,12 @@ export function createSwimmers(loop, ground, water, ferries) {
       dress(m, wet, m.bathing);
 
       // Its place: on the loop, its way to the left; heading along the loop.
-      const j = segment(m.s);
-      const [p, q] = [points[j], points[(j + 1) % points.length]];
-      const length = along[j + 1] - along[j];
-      const t = (m.s - along[j]) / length;
-      const [dx, dz] = [(q.x - p.x) / length, (q.z - p.z) / length];
       m.side = offset(m, m.s);
-      const [x, z] = [p.x + (q.x - p.x) * t + dz * m.side, p.z + (q.z - p.z) * t - dx * m.side];
-      let heading = Math.atan2(dx, dz);
+      const spot = at(m.s, m.side);
+      const { j, x, z } = spot;
+      let heading = spot.heading;
       if (swum[j] && !m.dressing) {
-        const y = p.y + (q.y - p.y) * t; // the water's surface
+        const { y } = spot; // the water's surface
         if (m.bag) {
           heading += SWAY * Math.sin(clock * 0.25 + m.phase);
           m.crowd.place(m.i, x, y - FLOAT, z, heading, m.phase, 1, 0);
@@ -371,9 +474,10 @@ export function createSwimmers(loop, ground, water, ferries) {
       bags.setMatrixAt(m.k, matrix.setPosition(place));
     }
     bags.instanceMatrix.needsUpdate = true;
+    paddle(dt);
   }
   update(0);
-  const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags];
+  const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags, flock];
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
   return { meshes, update };
 }
