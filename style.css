@@ -109,6 +109,10 @@ p {
   stroke-width: 2px;
   stroke-linecap: round;
 }
+/* The walker's head filled, not a ring. */
+#walk circle {
+  fill: currentColor;
+}
 #off,
 #walk,
 #menu {
@@ -259,7 +263,7 @@ p {
   accent-color: #f1f5f9;
   cursor: pointer;
 }
-/* The settings, the names, the lines and the panels apart from each other. */
+/* The settings, the tram lines, the other lines and the panels apart from each other. */
 #menu hr {
   margin: 4px 0;
   border: 0;
@@ -275,17 +279,17 @@ p {
     display: none;
   }
 }
-/* One grid for all entries, five columns: "Trams", "All", then the tram lines one by one,
-   five in a row, each pair of box and number well apart from the next. The lines across all
-   columns. */
+/* One grid for all entries, as narrow as three in a row (triples) need: two in a row (pairs) the
+   first and the rest; the tram lines and the lines across all columns. */
 #entries {
   display: grid;
-  grid-template-columns: repeat(5, auto);
+  grid-template-columns: repeat(3, auto);
   justify-content: start;
   align-items: center;
   column-gap: 16px;
 }
 #entries > hr,
+#tram-lines,
 #reset,
 #about,
 #credits {
@@ -306,28 +310,34 @@ p {
   font-size: 10px;
   opacity: 0.6;
 }
+/* Wrapped to the menu's width, not widening it (as the tram lines). */
 #credits {
+  contain: inline-size;
   flex-wrap: wrap;
   justify-content: start;
-  column-gap: 8px;
+  gap: 2px 8px;
 }
 #credits span {
   white-space: nowrap;
 }
-#tram-lines,
-#menu .pairs {
+#menu .pairs,
+#menu .triples {
   display: contents;
 }
+/* "Trams", then the tram lines in even columns, as many as fit in the menu's width. */
 #tram-lines {
+  contain: inline-size;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  column-gap: 8px;
   font-variant-numeric: tabular-nums;
 }
-/* Two entries in a row: the first below "Trams" and "All", the second from the third column
-   on, below the tram lines there. */
-#menu .pairs label:nth-child(odd) {
-  grid-column: 1 / span 2;
+#tram-lines label:first-child {
+  grid-column: span 2;
 }
+/* Two in a row: the second below the second of three ("Cars"). */
 #menu .pairs label:nth-child(even) {
-  grid-column: 3 / -1;
+  grid-column: 2 / -1;
 }
 /* The names (updateNames in src/main.js), below the badges, the buttons and the menu; each
    with its bottom middle on its point, in a white halo: quarters and towns in spaced grey

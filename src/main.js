@@ -611,7 +611,7 @@ scene.add(birds.mesh);
 
 // The menu shows the names (see updateNames) and the loops of the trams (each line on its
 // own), trains and cars, the course of the ships and the pedestrians' loops (kindLines.walk, set
-// with them below) as lines above them; at first none. "All"
+// with them below) as lines above them; at first none. "Trams"
 // shows or hides all tram lines (ticked when all are shown).
 const trams = movers[MOVER_KINDS.indexOf("tram")];
 const tramGroup = trams.routes;
