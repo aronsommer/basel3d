@@ -42,6 +42,9 @@ const STREETS = [
   "living_street",
 ].flatMap((h) => [h, `${h}_link`]);
 const BIN = 25; // metres per bin of the segments, to find the near ones
+// Ways not walked: at the Dreirosenbrücke in Kleinbasel, a path at the water's edge and a private
+// footway along the bank.
+const OFF = [839982561, 549615587];
 
 // The segments of the streets, the pedestrian streets and the other ways, each [a, b, offset],
 // binned.
@@ -68,7 +71,8 @@ for (const way of osm) {
   // The passage under the Mittlere Brücke is a street along its middle, its sidewalks a metre
   // inside its walls.
   const open = inPassage(way);
-  if (type !== "way" || (tags.tunnel && tags.tunnel !== "no" && !open)) continue;
+  if (type !== "way" || OFF.includes(way.id) || (tags.tunnel && tags.tunnel !== "no" && !open))
+    continue;
   const bins = open ? streets : binsOf(tags);
   if (!bins) continue;
   // Footways and squares off the ground (on another layer but a bridge's, or covered) have none in
