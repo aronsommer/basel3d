@@ -34,6 +34,7 @@ import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createStation } from "./station.js";
+import { createPride } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
 import { createSwans, createZoo } from "./zoo.js";
 import { createRunners } from "./runners.js";
@@ -1336,6 +1337,24 @@ if (station) {
   const meshes = [sbb.mesh, createClocks(sbb.clocks)];
   scene.add(...meshes);
   onRoofs.set(station.number, meshes);
+}
+// A rainbow flag (src/pride.js) on the tip of each of the Münster's towers: its building's highest
+// vertex within 3 m of a point on the Georgsturm's (WGS84 47.556347, 7.591933) and on the
+// Martinsturm's spire (47.556214, 7.592074), flying from the one towards the other: to the right as
+// seen from the front.
+const spires = [fromWGS84(47.556347, 7.591933), fromWGS84(47.556214, 7.592074)];
+const prideHeading = Math.atan2(spires[0][1] - spires[1][1], spires[1][0] - spires[0][0]);
+for (const [x, z] of spires) {
+  const roof = roofOver({ x, z }); // none if the Münster is destroyed
+  if (!roof) continue;
+  const tip = [x, -Infinity, z];
+  for (const { positions: p } of structures.triangles([roof.number]).get(roof.number) ?? [])
+    for (let i = 0; i < p.length; i += 3)
+      if (p[i + 1] > tip[1] && Math.hypot(p[i] - x, p[i + 2] - z) < 3)
+        tip.splice(0, 3, ...p.slice(i, i + 3));
+  const flag = createPride(...tip, prideHeading);
+  scene.add(flag);
+  onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
 }
 // The Badischer Bahnhof's platform roofs, each under one of these points, as dark as its building's
 // roof (LV95 2612676.3, 1268528.5).
