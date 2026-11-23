@@ -25,10 +25,10 @@ const [DODGE, DASH, CALM] = [6, 4, 2];
 const [TWOS, TOGETHER] = [3, 1];
 // Metres around within which they look at people.
 const NEAR = 15;
-// Metres round its rear and front wheel none else comes within (src/space.js); seconds one blocked
-// there stands before it turns round.
+// Metres round its rear and front wheel none else comes within (src/space.js); seconds one stands
+// (going slower than STILL metres a second) while it would go, before it turns round.
 const ROOM = 0.35;
-const STUCK = 3;
+const [STUCK, STILL] = [3, 0.1];
 // Bikes SCALE times the girl's (her rider's body scaled with it).
 const SCALE = 1.6;
 
@@ -122,9 +122,9 @@ function locate({ stretch, s, right }) {
 // A mover on a stretch: { stretch, s, way: ±1 along it, top: metres a second it would go, pace:
 // as it goes, keep: metres right of the middle as it goes, pass: metres further left while
 // passing, right: as now, along the stretch, dodge: where right it goes out of traffic's way (null
-// if not), calm: seconds since, rolled: metres it went, stuck: seconds blocked, x, y, z, heading;
-// for space its rear wheel's room (radius, group: itself) and front: its front wheel's }, facing
-// on.
+// if not), calm: seconds since, rolled: metres it went, stuck: seconds standing (move), x, y, z,
+// heading; for space its rear wheel's room (radius, group: itself) and front: its front wheel's },
+// facing on.
 function mover(stretch, s, way, top, keep, ground) {
   const m = { stretch, s: THREE.MathUtils.clamp(s, 0, stretch.length), way, top, pace: top, keep };
   Object.assign(m, { pass: 0, right: way * keep, dodge: null, calm: 0, rolled: 0, stuck: 0 });
@@ -197,9 +197,9 @@ function among(m, others, people, speed) {
 }
 // On dt seconds towards wanted metres a second, round at the ends, moving across to keep right
 // after turning round and to pass, or fast out of traffic's way; not where its rear or front wheel
-// (reach metres ahead) would come into another (space): stopping instead, and turning round after
-// STUCK seconds so.
-function move(m, wanted, dt, ground, space, reach) {
+// (reach metres ahead) would come into another (space): stopping instead. Standing while eager (no
+// traffic in its way), blocked or held behind someone, it turns round after STUCK seconds.
+function move(m, wanted, dt, ground, space, reach, eager) {
   const { stretch } = m;
   const before = [m.s, m.way, m.right];
   m.pace += THREE.MathUtils.clamp(wanted - m.pace, -BRAKE * dt, START * dt);
@@ -214,18 +214,16 @@ function move(m, wanted, dt, ground, space, reach) {
   let [x, z] = locate(m);
   const { front } = m;
   const [ux, uz] = [Math.sin(m.heading) * reach, Math.cos(m.heading) * reach];
-  if (
+  const blocked =
     space.blocked(m, ROOM, m.x, m.z, x, z) ||
-    space.blocked(m, ROOM, front.x, front.z, x + ux, z + uz)
-  ) {
+    space.blocked(m, ROOM, front.x, front.z, x + ux, z + uz);
+  if (blocked) {
     [m.s, m.way, m.right] = before;
     m.pace = 0;
-    if ((m.stuck += dt) > STUCK) [m.way, m.stuck] = [-m.way, 0];
     [x, z] = [m.x, m.z];
-  } else {
-    m.stuck = 0;
-    m.rolled += m.pace * dt;
-  }
+  } else m.rolled += m.pace * dt;
+  m.stuck = eager && (blocked || m.pace < STILL) ? m.stuck + dt : 0;
+  if (m.stuck > STUCK) [m.way, m.stuck] = [-m.way, 0];
   if (x !== m.x || z !== m.z) {
     const turn = Math.atan2(x - m.x, z - m.z) - m.heading;
     const by = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -324,7 +322,7 @@ export function createRunners(routes, ground, danger, space) {
           const look = LOOK + r.pace;
           const [ax, az] = [r.x + Math.sin(r.heading) * look, r.z + Math.cos(r.heading) * look];
           const wanted = out || danger(ax, r.y, az, 0) ? 0 : r.top;
-          move(r, among(r, all, people, wanted), dt, ground, space, base * size);
+          move(r, among(r, all, people, wanted), dt, ground, space, base * size, wanted > 0);
           // Pitched as the ground under its rear and front wheels.
           const reach = base * size;
           const front = ground(
