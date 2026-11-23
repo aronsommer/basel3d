@@ -19,7 +19,7 @@ import { createCrowd, mix } from "./people.js";
 import { PATIENCE } from "./space.js";
 import { swan } from "./zoo.js";
 
-// Passers-by and joggers, each half men, half women.
+// Passers-by and joggers (unless given), each half men, half women.
 const [WALKERS, JOGGERS] = [64, 40];
 const NAKED = 8;
 // The sizes of the groups, in turn, among those with a bag of a kind; one behind the first of its
@@ -67,11 +67,14 @@ const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a, 0xc58c5c, 0x8a5634, 0x6b4128];
 const HAIR = [0x2a1d14, 0x111111, 0xe2c46e, 0x7a3a1a];
 const SWIMWEAR = [0xff1744, 0xff00a8, 0x00e5ff, 0x76ff03, 0xffea00, 0xff6d00, 0x2979ff, 0xd500f9];
 // Families of swans (sizes; under 1 a grey cygnet), one behind the other FILE metres apart, on a
-// round in the swum stretch, AWAY metres from its ends (off the steps and the St. Johann ferry's
-// line): down at SWIM in a lane SWAN[0] metres left of the loop, beside the swimmers' lanes, in a
-// half circle out to SWAN[1] and back up at UPSTREAM, as slow in the turns (bridge piers and the
-// ships' course well clear). Each keeps SWAN_GAP behind the one ahead, its beak BILL metres ahead
-// (before its size); a family drifts SWAN_DRIFT metres left and right.
+// round in the swum stretch, AWAY metres (at most a quarter of it) from its ends (off the steps
+// and the St. Johann ferry's line): down at SWIM in a lane SWAN[0] metres left of the loop, beside
+// the swimmers' lanes, in a half circle out to SWAN[1] and back up at UPSTREAM, as slow in the
+// turns (bridge piers and the ships' course well clear). Going down a family drifts beside the
+// first of a group of swimmers within JOIN metres of it, waiting for one at the top, at most CATCH
+// times as fast to keep up. One family for each SWAN_ROOM metres of the round's straights (at
+// least one). Each keeps SWAN_GAP behind the one ahead, its beak BILL metres ahead (before its
+// size); a family drifts SWAN_DRIFT metres left and right.
 const FAMILIES = [
   [1.5, 1.4],
   [1.5, 0.8, 0.8, 1.4],
@@ -82,6 +85,7 @@ const FAMILIES = [
 ];
 const [FILE, AWAY, SWAN, UPSTREAM] = [2.2, 60, [7.8, 9.8], 0.6];
 const [SWAN_GAP, BILL, SWAN_DRIFT] = [2, 0.6, 0.2];
+const [JOIN, SWAN_ROOM] = [5, 400];
 const CYGNET = 0x8a8278;
 
 // Metres from x, z to a ferry's hull.
@@ -111,9 +115,16 @@ function looks(lists, count, swimwear, caps = false) {
 
 // loop: [x, z] points round, in the water where the ground is at most SHALLOW over water;
 // ground(x, z): the height there; ferries: src/ferries.js's (their line from a along r for length, mesh).
-// space: src/space.js's, where they are and keep room on land. { meshes, update(dt), people: each
-// with x, z, heading, speed and whether gone (in the water) }.
-export function createSwimmers(loop, ground, water, ferries, space) {
+// space: src/space.js's, where they are and keep room on land; walkers (even), joggers: how many.
+// { meshes, update(dt), people: each with x, z, heading, speed and whether gone (in the water) }.
+export function createSwimmers(
+  loop,
+  ground,
+  water,
+  ferries,
+  space,
+  { walkers = WALKERS, joggers = JOGGERS } = {},
+) {
   // Per point its height and whether it is in the water; the distances along the loop.
   const points = loop.map(([x, z]) => ({ x, z, y: ground(x, z) }));
   points.forEach((p) => (p.wet = p.y <= water + SHALLOW));
@@ -228,7 +239,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
     [
       "player",
       "walk",
-      WALKERS / 2,
+      walkers / 2,
       looks(
         {
           top: [0xffffff, 0x1e88e5, 0xc0392b, 0x6b6b6b, 0xf2c94c, 0x1e7d4a, 0xff6f00],
@@ -236,14 +247,14 @@ export function createSwimmers(loop, ground, water, ferries, space) {
           shoes: [0xffffff, 0x111111, 0x6b4a2a],
           head: ["hair", "hair", "cap", "hair"],
         },
-        WALKERS / 2,
+        walkers / 2,
         trunks,
       ).map(([clothes, wear]) => [{ ...clothes, hat: clothes.skin }, wear]),
     ],
     [
       "woman",
       "walk",
-      WALKERS / 2,
+      walkers / 2,
       looks(
         {
           top: [0xffffff, 0xe91e63, 0x1e88e5, 0xf2c94c, 0x111111, 0x8e44ad],
@@ -253,7 +264,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
           dress: [false, true, false],
           face: [null, "shades", null],
         },
-        WALKERS / 2,
+        walkers / 2,
         (look) => ({ top: look.wear, bottom: look.skin }),
         true,
       ),
@@ -261,7 +272,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
     [
       "player",
       "run",
-      JOGGERS,
+      joggers,
       looks(
         {
           top: [0xff6f00, 0x1e88e5, 0xe91e63, 0x76ff03, 0xffffff, 0x111111, 0xffd600, 0x00bcd4],
@@ -269,7 +280,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
           shoes: [0xffffff, 0xff5722, 0x111111, 0x00e5ff, 0xc6ff00],
           head: ["hair", "long"],
         },
-        JOGGERS,
+        joggers,
         (look) =>
           look.head === "long"
             ? { top: look.wear, bottom: look.wear, hat: look.skin }
@@ -278,8 +289,8 @@ export function createSwimmers(loop, ground, water, ferries, space) {
     ],
   ];
   const crowds = {
-    player: createCrowd("player", WALKERS / 2 + JOGGERS),
-    woman: createCrowd("woman", WALKERS / 2),
+    player: createCrowd("player", walkers / 2 + joggers),
+    woman: createCrowd("woman", walkers / 2),
   };
   const filled = { player: 0, woman: 0 };
   const people = kinds.flatMap(([body, gait, , list]) =>
@@ -344,22 +355,33 @@ export function createSwimmers(loop, ground, water, ferries, space) {
   const leaning = new THREE.Matrix4();
   let clock = 0; // seconds, for the swaying
 
-  // The swans' round: two straights of reach metres, from AWAY into the swum stretch, joined by
-  // half circles; the families evenly spaced round it.
+  // The swans' round: two straights of reach metres, from away into the swum stretch (start),
+  // joined by half circles; the families evenly spaced round it, each with the first of the group
+  // it drifts beside (with) and whether it waits for one.
   const begin = swum.findIndex((w, i) => w && !swum.at(i - 1));
   let stretch = 0;
   for (let i = begin; swum[i % points.length]; i++)
     stretch += along[(i % points.length) + 1] - along[i % points.length];
   const RADIUS = (SWAN[1] - SWAN[0]) / 2;
-  const reach = stretch - 2 * AWAY;
+  const away = Math.min(AWAY, stretch / 4);
+  const reach = stretch - 2 * away;
   const half = reach + Math.PI * RADIUS;
-  const swans = FAMILIES.flatMap((sizes, f) =>
+  const start = along[begin] + away;
+  const families = FAMILIES.slice(0, Math.max(1, Math.floor(reach / SWAN_ROOM))).map((sizes) => ({
+    sizes,
+    with: null,
+    waiting: false,
+  }));
+  const swans = families.flatMap(({ sizes }, f) =>
     sizes.map((size, k) => ({
       f,
       size,
-      u: ((f * 2 * half) / FAMILIES.length - k * FILE + 2 * half) % (2 * half),
+      lead: !k,
+      u: ((f * 2 * half) / families.length - k * FILE + 2 * half) % (2 * half),
     })),
   );
+  // Metres the first of a group in the water is down the round's straight from its top.
+  const down = (m) => (m.s - start + total) % total;
   // At u round the round: distance along the loop, metres left of it, going along it (dir 1) or
   // back, its heading's turn from the loop's and its speed.
   function round(u) {
@@ -370,7 +392,7 @@ export function createSwimmers(loop, ground, water, ferries, space) {
     return {
       s:
         (along[begin] +
-          AWAY +
+          away +
           (back ? reach : 0) +
           dir * (Math.min(v, reach) + RADIUS * Math.sin(turn))) %
         total,
@@ -397,9 +419,23 @@ export function createSwimmers(loop, ground, water, ferries, space) {
       const { s, dir, speed } = round(w.u);
       const [ux, uz] = [Math.sin(w.heading), Math.cos(w.heading)];
       let step = speed * dt * forFerries(s, dir, w.x, w.z, ux, uz, BILL * w.size);
+      const family = families[w.f];
+      if (w.lead && w.u < reach) {
+        family.with ??= people.find(
+          (m) =>
+            m.first === m &&
+            swum[segment(m.s)] &&
+            Math.abs(down(m) - w.u) < JOIN &&
+            !families.some((other) => other.with === m),
+        );
+        if (family.with) step = Math.min(step * CATCH, Math.max(0, down(family.with) - w.u));
+        else if (family.waiting) step = 0;
+      }
       const gap = (swans[(n + 1) % swans.length].u - w.u + 2 * half) % (2 * half);
       step = Math.min(step, Math.max(0, gap - SWAN_GAP));
+      const before = w.u;
       w.u = (w.u + step) % (2 * half);
+      if (w.lead && w.u < before) Object.assign(family, { with: null, waiting: true }); // at the top
       const now = round(w.u);
       const spot = at(now.s, now.side + SWAN_DRIFT * Math.sin(clock * 0.2 + w.f));
       [w.x, w.z, w.heading] = [spot.x, spot.z, spot.heading + now.turn];

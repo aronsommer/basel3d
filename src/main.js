@@ -13,7 +13,6 @@ import { readTerrain } from "./terrain.js";
 import { PASSAGE } from "./passage.js";
 import { RHEINWEG, RHEINRUNDE } from "./rheinweg.js";
 import { createSwimmers } from "./swimmers.js";
-import { createClique } from "./fasnacht.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { createUfo } from "./ufo.js";
@@ -26,11 +25,9 @@ import { createMotorcycles } from "./motorcycle.js";
 import { createQuads } from "./quad.js";
 import { createXrts } from "./xrt.js";
 import { createTanks } from "./tank.js";
-import { createBike } from "./bike.js";
 import { createLawn } from "./lawn.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
-import { createTraining } from "./football.js";
 import { createBoats } from "./boats.js";
 import { createFerries } from "./ferries.js";
 import { BASIN } from "./basilisks.js";
@@ -40,10 +37,12 @@ import {
   MUSEUM,
   OPEN,
   ROAD,
+  SWIM,
   TRACK,
   TRAM,
   atMuseum,
   createButton,
+  createLabels,
   exhibitsOf,
   toggle as toggleMuseum,
 } from "./museum.js";
@@ -51,14 +50,13 @@ import { createStation } from "./station.js";
 import { createFireStation, GREY } from "./firestation.js";
 import { createPride, dress, prideShader } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
-import { createZoo } from "./zoo.js";
 import { createRunners } from "./runners.js";
 import { createSpace } from "./space.js";
 import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
 import { createJet } from "./jet.js";
-import { createPeople, dodge, mix, peopleTime } from "./people.js";
+import { dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createGraffiti } from "./graffiti.js";
 import { createSplash } from "./splash.js";
@@ -702,13 +700,12 @@ scene.add(...runners.meshes);
 const rheinrunde = RHEINRUNDE.map(([lat, lon]) => fromWGS84(lat, lon));
 const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries, space);
 scene.add(...swimmers.meshes);
-// A Fasnacht clique (src/fasnacht.js) marching round the Marktplatz, along its middle east of the
-// tram tracks, 8 m or more from them.
-const clique = createClique(
-  [fromWGS84(47.558424, 7.58759), fromWGS84(47.557929, 7.58797)],
-  heightAt,
-);
-scene.add(...clique.meshes);
+// The museum's, fewer, on its round (src/museum.js), no ferry near.
+const museumSwimmers =
+  OPEN && createSwimmers(SWIM, heightAt, WATER, [], space, { walkers: 6, joggers: 4 });
+if (OPEN) scene.add(...museumSwimmers.meshes);
+// The Fasnacht clique marching round the Marktplatz (src/catalog.js), and in the museum another.
+const { cliques } = build("S8", { heightAt });
 overlay.add(ships.route);
 const planes = createPlanes(
   boost,
@@ -949,134 +946,9 @@ const xrts = createXrts(
   boost,
   world,
 );
-// People (src/people.js) at LV95 points, each facing toward
-// (turned up to SPREAD radians away, each a little otherwise) or else the others within NEAR
-// metres, or alone k radians from south.
-const SPREAD = 0.5;
-const NEAR = 10;
 const fromLV95 = ([e, n]) => ({ x: e - LV95[0], z: LV95[1] - n });
-function standing(points, toward) {
-  const at = points.map(fromLV95);
-  const target = toward && fromLV95(toward);
-  const facing = (p, { x, z }) => Math.atan2(x - p.x, z - p.z);
-  return parked(
-    at.map((p, k) => {
-      if (target) return { ...p, heading: facing(p, target) + SPREAD * Math.sin(k * 2.7) };
-      const near = at.filter((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) < NEAR);
-      if (!near.length) return { ...p, heading: k };
-      const x = near.reduce((sum, q) => sum + q.x, 0) / near.length;
-      const z = near.reduce((sum, q) => sum + q.z, 0) / near.length;
-      return { ...p, heading: facing(p, { x, z }) };
-    }),
-  );
-}
-// Black men in Kleinbasel, each in other clothes, some with a cap or beanie.
-const MEN = [
-  [2611652.0, 1267913.7],
-  [2611650.0, 1267913.0],
-  [2611649.8, 1267914.9],
-  [2611651.4, 1267915.3],
-  [2611638.7, 1267929.8],
-  [2611592.6, 1267974.9],
-  [2611589.4, 1267977.4],
-  [2611558.4, 1267983.2],
-  [2611520.5, 1268060.2],
-  [2611513.8, 1268085.4],
-  [2611507.0, 1268105.0],
-  [2611496.3, 1268113.9],
-  [2611502.3, 1268125.4],
-  [2611491.6, 1268139.5],
-  [2611491.0, 1268184.5],
-  [2611491.9, 1268221.2],
-  [2611491.5, 1268228.4],
-  [2611510.1, 1268207.5],
-  [2611479.0, 1268301.9],
-  [2611480.1, 1268309.8],
-  [2611476.2, 1268320.4],
-  [2611498.4, 1268292.8],
-  [2611494.9, 1268305.5],
-  [2611689.5, 1267931.0],
-  [2611698.6, 1267929.3],
-  [2611708.8, 1267932.1],
-  [2611709.9, 1267942.5],
-  [2611722.2, 1267940.4],
-];
-const MEN_LOOKS = mix(
-  {
-    body: ["man"],
-    skin: [0x4a2c1a, 0x5a3520, 0x3d2416, 0x6b4128, 0x7a4a2a],
-    hair: [0x111111],
-    top: [0xffffff, 0x1e7d4a, 0x111111, 0xf2c94c, 0xc0392b, 0x1e88e5, 0x6b6b6b, 0xff6f00],
-    bottom: [0x3b4d6b, 0x222222, 0x6b6b6b, 0x1d1d1d, 0xc2a878, 0x2f4f2f, 0x4a5d7a],
-    shoes: [0xffffff, 0x111111, 0xeeeeee, 0x1d1d1d],
-    head: ["cap", "hair", "beanie", "backcap", "hair", "beanie"],
-    hat: [0xc0392b, 0, 0x111111, 0x1b2333, 0, 0x8b0000],
-  },
-  MEN.length,
-);
-// Sex workers in a lane in Kleinbasel, from the top down, facing up it, each in other clothes.
-const WOMEN = [
-  [2611561.3, 1267979.2],
-  [2611556.8, 1267977.7],
-  [2611560.4, 1267982.1],
-  [2611540.8, 1267967.4],
-  [2611537.0, 1267968.0],
-  [2611535.6, 1267964.4],
-  [2611531.8, 1267965.0],
-  [2611551.6, 1267974.2],
-  [2611550.2, 1267970.7],
-  [2611546.4, 1267971.2],
-  [2611545.0, 1267967.7],
-  [2611514.7, 1267958.2],
-  [2611519.1, 1267957.5],
-  [2611521.5, 1267961.1],
-  [2611525.9, 1267960.4],
-  [2611528.3, 1267964.1],
-];
-// Each [skin, hair, top, skirt, boots].
-const WOMEN_LOOKS = [
-  [0x8a5634, 0x111111, 0xff2d8a, 0x111111, 0xff2d8a], // pink and black
-  [0xf1c7a5, 0xe2c46e, 0xe8e8e8, 0xd81b60, 0xe8e8e8], // white and pink
-  [0xd9a27a, 0x7a2a1a, 0x8e24aa, 0x8e24aa, 0x111111], // purple
-  [0xc58c5c, 0x111111, 0xd32f2f, 0xd32f2f, 0xd32f2f], // red
-  [0xf1c7a5, 0x2a1d14, 0xffd600, 0x111111, 0x111111], // yellow and black
-  [0x6b4128, 0x111111, 0x00bcd4, 0xffffff, 0xffffff], // turquoise and white
-  [0xe8b996, 0xe2c46e, 0x111111, 0xd81b60, 0xd81b60], // black and pink
-  [0xd9a27a, 0x111111, 0xc0c0c0, 0x111111, 0x111111], // silver and black
-  [0x8a5634, 0x7a2a1a, 0x76ff03, 0x111111, 0x76ff03], // lime and black
-  [0xf1c7a5, 0x7a2a1a, 0xff6f00, 0xff6f00, 0x111111], // orange
-  [0xc58c5c, 0x2a1d14, 0x1e88e5, 0xe8e8e8, 0x1e88e5], // blue and white
-  [0xe8b996, 0x111111, 0xffffff, 0xffffff, 0xffffff], // white
-  [0x6b4128, 0xe2c46e, 0xffc107, 0xffc107, 0x111111], // gold
-  [0xf1c7a5, 0x7a2a1a, 0x111111, 0x111111, 0x111111], // black
-  [0xd9a27a, 0x2a1d14, 0x64ffda, 0x111111, 0x64ffda], // mint and black
-  [0x8a5634, 0x111111, 0xff4081, 0x311b92, 0x311b92], // pink and indigo
-].map(([skin, hair, top, bottom, shoes]) => ({ body: "night", skin, hair, top, bottom, shoes }));
-// On their backs on beach towels, 0.9 by 2 m: a woman in a bikini sunbathing, her head to the
-// south (her feet at LV95 2610512.9, 1268549.5) on a blue towel, and one in a black one making a
-// snow angel, her head to the north (her feet at LV95 2610510.6, 1268549.7) on a red one. Their
-// friends in bikinis: three doing yoga in a row facing west, one lying on her back on a pink
-// towel with her head to the east, spreading her arms and legs up, two dancing facing each other.
-const BIKINI = {
-  body: "swim",
-  skin: 0xe8b996,
-  hair: 0x7a3a1a,
-  top: 0xe8175d,
-  bottom: 0xe8175d,
-  head: "long",
-};
-const ANGEL = { ...BIKINI, skin: 0xf1c7a5, hair: 0xe2c46e, top: 0x111111, bottom: 0x111111 };
-// Each [LV95 east, north, heading, look, pose, towel's colour].
-const SUNBATHERS = [
-  [2610512.9, 1268549.5, 0, BIKINI, "lie", 0x1e88e5],
-  [2610510.6, 1268549.7, Math.PI, ANGEL, "angel", 0xd32f2f],
-];
-const sunbathing = parked(
-  SUNBATHERS.map(([e, n, heading, , pose]) => ({ ...fromLV95([e, n]), heading, pose })),
-);
 // Metres the towels' tops are above the ground at the feet, so uneven ground does not cover them.
 const TOWEL = 0.06;
-const SLIDE = 0.5; // metres
 const towelShape = new THREE.BoxGeometry(0.9, 0.02, 2).translate(0, TOWEL - 0.01, 0.9);
 // A towel of this colour and shape under one at a place (lying: feet there, head along the
 // heading), tilted forward by tilt radians.
@@ -1086,87 +958,13 @@ function towel({ x, y, z, heading, tilt = 0 }, color, shape = towelShape) {
   mesh.rotation.set(tilt, heading, 0, "YXZ");
   return mesh;
 }
-// Each [LV95 east, north, heading, pose]: the yoga row about 1 m apart around LV95 2610515.3,
-// 1268548.5, the dancers 1.4 m apart around LV95 2610511.5, 1268552.2.
-const friends = parked(
-  [
-    [2610515.3, 1268549.5, -Math.PI / 2, "yoga"],
-    [2610515.3, 1268548.5, -Math.PI / 2, "yoga"],
-    [2610515.3, 1268547.5, -Math.PI / 2, "yoga"],
-    [2610513, 1268550.8, Math.PI / 2, "up"],
-    [2610510.8, 1268552.2, Math.PI / 2, "dance"],
-    [2610512.2, 1268552.2, -Math.PI / 2, "dance"],
-  ].map(([e, n, heading, pose]) => ({ ...fromLV95([e, n]), heading, pose })),
-);
-const FRIENDS = mix(
-  {
-    body: ["swim"],
-    skin: [0xf1c7a5, 0x8a5634, 0xd9a27a, 0xf6d5b8, 0xc58c5c],
-    hair: [0x111111, 0xe2c46e, 0x2a1d14, 0x7a3a1a],
-    top: [0x1e88e5, 0xffd600, 0x111111, 0x00bcd4, 0xff6f00],
-    bottom: [0x1e88e5, 0xffd600, 0x111111, 0x00bcd4, 0xff6f00],
-    head: ["long", "long", "hair", "long", "long"],
-  },
-  friends.length,
-);
-scene.add(
-  ...sunbathing.map((place, k) => towel(place, SUNBATHERS[k][5])),
-  ...friends.filter(({ pose }) => pose === "up").map((place) => towel(place, 0xec407a)),
-  ...createPeople(
-    sunbathing.map((place) => ({ ...place, y: place.y + TOWEL })),
-    SUNBATHERS.map(([, , , look]) => look),
-  ),
-  ...createPeople(
-    // On her towel, with her legs up, SLIDE back towards its middle.
-    friends.map((p) =>
-      p.pose === "up"
-        ? {
-            ...p,
-            x: p.x - Math.sin(p.heading) * SLIDE,
-            y: p.y + TOWEL,
-            z: p.z - Math.cos(p.heading) * SLIDE,
-          }
-        : p,
-    ),
-    FRIENDS,
-  ),
-  ...createPeople(standing(MEN), MEN_LOOKS),
-  ...createPeople(standing(WOMEN, [2611565.3, 1267979.1]), WOMEN_LOOKS),
-);
-// The Zoo Basel's animals, a crocodile in the Merian Gärten and wild boars, foxes, a wildcat, red
-// deer, chamois, swans, goats (twice), small monkeys, ducks, geese, a lynx, donkeys and wolves in the
-// Lange Erlen (src/zoo.js) at LV95 points, each group with its heading.
-const zoo = createZoo(
-  [
-    ["giraffes", 2610723.6, 1266483.0, 0.5],
-    ["elephants", 2610681.3, 1266433.3, -1],
-    ["zebras", 2610415.1, 1266286.4, 2],
-    ["hippos", 2610590.8, 1266337.9, 1],
-    ["seals", 2610402.7, 1266201.5, 0],
-    ["rhinos", 2610587.7, 1266255.8, 0.8],
-    ["penguins", 2610437.5, 1266003.1, 0],
-    ["crocodiles", 2613500.5, 1264409.6, 0],
-    ["boars", 2612577.6, 1269243.4, 0],
-    ["foxes", 2612577.1, 1269194.8, 0],
-    ["wildcat", 2612617.9, 1269241.3, 0],
-    ["deer", 2612649.0, 1269188.8, 0],
-    ["chamois", 2612705.9, 1269201.7, 0],
-    ["swans", 2612675.9, 1269269.7, 0],
-    ["goats", 2612720.7, 1269278.9, 0],
-    ["monkeys", 2612733.4, 1269327.0, 0],
-    ["ducks", 2612756.0, 1269255.9, 0],
-    ["geese", 2612797.5, 1269228.5, 0],
-    ["lynx", 2612850.6, 1269239.8, 0],
-    ["goats", 2612871.7, 1269272.5, 1.5],
-    ["donkeys", 2612959.8, 1269327.0, 0],
-    ["howler", 2612841.2, 1269383.6, -1.2],
-    ["wolf", 2612810.9, 1269370.5, 1.8],
-    ["wolf", 2612805.8, 1269381.3, 0.4],
-  ].map(([group, e, n, heading]) => ({ group, ...fromLV95([e, n]), heading })),
-  heightAt,
-  tree.clear,
-);
-scene.add(...zoo.meshes);
+// The women sunbathing, doing yoga and dancing in a park, the men at the Claraplatz, the women in
+// a lane (src/catalog.js).
+build("S2", { parked, towel, TOWEL });
+build("S3", { parked });
+build("S4", { parked });
+// The animals of the Zoo Basel, the Merian Gärten and the Lange Erlen (src/catalog.js).
+const animals = build("A1", { heightAt, clear: tree.clear });
 // The old man feeding swans on the Rhine's bank (src/catalog.js).
 const feeding = build("S1", { heightAt, towel, TOWEL });
 // Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
@@ -1227,7 +1025,7 @@ const walkers = createWalkers(
   terrainInfo.z0,
   passerLooks,
   walkGround,
-  [clique.zones, fireTrucks.map(({ zone }) => zone), keptOff],
+  [...cliques.map(({ zones }) => zones), fireTrucks.map(({ zone }) => zone), keptOff],
   (near) => [
     ...tree.trunks(near),
     ...CATALOG.L1.places.filter(({ x, z }) => near(x, z)).map(({ x, z }) => [x, z, BASIN]),
@@ -1289,22 +1087,10 @@ kindLines.bike = wayLines(rheinweg, false);
 kindLines.swim = wayLines(rheinrunde, true);
 overlay.add(kindLines.bike, kindLines.swim);
 // The St. Jakob-Park in FC Basel's colours, blue walls and a red roof: the widest building whose
-// middle is within STADIUM of its pitch's (the model joins the block behind its south stand to it).
-// On the pitch a training game (src/football.js) between goals at LV95 2613704.8, 1265649.7 and
-// 2613621.4, 1265686.0: goalkeepers in green, two teams in the club's kit, one in orange bibs,
-// their coach in a dark tracksuit at the side.
+// middle is within STADIUM of its pitch's (the model joins the block behind its south stand to it),
+// where the training game (src/catalog.js) is.
 const STADIUM = 60; // metres
-const ends = parked(
-  [
-    [2613704.8, 1265649.7],
-    [2613621.4, 1265686.0],
-  ].map(fromLV95),
-);
-const stadium = structures.widest(
-  (ends[0].x + ends[1].x) / 2,
-  (ends[0].z + ends[1].z) / 2,
-  STADIUM,
-);
+const stadium = structures.widest(CATALOG.S7.places[0].x, CATALOG.S7.places[0].z, STADIUM);
 if (stadium >= 0) structures.paint(stadium, { roof: 0xd51f2a, wall: 0x1d3fbf });
 // The buildings on Roche's site (its outline in OSM, landuse=industrial "Roche", in LV95) with
 // white walls as its towers, so they show as one company's; their roofs as on the aerial photo.
@@ -1415,33 +1201,10 @@ const jets = [
 ]; // and one in the museum (src/museum.js)
 if (jetRoof) landOn(jetRoof.number, jets[0].land, jetAt);
 scene.add(...jets.map(({ group }) => group));
-// On each Roche tower's roof, four women dressed as the friends dancing 2 m around its middle,
-// each looking out another way (north-east, south-east, south-west, north-west). destroy()
-// removes them with their tower.
+// The friends dancing on the Roche towers' roofs (src/catalog.js); destroy() removes them with
+// their tower.
 const onRoofs = new Map(); // building number → the meshes that go with it
-for (const [t, tower] of [
-  [2612702, 1267635],
-  [2612756, 1267585],
-].entries()) {
-  const roof = roofAt(tower); // none if the tower is destroyed
-  if (!roof) continue;
-  const { number, x, y, z } = roof;
-  const meshes = createPeople(
-    [3, 1, -1, -3].map((k) => {
-      const heading = (k * Math.PI) / 4;
-      return {
-        x: x + 2 * Math.sin(heading),
-        y,
-        z: z + 2 * Math.cos(heading),
-        heading,
-        pose: "dance",
-      };
-    }),
-    FRIENDS.slice(2 * t),
-  );
-  scene.add(...meshes);
-  onRoofs.set(number, meshes);
-}
+for (const [number, meshes] of build("S5", { roofAt, heightAt }).roofs) onRoofs.set(number, meshes);
 // Basel SBB's platform roofs (LV95 2611267.0, 1266160.4): roofs as dark as the building's at LV95
 // 2611386.8, 1266248.2, walls as beige as the station building's (LV95 2611375.6, 1266339.0).
 const platforms = roofAt([2611267.0, 1266160.4]);
@@ -1548,46 +1311,9 @@ for (const point of [
 // style 0, seed 1), not a hall's none.
 const badischer = roofAt([2612676.3, 1268528.5]);
 if (badischer) structures.paint(badischer.number, { facade: 1 << 5 });
-const KIT = {
-  body: "player",
-  top: 0x1d3fbf,
-  bottom: 0x1d3fbf,
-  hat: 0xd51f2a, // sleeves and socks
-};
-const KEEPER = { ...KIT, top: 0x2e7d32, bottom: 0x111111, hat: 0x2e7d32 };
-const STAFF = { body: "man", top: 0x222222, bottom: 0x222222, shoes: 0xffffff };
-// Eleven against eleven, then aside: the head coach and his assistant at the north touchline, the
-// third goalkeeper and the goalkeeping coach facing each other behind the first goal, throwing a
-// ball.
-const training = createTraining(
-  ends,
-  [
-    { ...KEEPER, skin: 0xe8b996, hair: 0x2a1d14 },
-    { ...KEEPER, skin: 0x8a5634, hair: 0x111111 },
-    ...mix(
-      {
-        ...Object.fromEntries(Object.entries(KIT).map(([key, value]) => [key, [value]])),
-        top: [0x1d3fbf, 0xff6f00], // teams 0 and 1, in bibs
-        skin: [0xe8b996, 0x6b4128, 0xd9a27a, 0xf1c7a5, 0x8a5634, 0xc58c5c, 0x4a2c1a],
-        hair: [0x2a1d14, 0x111111, 0xe2c46e, 0x3a2414, 0x7a3a1a],
-        shoes: [0x111111, 0x111111, 0xff6f00],
-      },
-      20,
-    ),
-  ],
-  [
-    { u: -6, v: -41, face: Math.PI / 2, look: { ...STAFF, skin: 0xe8b996, hair: 0x3a2414 } },
-    { u: 6, v: -41, face: Math.PI / 2, look: { ...STAFF, skin: 0xd9a27a, hair: 0x111111 } },
-    { u: -51, v: -20, face: Math.PI / 2, look: { ...KEEPER, skin: 0xf1c7a5, hair: 0xe2c46e } },
-    { u: -51, v: -14, face: -Math.PI / 2, look: { ...STAFF, skin: 0xc58c5c, hair: 0x8a8a8a } },
-  ],
-  [3, 2], // the goalkeeping coach throws, the third goalkeeper catches
-);
-scene.add(...training.objects);
-// A girl on her pink bike (src/bike.js) to and fro on the path from WGS84 47.571822, 7.599996 to
-// 47.571540, 7.601622, her little sister running after her.
-const bike = createBike([fromWGS84(47.571822, 7.599996), fromWGS84(47.57154, 7.601622)], heightAt);
-scene.add(...bike.objects);
+// The football training on its pitch, the girl on her bike and her sister (src/catalog.js).
+const training = build("S7", { parked });
+const bike = build("S6", { heightAt });
 // "PUMA" mown into the grass (src/lawn.js), reading from WGS84 47.571836, 7.600411 to 47.572127,
 // 7.600549.
 const lawn = createLawn(
@@ -2365,11 +2091,13 @@ function danger(x, y, z, reach, march, clear = 0, turn = 0) {
     const side = width + DANGER.margin + DANGER.steered;
     zone(-1 - d, bx, bz, ux, uz, 2 * half + Math.abs(speed) * WARN, side);
   });
-  for (let r = 0; !march && r < clique.zones.length; r++) {
-    const c = clique.zones[r];
-    if (Math.abs(c[6] - y) <= DANGER.level)
-      zone(-1 - driven.length - r, c[0], c[1], c[2], c[3], c[4], c[5]);
-  }
+  let r = 0; // over all cliques' zones
+  for (const { zones } of march ? [] : cliques)
+    for (const c of zones) {
+      if (Math.abs(c[6] - y) <= DANGER.level)
+        zone(-1 - driven.length - r, c[0], c[1], c[2], c[3], c[4], c[5]);
+      r++;
+    }
   if (!inDanger(x, z)) return null;
   let best = Infinity;
   way[0] = way[1] = 0;
@@ -2734,7 +2462,7 @@ renderer.domElement.addEventListener(
   (e) => (down = { x: e.clientX, y: e.clientY, time: e.timeStamp }),
 );
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0 || stoppedGlide || steered()) return;
+  if (e.button !== 0 || stoppedGlide || steered() || movingLabels) return;
   if (mouseLook()) {
     if (buttonAt(innerWidth / 2, innerHeight / 2)) return toggleMuseum();
     // Gets on what the dot in the middle is on, freeing the mouse, if anything.
@@ -3064,9 +2792,10 @@ addEventListener("resize", () => {
 // #map=zoom/latitude/longitude/bearing/pitch. The point looked at (WGS84); the zoom of a web map
 // (256 px tiles) showing as much ground across the screen's height there; the direction looked in
 // (degrees, 0 north, 90 east) and the tilt (degrees, 0 straight down), both optional (0). Written
-// once the view has rested for VIEW_DELAY ms, so not while it moves (and not when it did not
-// move, so it does not creep by rounding), read at the start and when the URL changes.
-const VIEW_DELAY = 300;
+// at most every VIEW_EVERY ms (browsers block changing it far more often), so a reload soon after
+// a move keeps it, and not when the view did not move, so it does not creep by rounding; read at
+// the start and when the URL changes.
+const VIEW_EVERY = 500;
 // Camera distance (metres) <-> web map zoom at a latitude, for the window's height.
 const EARTH = 40075016.686; // metres around the equator
 const perZoom = (lat) =>
@@ -3095,12 +2824,11 @@ function readView() {
   return true;
 }
 let viewShown = ""; // camera position and target as last read or written
-let viewHash = ""; // the view as it would be written, at the last frame it had changed
-let viewSince = 0; // since when it is that (ms)
+let viewWritten = -Infinity; // when it was written last (ms)
 function writeView(time) {
   if (riding) return;
   const shown = [...camera.position.toArray(), ...orbit.target.toArray()].join();
-  if (shown === viewShown) return;
+  if (shown === viewShown || time - viewWritten < VIEW_EVERY) return;
   const offset = camera.position.clone().sub(orbit.target);
   const r = offset.length();
   const [lat, lon] = toWGS84(orbit.target.x, orbit.target.z);
@@ -3108,9 +2836,7 @@ function writeView(time) {
   const bearing = Math.round(THREE.MathUtils.radToDeg(Math.atan2(-offset.x, offset.z)) + 360) % 360;
   const pitch = Math.round(THREE.MathUtils.radToDeg(Math.acos(offset.y / r)));
   const hash = `#map=${zoom.toFixed(2)}/${lat.toFixed(6)}/${lon.toFixed(6)}/${bearing}/${pitch}`;
-  if (hash !== viewHash) [viewHash, viewSince] = [hash, time]; // still moving
-  if (time - viewSince < VIEW_DELAY) return;
-  viewShown = shown;
+  [viewShown, viewWritten] = [shown, time];
   if (hash !== location.hash) history.replaceState(null, "", hash);
 }
 addEventListener("hashchange", readView);
@@ -3206,6 +2932,7 @@ const drawFrame = createDev(
   (on) => showGround(on ? "photo" : "map"),
   (on) => (god = on),
   (on) => (showRiders = on),
+  OPEN && moveLabels,
 );
 // Moves the view over the middle of scene points, looking the same way, out as far as shows them
 // all with FIT around them (as seen from above), but not nearer.
@@ -3252,6 +2979,47 @@ nightBox.addEventListener("change", () => {
 
 let last = performance.now();
 let afloat = 0; // seconds the ferries and ships have moved, so they keep in step
+// The museum's labels on the ground (src/museum.js), once all is built. "Move labels" in the Dev
+// panel (src/dev.js): while ticked, a label dragged follows the pointer over the ground and clicks
+// do nothing else; unticked, every label's place is copied (src/copy.js), "text: latitude,
+// longitude, altitude" a line, to be set so in src/museum.js.
+const museumLabels = OPEN && createLabels(heightAt, renderer.capabilities.getMaxAnisotropy());
+if (museumLabels) scene.add(museumLabels);
+let movingLabels = false;
+let draggedLabel = null; // { mesh, orbit: whether the view's controls were on }
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const dragHit = new THREE.Vector3();
+function moveLabels(on) {
+  const was = movingLabels;
+  movingLabels = on;
+  if (on || !was) return; // copied only after moving
+  const lines = museumLabels.children.map((m) => `${m.userData.text}: ${toText(m.position)}`);
+  copy(lines.join("\n"));
+}
+function pointerRay({ clientX, clientY }) {
+  const at = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(at, camera);
+}
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (!movingLabels) return;
+  pointerRay(e);
+  const hit = raycaster.intersectObjects(museumLabels.children)[0];
+  if (!hit) return;
+  draggedLabel = { mesh: hit.object, orbit: orbit.enabled };
+  orbit.enabled = false;
+  dragPlane.constant = -hit.object.position.y;
+});
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (!draggedLabel) return;
+  pointerRay(e);
+  if (raycaster.ray.intersectPlane(dragPlane, dragHit))
+    draggedLabel.mesh.position.set(dragHit.x, draggedLabel.mesh.position.y, dragHit.z);
+});
+addEventListener("pointerup", () => {
+  if (!draggedLabel) return;
+  orbit.enabled = draggedLabel.orbit;
+  draggedLabel = null;
+});
 renderer.setAnimationLoop((time) => {
   // The first frame's time can be before last.
   const dt = THREE.MathUtils.clamp((time - last) / 1000, 0, 0.1);
@@ -3273,7 +3041,8 @@ renderer.setAnimationLoop((time) => {
   runners.update(dt, pedestrians);
   if (OPEN) museumWalkers.update(dt, museumCentre, camera.position);
   swimmers.update(dt);
-  clique.update(dt);
+  if (OPEN) museumSwimmers.update(dt);
+  for (const clique of cliques) clique.update(dt);
   training.update(dt);
   bike.update(dt);
   serpent.update(time / 1000);
@@ -3293,12 +3062,12 @@ renderer.setAnimationLoop((time) => {
   drive(dt);
   flee(dt);
   splash.update(dt);
-  clique.carry();
+  for (const clique of cliques) clique.carry();
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   afloat += dt;
   ferries.update(afloat);
   ships.update(afloat, dt);
-  zoo.update(time / 1000);
+  animals.update(time / 1000);
   feeding.update(time / 1000);
   explosions.update(dt);
   rockets.update(dt);

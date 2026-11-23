@@ -1,7 +1,8 @@
 // Zoo animals, low-poly and BIG times their size so they are seen well, each kind in a group
 // around its place: giraffes nodding, elephants swinging their trunks, zebras grazing, rhinos
 // nodding, a parade of penguins waddling round in a ring; in the water hippos opening their mouths
-// wide and seals swimming round in a ring, among flamingos (some on one leg) bobbing their heads;
+// wide, beside them flamingos (some on one leg) bobbing their heads, and seals swimming round in a
+// ring;
 // a crocodile opening its jaws slowly; wild boars and their striped piglets rooting, foxes and a
 // wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans,
 // mallards and geese swimming round in rings, goats grazing, small monkeys hopping about and a lynx
@@ -594,6 +595,9 @@ const GROUPS = {
     ["hippo", 3.5, 1, 2.5, 0.9],
     ["hippo", 1.5, -3, 1, 0.95],
     ["hippo", 5, -2.5, -0.8, 0.5],
+  ],
+  // Beside the hippos (at their place, as about them).
+  flamingos: [
     ["flamingo", -2, 0.5, 0.4, 1],
     ["flamingoOnTwo", -2.6, 1.2, -0.5, 1],
     ["flamingo", -1.8, 2, 2.6, 0.9],
@@ -674,17 +678,7 @@ const GROUPS = {
     ["chamois", -1.2, 0.9, -0.5, 1],
     ["chamois", 0.6, -1.3, 2.2, 0.6],
   ],
-  seals: [
-    ...ring("seal", 5, 1.2),
-    ["flamingo", 0, 0, 0, 1],
-    ["flamingoOnTwo", 0.8, 0.5, 0.5, 1],
-    ["flamingo", -0.7, 0.9, -0.3, 1.05],
-    ["flamingoOnTwo", 0.3, -0.8, 2, 0.9],
-    ["flamingoOnTwo", 5.5, 1, 2.8, 0.95],
-    ["flamingo", 6.2, 0.2, 1.2, 1],
-    ["flamingo", 5.8, -0.8, -0.6, 1],
-    ["flamingoOnTwo", 6.6, 1.5, 0.9, 1.05],
-  ],
+  seals: ring("seal", 5, 1.2),
 };
 
 // The groups at their places ({ group, x, z, heading }); ground(x, z): the height there; clear(x,

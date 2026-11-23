@@ -5,9 +5,10 @@
 // and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
 // and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
 // part hides and shows it, to see what it costs; then "Aerial" shows the aerial photo as the
-// ground, "God mode" (src/main.js, godAt) and at the bottom "Riders", none ticked at first. All
-// of it lives here, the menu entry in index.html and the styles in style.css (#dev-box, #dev), so
-// it can be taken out whole (but godAt and showRiders).
+// ground, "God mode" (src/main.js, godAt), "Riders" and, while the museum is open, at the bottom
+// "Move labels", none ticked at first. All of it lives here, the menu entry in index.html and the
+// styles in style.css (#dev-box, #dev), so it can be taken out whole (but godAt, showRiders and
+// moveLabels).
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -16,8 +17,9 @@ const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 
 // A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
 // aerial(on): shows the aerial photo or the map again, its promise done when it does; god(on):
-// turns God mode on or off; riders(on): shows the riders on all vehicles or only on the one ridden.
-export function createDev(renderer, render, parts, aerial, god, riders) {
+// turns God mode on or off; riders(on): shows the riders on all vehicles or only on the one ridden;
+// labels(on), if given: lets the museum's labels be moved or not.
+export function createDev(renderer, render, parts, aerial, god, riders, labels) {
   const box = document.getElementById("dev-box");
   try {
     box.checked = localStorage.getItem(KEY) === "1";
@@ -65,6 +67,7 @@ export function createDev(renderer, render, parts, aerial, god, riders) {
   const modes = [
     [toggle("God mode", god), god],
     [toggle("Riders", riders), riders],
+    ...(labels ? [[toggle("Move labels", labels), labels]] : []),
   ];
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.
