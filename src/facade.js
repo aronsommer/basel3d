@@ -16,14 +16,18 @@ const SETTINGS = {
   lit: 0.42, // of the windows, lit at night
 };
 
-// GLSL helpers: a box's signed distance; 1 inside a distance below 0, smoothed over aa; a hash.
+// GLSL helpers: a box's signed distance; 1 inside a distance below 0, smoothed over a pixel (at most
+// aa, where p jumps between cells); a hash.
 const HELPERS = `
 varying vec3 vFacade;
 varying vec3 vNearby;
 varying vec3 vWall;
 uniform float facadeNight;
 float facadeBox(vec2 p, vec2 b) { vec2 d = abs(p) - b; return max(d.x, d.y); }
-float facadeFill(float d, float aa) { return 1.0 - smoothstep(-aa, aa, d); }
+float facadeFill(float d, float aa) {
+  float w = 0.5 * min(fwidth(d), aa) + 1e-5;
+  return 1.0 - smoothstep(-w, w, d);
+}
 float facadeHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 `;
 
@@ -45,7 +49,7 @@ const FACADE = `
     vec2 id = floor(q / cs);
     vec2 p = (fract(q / cs) - 0.5) * cs; // metres from the cell's middle
     float mpp = max(fwidth(q.x), fwidth(q.y)); // metres per pixel
-    float aa = mpp * 0.7;
+    float aa = fwidth(q.x) + fwidth(q.y); // the most a distance in metres changes over a pixel
     float far = smoothstep(0.7, 1.6, mpp); // 1: too far to resolve the windows
     float near = 1.0 - smoothstep(0.22, 0.85, mpp);
     float fine = 1.0 - smoothstep(0.04, 0.15, mpp); // thin lines fade before they would flicker
@@ -98,7 +102,7 @@ const FACADE = `
       float d = facadeBox(p - wc, wh), gm = facadeFill(d + 0.05, aa);
       col = mix(col, wall * 1.1, facadeFill(abs(p.y + cs.y * 0.5) - 0.11, aa) * fine);
       col = mix(col, ${SETTINGS.dark}, (facadeFill(d, aa) - gm) * fine);
-      glass = gm * mix(1.0, smoothstep(0.02 - aa, 0.02 + aa, abs(p.x)), fine);
+      glass = gm * mix(1.0, 1.0 - facadeFill(abs(p.x) - 0.02, aa), fine);
       if ((bits & 16) != 0 && mod(id.x + floor(h2 * 2.0), 2.0) < 0.5 && gf < 0.5) {
         float by = p.y + cs.y * 0.5;
         float rl = facadeFill(by - 1.05, aa) * facadeFill(abs(p.x) - wh.x - 0.35, aa);
@@ -137,7 +141,7 @@ const FACADE = `
       float gm = facadeFill(dl + 0.07, aa);
       col = mix(col, wall * 1.25, (facadeFill(dl - 0.1, aa) - facadeFill(dl, aa)) * fine);
       col = mix(col, wall * 0.5, facadeFill(dl, aa) - gm);
-      glass = gm * mix(1.0, smoothstep(0.035 - aa, 0.035 + aa, abs(c.x)), fine);
+      glass = gm * mix(1.0, 1.0 - facadeFill(abs(c.x) - 0.035, aa), fine);
       glassColour = mix(vec3(0.10, 0.12, 0.18), vec3(0.18, 0.08, 0.08), step(0.5, wid));
     } else {
       // Halls: panel joints, a ledge per storey, a few gates at street level.
