@@ -1378,7 +1378,7 @@ const lawn = createLawn(
   terrainAt,
 );
 scene.add(lawn);
-const tanks = createTanks(parked([{ x: 399, z: -643, heading: Math.PI / 2 }]), boost, world);
+const tanks = createTanks(parked([{ x: 383.8, z: -631.9, heading: Math.PI / 2 }]), boost, world);
 // The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west.
 const dinos = createDinos(
   parked([{ ...fromLV95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }]),
