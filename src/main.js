@@ -48,6 +48,7 @@ import { createJet } from "./jet.js";
 import { TOSS, createPeople, dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createGraffiti } from "./graffiti.js";
+import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
 import { createPoints } from "./points.js";
 import { copy } from "./copy.js";
@@ -2149,6 +2150,13 @@ const drives = [
   if (vehicles[0]?.look) ride.cab = (v, view) => vehicles[v].look(view);
   return [vehicles, ride];
 });
+// Water splashing round the wheels of the road vehicles and dinos on the Rhine (src/splash.js).
+const splash = createSplash(
+  [police, ambulances, fireTrucks, motorcycles, quads, xrts, tanks, dinos].flat(),
+  (x, z, y) => y <= WATER + 0.5 && heightAt(x, z) <= WATER,
+  WATER,
+);
+scene.add(splash.points);
 // People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
 // cars of trams, trains and road vehicles that go and their ways WARN seconds ahead (traffic), and
 // the vehicles above (but the drones) while they move faster than slow, with their ways WARN
@@ -3133,6 +3141,7 @@ renderer.setAnimationLoop((time) => {
   if (riding?.ride === footRide) onFoot.step(dt, steering());
   drive(dt);
   flee(dt);
+  splash.update(dt);
   clique.carry();
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   afloat += dt;
