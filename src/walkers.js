@@ -4,7 +4,7 @@
 // pace, a little right of the loop, so those meeting pass each other; some with a child or a dog
 // beside them. One further than RADIUS reappears near that edge (in the whole circle after a jump
 // of the centre); all are hidden while the camera is further than SHOWN from the centre. They walk
-// round the zones kept off (the Fasnacht clique's rows), stepping aside in a bow (BOW); where that
+// round the zones kept off (the Fasnacht clique's rows and members), stepping aside in a bow (BOW); where that
 // is too far, as it crosses their way, they stop before it, watching it pass.
 import * as THREE from "three";
 import { createCrowd } from "./people.js";

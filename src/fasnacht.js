@@ -11,8 +11,9 @@ import { night } from "./daylight.js";
 const SPEED = 0.8; // metres per second
 const STRIDE = 4.5; // radians of the march per metre
 const WIDE = 4.5; // metres either side of the loop's middle line
-// Metres others keep off a row (zones): beyond its outer members, and ahead and behind it.
-const [KEEP, REACH] = [2, 2.5];
+// Metres others keep off a row (zones): beyond its outer members, and ahead and behind it; and
+// off a member away from its row, either way.
+const [KEEP, REACH, ALONE] = [2, 2.5, 1];
 // The rows from the front: their pose, metres behind the row before and metres apart across.
 const ROWS = [
   ["major", 0, 0, 1],
@@ -85,8 +86,10 @@ const STAFF = mergeGeometries([
 ]);
 
 // The loop: from a to b ([x, z]) and back, WIDE either side, round at the ends. ground(x, z): the
-// height there. { meshes, update(dt), zones }: per row where others keep off (src/main.js): back
-// x, z, way x, z (unit), length, half width and height.
+// height there. { meshes, update(dt), carry(), zones }: carry puts what they carry on them, after
+// they fled (dodge, src/people.js); zones where others keep off (src/main.js, src/walkers.js), per
+// row and then per member away from it (after carry): back x, z, way x, z (unit), length, half
+// width and height.
 export function createClique([a, b], ground) {
   // The loop: half round b, on to a, half round a, back to b; exact, so turning is smooth.
   const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -116,12 +119,12 @@ export function createClique([a, b], ground) {
     back += behind;
     rows.push([back, ((count - 1) / 2) * apart + KEEP]);
     for (let c = 0; c < count; c++)
-      members.push({ pose, back, side: (c - (count - 1) / 2) * apart });
+      members.push({ pose, back, side: (c - (count - 1) / 2) * apart, zone: new Float64Array(7) });
   }
   const zones = rows.map(() => new Float64Array(7));
   const bodies = ["man", "woman"];
   const crowds = bodies.map((body, k) =>
-    createCrowd(body, members.filter((_, i) => i % 2 === k).length, false),
+    createCrowd(body, members.filter((_, i) => i % 2 === k).length, "march"),
   );
   members.forEach((m, i) => {
     Object.assign(m, { crowd: crowds[i % 2], i: i >> 1, body: bodies[i % 2] });
@@ -147,34 +150,15 @@ export function createClique([a, b], ground) {
   const [matrix, swung, arm] = [new THREE.Matrix4(), new THREE.Matrix4(), new THREE.Matrix4()];
   let [front, phase] = [0, 0];
 
+  // It halts while any of its members flees (dodge, src/people.js), marking time, so they find
+  // their places where they left them.
   function update(dt) {
-    front += SPEED * dt;
+    if (!members.some((m) => m.crowd.away(m.i))) front += SPEED * dt;
     phase += SPEED * dt * STRIDE;
-    const counts = carried.map(() => 0);
-    let stick = 0;
     for (const m of members) {
       const [x, z, heading] = at(front - m.back, m.side);
-      const y = ground(x, z);
-      m.crowd.place(m.i, x, y, z, heading, phase, 1, 0);
-      matrix.makeRotationY(heading).setPosition(x, y, z);
-      carried.forEach(([mesh, has], k) => has(m) && mesh.setMatrixAt(counts[k]++, matrix));
-      if (m.pose === "drum")
-        STICKS[m.body].forEach((rest, k) => {
-          const s = 2 * k - 1;
-          const a =
-            DRUM_ARMS[0] + DRUM_ARMS[1] * Math.sin(peopleTime.value * DRUM_ARMS[2] + s * 1.5708);
-          sticks.setMatrixAt(stick++, swung.multiplyMatrices(matrix, swing(a, arm)).multiply(rest));
-        });
-      if (m.pose === "major") {
-        const a = MAJOR_ARM[0] + MAJOR_ARM[1] * Math.sin(phase);
-        const [out, up] = HAND[m.body];
-        const grip = up - PIVOTS[1];
-        arm.makeTranslation(-out, PIVOTS[1] + grip * Math.cos(a), grip * Math.sin(a));
-        staff.setMatrixAt(0, swung.multiplyMatrices(matrix, arm));
-      }
+      m.crowd.place(m.i, x, ground(x, z), z, heading, phase, 1, 0);
     }
-    for (const mesh of [...carried.map(([mesh]) => mesh), sticks, staff])
-      mesh.instanceMatrix.needsUpdate = true;
     rows.forEach(([behind, half], r) => {
       const [x, z, heading] = at(front - behind, 0);
       const [ux, uz] = [Math.sin(heading), Math.cos(heading)];
@@ -184,7 +168,39 @@ export function createClique([a, b], ground) {
     lanterns.visible = night.value > 0.05;
     glowing.emissiveIntensity = 2 * night.value;
   }
+  function carry() {
+    const counts = carried.map(() => 0);
+    let stick = 0;
+    zones.length = rows.length;
+    for (const m of members) {
+      m.crowd.mesh.getMatrixAt(m.i, matrix);
+      if (m.crowd.away(m.i)) {
+        const e = matrix.elements;
+        m.zone.set([e[12] - ALONE, e[14], 1, 0, 2 * ALONE, ALONE, e[13]]);
+        zones.push(m.zone);
+      }
+      carried.forEach(([mesh, has], k) => has(m) && mesh.setMatrixAt(counts[k]++, matrix));
+      if (m.pose === "drum")
+        STICKS[m.body].forEach((rest, k) => {
+          const s = 2 * k - 1;
+          const a =
+            DRUM_ARMS[0] + DRUM_ARMS[1] * Math.sin(peopleTime.value * DRUM_ARMS[2] + s * 1.5708);
+          sticks.setMatrixAt(stick++, swung.multiplyMatrices(matrix, swing(a, arm)).multiply(rest));
+        });
+      if (m.pose === "major") {
+        const a =
+          MAJOR_ARM[0] + MAJOR_ARM[1] * Math.sin(m.crowd.mesh.geometry.attributes.phase.array[m.i]);
+        const [out, up] = HAND[m.body];
+        const grip = up - PIVOTS[1];
+        arm.makeTranslation(-out, PIVOTS[1] + grip * Math.cos(a), grip * Math.sin(a));
+        staff.setMatrixAt(0, swung.multiplyMatrices(matrix, arm));
+      }
+    }
+    for (const mesh of [...carried.map(([mesh]) => mesh), sticks, staff])
+      mesh.instanceMatrix.needsUpdate = true;
+  }
   update(0);
+  carry();
   const meshes = [
     ...crowds.map(({ mesh }) => mesh),
     ...carried.map(([mesh]) => mesh),
@@ -192,5 +208,5 @@ export function createClique([a, b], ground) {
     staff,
   ];
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
-  return { meshes, update, zones };
+  return { meshes, update, carry, zones };
 }

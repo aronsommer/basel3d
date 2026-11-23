@@ -361,17 +361,23 @@ material.onBeforeCompile = (shader) => {
 const fleeing = [];
 // Fleeing: running RUN metres per second, at most REACH metres from its place, back after CALM
 // seconds calm at its way's end, at BACK metres per second; STRIDE radians of the walk per metre.
+// Each figure has its own pace (RUN and BACK times 0.6 to 1.4), CALM times 0.4 to 1.6, metres
+// beyond a danger (0 to AHEAD more) and radians its way out turns (up to TURN either way), so they
+// do not move as one.
 const RUN = 7;
 const REACH = 15;
 const CALM = 2.5;
 const BACK = 1.3;
 const STRIDE = 4.5;
+const AHEAD = 4;
+const TURN = 0.6;
 const [WALK, STAND] = ["walk", "stand"].map((pose) => POSES.indexOf(pose));
 
 // count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
 // tilt: radians about its own x after the heading), hide(i), away(i): whether off its place
 // (dodge) }; a look's head is short hair unless given, its face (OPTIONS: glasses or shades)
-// bare. Its figures flee from traffic (dodge) unless flee is false.
+// bare. Its figures flee from traffic (dodge) unless flee is false; if it is "march", only from
+// vehicles, keeping their pose (the marching clique, src/fasnacht.js).
 export function createCrowd(body, count, flee = true) {
   const geometry = new THREE.BufferGeometry();
   for (const name of ["position", "piece"])
@@ -396,10 +402,12 @@ export function createCrowd(body, count, flee = true) {
   };
   // Per figure: as placed, x, y, z, heading, phase, size, tilt and its pose; fleeing, how far it
   // is off that place (x, z), its heading, its phase beyond the placed one, the seconds it has
-  // been calm (0 while fleeing) and where off that place it goes (x, z).
+  // been calm (0 while fleeing) and where off that place it goes (x, z); its pace, calm, metres
+  // beyond a danger and turn, each 0 to 1.
   const home = new Float32Array(8 * count);
   const off = new Float32Array(7 * count);
-  if (flee) fleeing.push({ count, home, off, put, poses: more });
+  const own = Float32Array.from({ length: 4 * count }, Math.random);
+  if (flee) fleeing.push({ count, home, off, own, put, poses: more, march: flee === "march" });
   return {
     mesh,
     dress(
@@ -430,29 +438,32 @@ export function createCrowd(body, count, flee = true) {
 }
 
 // Moves the figures of all crowds dt seconds on, after their own moves: one in danger
-// (danger(x, y, z, reach): null if none, else its way out [x, z] within reach metres, [0, 0] if
-// none, so always for reach 0) runs that way out, sought anew once there or when its end is in
+// (danger(x, y, z, reach, march, clear, turn): null if none, else its way out [x, z] within reach
+// metres, [0, 0] if none, so always for reach 0; march: whether only vehicles count; clear: extra
+// metres beyond the danger; turn: radians the way turns off straight across it) runs that way out, sought anew once there or when its end is in
 // danger too; calm again, it walks back. Off its place it stands on ground(x, z, y) upright,
-// running or walking, else standing.
+// running or walking, else standing (marching ones keep their pose).
 export function dodge(dt, danger, ground) {
-  for (const { count, home, off, put, poses } of fleeing)
+  for (const { count, home, off, own, put, poses, march } of fleeing)
     for (let i = 0; i < count; i++) {
-      const [h, o] = [8 * i, 7 * i];
+      const [h, o, f, pace] = [8 * i, 7 * i, 4 * i, 0.6 + 0.8 * own[4 * i]];
       let [ox, oz, calm, tx, tz] = [off[o], off[o + 1], off[o + 4], off[o + 5], off[o + 6]];
       const [x, y, z] = [home[h] + ox, home[h + 1], home[h + 2] + oz];
-      const inDanger = danger(x, y, z, 0);
+      const inDanger = danger(x, y, z, 0, march);
       if (!inDanger && !ox && !oz) continue;
       const there = tx === ox && tz === oz;
       if (inDanger) {
-        if (calm || there || danger(home[h] + tx, y, home[h + 2] + tz, 0)) {
-          const [ax, az] = danger(x, y, z, REACH - Math.hypot(ox, oz));
+        if (calm || there || danger(home[h] + tx, y, home[h + 2] + tz, 0, march)) {
+          const reach = REACH - Math.hypot(ox, oz);
+          const [clear, turn] = [AHEAD * own[f + 2], TURN * (2 * own[f + 3] - 1)];
+          const [ax, az] = danger(x, y, z, reach, march, clear, turn);
           [tx, tz] = [ox + ax, oz + az];
         }
         calm = 0;
-      } else if (there && (calm += dt) > CALM) [tx, tz] = [0, 0];
+      } else if (there && (calm += dt) > CALM * (0.4 + 1.2 * own[f + 1])) [tx, tz] = [0, 0];
       const [dx, dz] = [tx - ox, tz - oz];
       const left = Math.hypot(dx, dz);
-      const step = Math.min(left, (calm ? BACK : RUN) * dt);
+      const step = Math.min(left, (calm ? BACK : RUN) * pace * dt);
       if (step) {
         off[o + 2] = Math.atan2(dx, dz);
         [ox, oz] = step < left ? [ox + (dx / left) * step, oz + (dz / left) * step] : [tx, tz];
@@ -461,7 +472,7 @@ export function dodge(dt, danger, ground) {
       off.set([calm, tx, tz], o + 4);
       const back = !ox && !oz;
       if (back) off[o + 3] = off[o + 4] = 0;
-      const pose = back ? home[h + 7] : step ? WALK : STAND;
+      const pose = back || march ? home[h + 7] : step ? WALK : STAND;
       if (poses.array[4 * i + 3] !== pose) {
         poses.array[4 * i + 3] = pose;
         poses.needsUpdate = true;

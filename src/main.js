@@ -2015,7 +2015,8 @@ const drives = [
 // People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
 // cars of trams, trains and road vehicles that go and their ways WARN seconds ahead (traffic), and
 // the vehicles above (but the drones) while they move faster than slow, with their ways WARN
-// seconds ahead along their heading; and the Fasnacht clique's rows (src/fasnacht.js, its zones).
+// seconds ahead along their heading; and, but the clique itself, the Fasnacht clique's rows and
+// members (src/fasnacht.js, its zones).
 // In danger is one up to margin metres beside the vehicles (steered metres more beside the vehicles
 // above, as they may turn) or in a row's zone, at most level metres above or below.
 const DANGER = { margin: 0.5, steered: 4, level: 3, slow: 0.5 }; // metres, metres per second
@@ -2069,11 +2070,12 @@ function open(x, y, z, tx, tz) {
   return !structures.wall(wallFrom.set(x, y + 1, z), wallTo.set(tx, y + 1, tz), true);
 }
 const way = [0, 0];
-// Null if x, y, z is in no danger, else the shortest way out ([x, z]) within reach metres, open
-// all the way (open): across one of the dangers there, to either side, CLEAR beyond it and on
+// Null if x, y, z is in no danger (the clique's zones not counted if march), else the shortest
+// way out ([x, z]) within reach metres, open all the way (open): across one of the dangers there,
+// to either side, turn radians off straight across, CLEAR and clear more metres beyond it and on
 // until out of all, rather not across another (CROSS); only if there is none, as far out of one
 // on its own side as it may; [0, 0] if not even that.
-function danger(x, y, z, reach) {
+function danger(x, y, z, reach, march, clear = 0, turn = 0) {
   zoneCount = 0;
   [asked[0], asked[1]] = [x, z];
   const { xz, y: ys, of, head, blockers, halves } = traffic;
@@ -2099,7 +2101,7 @@ function danger(x, y, z, reach) {
     const side = width + DANGER.margin + DANGER.steered;
     zone(-1 - d, bx, bz, ux, uz, 2 * half + Math.abs(speed) * WARN, side);
   });
-  for (let r = 0; r < clique.zones.length; r++) {
+  for (let r = 0; !march && r < clique.zones.length; r++) {
     const c = clique.zones[r];
     if (Math.abs(c[6] - y) <= DANGER.level)
       zone(-1 - driven.length - r, c[0], c[1], c[2], c[3], c[4], c[5]);
@@ -2107,12 +2109,16 @@ function danger(x, y, z, reach) {
   if (!inDanger(x, z)) return null;
   let best = Infinity;
   way[0] = way[1] = 0;
+  const [cos, sin] = [Math.cos(turn), Math.sin(turn)];
   for (let k = 0; k < 6 * zoneCount; k += 6) {
     const side = beside(k, x, z);
     if (!(Math.abs(side) < zones[k + 5])) continue;
     for (const s of [-1, 1]) {
-      const [ax, az] = [s * zones[k + 3], -s * zones[k + 2]];
-      const out = zones[k + 5] - s * side + CLEAR;
+      const [ax, az] = [
+        s * (zones[k + 3] * cos + zones[k + 2] * sin),
+        s * (zones[k + 3] * sin - zones[k + 2] * cos),
+      ];
+      const out = (zones[k + 5] - s * side + CLEAR + clear) / cos;
       let t = out;
       while (t <= reach && inDanger(x + ax * t, z + az * t)) t += TRY;
       // Else just out of this danger; but only as far as reach, walls and edges let.
@@ -2871,6 +2877,7 @@ renderer.setAnimationLoop((time) => {
   if (riding?.ride === footRide) onFoot.step(dt, steering());
   drive(dt);
   flee(dt);
+  clique.carry();
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   afloat += dt;
   ferries.update(afloat);
