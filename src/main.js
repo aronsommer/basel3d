@@ -20,6 +20,7 @@ import { createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createPolice } from "./police.js";
+import { createAmbulances } from "./ambulance.js";
 import { createDriving } from "./drive.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { createQuads } from "./quad.js";
@@ -825,6 +826,9 @@ const police = createPolice(
   boost,
   world,
 );
+// An ambulance (src/ambulance.js) at WGS84 47.561340, 7.585408, facing as from 47.561249, 7.585620
+// to 47.561237, 7.585649.
+const ambulances = createAmbulances(parked([{ x: 46.3, z: -458.0, heading: 1.02 }]), boost, world);
 const motorcycles = createMotorcycles(
   parked([
     { x: 562.5, z: -584.6, heading: 0.88 },
@@ -1439,6 +1443,7 @@ const policeBoats = createBoats("police", boat(324.4, -526.5, -2.53), boost, onW
 scene.add(
   ...[
     ...police,
+    ...ambulances,
     ...motorcycles,
     ...quads,
     ...tanks,
@@ -2008,7 +2013,7 @@ function getOff() {
 }
 
 // --- Riding: click or tap a tram, train, car, ship, plane, a helicopter, the jet, the sea
-// monster, the UFO, a police car, a motorcycle, the quad, the tank, a boat or the drone to ride along; while
+// monster, the UFO, a police car, the ambulance, a motorcycle, the quad, the tank, a boat or the drone to ride along; while
 // riding, but not steering, a click or tap on another one changes to it. A finger also finds one
 // up to FINGER beside it. The button or Esc gets off.
 const FINGER = 25; // px
@@ -2025,11 +2030,12 @@ const ufoRide = riders([
 const jetRide = riders([
   { object: jet.group, materials: [jet.material], eye: [0, 8, -48], ahead: [0, 2.6, 40] },
 ]);
-// What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the
+// What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the ambulance, the
 // motorcycles, the quads, the tanks, the dinosaur and the boats, from behind and above; the drones through their own
 // camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
+  [ambulances, [0, 3.8, -10], [0, 1.5, 9]],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
   [quads, [0, 2.6, -6], [0, 0.6, 5]],
   [tanks, [0, 5, -16], [0, 2, 14]],
