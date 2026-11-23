@@ -1,6 +1,7 @@
 // "Points" in the menu: while ticked, a panel at the left (below the Dev panel,
 // src/dev.js, when both show) marks points on the scene with numbers. Record points: while
-// recording, each click on the scene marks what is there; Undo takes back the last; Stop ends it.
+// recording, each click on the scene marks what is there, after the marks so far; Delete last
+// removes the last; Done ends it. Clear points removes all marks.
 // Paste points reads "latitude, longitude, altitude" lines from the clipboard (only over https or
 // on localhost), marks them instead, numbered in their order, and moves the view to show them;
 // other lines are skipped, and a clipboard without any keeps the marks. Copy points copies the
@@ -24,8 +25,9 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
     panel.appendChild(Object.assign(document.createElement("button"), { textContent }));
   const record = add("Record points");
   const paste = add("Paste points");
-  const undo = add("Undo");
+  const deleteLast = add("Delete last");
   const copyAll = add("Copy points");
+  const clearAll = add("Clear points");
   const points = []; // { point, mark }
   let on = false;
   const clear = () => points.splice(0).forEach(({ mark }) => mark.remove());
@@ -48,14 +50,16 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       .filter(Boolean)
       .forEach(place);
   } catch {} // storage blocked
-  // After each change: the panel while ticked; its buttons: while recording Stop and Undo, else
-  // the others, Copy points disabled without marks; the tick and the marks stored.
+  // After each change: the panel while ticked; its buttons: Delete last while recording, else
+  // Paste points; Delete last, Copy and Clear points disabled without marks; the marks hidden while
+  // unticked (update shows them); the tick and the marks stored.
   const sync = () => {
     panel.hidden = !box.checked;
-    record.textContent = on ? "Stop" : "Record points";
-    undo.hidden = !on;
-    paste.hidden = copyAll.hidden = on;
-    copyAll.disabled = !points.length;
+    if (panel.hidden) for (const { mark } of points) mark.hidden = true;
+    record.textContent = on ? "Done" : "Record points";
+    deleteLast.hidden = !on;
+    paste.hidden = on;
+    deleteLast.disabled = copyAll.disabled = clearAll.disabled = !points.length;
     try {
       localStorage.setItem(PANEL_KEY, box.checked ? "1" : "0");
       localStorage.setItem(POINTS_KEY, lines());
@@ -66,11 +70,10 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   box.addEventListener("change", sync);
   record.addEventListener("click", () => {
     on = !on;
-    if (on) clear();
     sync();
   });
-  undo.addEventListener("click", () => {
-    points.pop()?.mark.remove();
+  deleteLast.addEventListener("click", () => {
+    points.pop().mark.remove(); // disabled without marks
     sync();
   });
   paste.addEventListener("click", () =>
@@ -93,6 +96,10 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       setTimeout(() => (copyAll.textContent = "Copy points"), 1500);
     }),
   );
+  clearAll.addEventListener("click", () => {
+    clear();
+    sync();
+  });
 
   const recording = () => on && !panel.hidden;
   return {
@@ -106,11 +113,13 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       sync();
       return true;
     },
-    // Moves the marks to their points, after the camera's updateMatrixWorld.
+    // Moves the marks to their points, after the camera's updateMatrixWorld; nothing while
+    // unticked.
     update() {
+      if (panel.hidden) return;
       for (const { point, mark } of points) {
         const { x, y, front } = onScreen(point);
-        mark.hidden = !front || panel.hidden;
+        mark.hidden = !front;
         mark.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
       }
     },
