@@ -162,9 +162,9 @@ p {
 }
 /* A compass needle (red north, white south, each half light and dark), turned to the north. */
 #north svg {
-  width: 9px;
-  height: 27px;
-  margin: -3.5px auto;
+  width: 8px;
+  height: 24px;
+  margin: -2px auto;
   stroke: none;
 }
 /* Below the counter, the panels ticked in the menu: "Dev" (src/dev.js) above "Points"
