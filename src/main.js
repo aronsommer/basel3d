@@ -34,9 +34,11 @@ import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
 import {
   EXHIBITS,
+  FLOCK,
   MUSEUM,
   OPEN,
   ROAD,
+  SERPENT,
   SWIM,
   TRACK,
   TRAM,
@@ -549,6 +551,9 @@ scene.add(...tree.meshes);
 // at the middle between the two towers.
 const serpent = createSerpent(1717, 68, 8.5, 1739, -196, heightAt);
 scene.add(serpent.group);
+// And one in the museum (src/museum.js).
+const museumSerpent = OPEN && createSerpent(...SERPENT.at, 8.5, ...SERPENT.look, heightAt);
+if (OPEN) scene.add(museumSerpent.group);
 // Circling over the monster and the Roche towers (around the point between them), six times life
 // size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking) stays 40 m
 // above the monster's horns (221 m) and 50 m above the taller tower (213 m).
@@ -719,6 +724,8 @@ const planes = createPlanes(
 scene.add(...planes.meshes);
 const birds = createBirds(boost, heightAt);
 scene.add(birds.mesh);
+const museumBirds = OPEN && createBirds(boost, heightAt, [FLOCK]);
+if (OPEN) scene.add(museumBirds.mesh);
 
 // The menu shows the names (see updateNames) and the loops of the trams (each line on its
 // own), trains and cars, the course of the ships and the pedestrians' loops (kindLines.walk, set
@@ -2176,6 +2183,7 @@ const rides = [
   ...planes.crafts.map(({ ride }) => ride),
   ...helicopters.map(({ ride }) => ride),
   serpent.ride,
+  ...(OPEN ? [museumSerpent.ride] : []),
   ...ufoRides,
   ...jetRides,
   ...regaRides,
@@ -3051,6 +3059,7 @@ renderer.setAnimationLoop((time) => {
   training.update(dt);
   bike.update(dt);
   serpent.update(time / 1000);
+  if (OPEN) museumSerpent.update(time / 1000);
   const flier = fly(dt);
   for (const helicopter of helicopters)
     helicopter.update(time / 1000, flier === helicopter ? flown : null);
@@ -3078,6 +3087,7 @@ renderer.setAnimationLoop((time) => {
   rockets.update(dt);
   planes.update(time / 1000, flier, flown);
   birds.update(time / 1000);
+  if (OPEN) museumBirds.update(time / 1000);
   if (riding) {
     riding.ride.cab(riding.vehicle, camera); // after all that moves
     turnHead();

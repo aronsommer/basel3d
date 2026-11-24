@@ -282,6 +282,9 @@ const LABEL_AT = {
   P1: [47.582619, 7.580194],
   P2: [47.581607, 7.583398],
   P3: [47.581955, 7.583248],
+  A2: [47.580043, 7.583755],
+  A3: [47.579126, 7.582883],
+  A4: [47.584733, 7.580797],
   L1: [47.579824, 7.578917],
   S8: [47.578568, 7.580543],
   "V1-1": [47.581149, 7.581207],
@@ -534,8 +537,13 @@ export const SWIM = [
   [47.582381, 7.583786],
 ].map(([lat, lon]) => fromWGS84(lat, lon));
 
+// The sea serpent (src/serpent.js) in the Rhine south of the boats, looking at the scenes, and a
+// flock of birds (src/birds.js) north of the trains' round: scene [x, z].
+export const SERPENT = { at: fromWGS84(47.5791, 7.5836), look: fromWGS84(47.5797, 7.5805) };
+export const FLOCK = fromWGS84(47.584733, 7.580797);
+
 // What moves on its own courses and walks, labelled beside them under ids of their own (T traffic,
-// P people moving).
+// P people moving), and the animals not in the catalog (A).
 if (OPEN) {
   const middle = (points) =>
     [0, 1].map((k) => points.reduce((sum, p) => sum + p[k], 0) / points.length);
@@ -551,6 +559,9 @@ if (OPEN) {
   label("P1 Passers-by", MUSEUM.x, MUSEUM.z);
   label("P2 Rhine swimmers", ...SWIM[4]);
   label("P3 Cyclists and scooters", ...SWIM[3]);
+  label("A2 Whales", ...fromWGS84(47.5797, 7.5838)); // among the ships passing
+  label("A3 Sea serpent", ...fromWGS84(47.5791, 7.5826)); // on the bank before it
+  label("A4 Birds", ...FLOCK);
 }
 
 // The labels (LABELS) as plates flat on the ground (ground(x, z): the height there), LIFT metres
