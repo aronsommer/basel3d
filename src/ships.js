@@ -12,7 +12,7 @@ import { riders } from "./riders.js";
 // unless the ferry stays out of its lane until it is past, and the one ahead lets it pass.
 export function createShips(course, ferries, boost, bridgeDecks) {
   const SPEED = 5; // metres per second
-  const SHIPS = 20; // about one every 650 m of the course
+  const SHIPS = 12; // about one every 1.1 km of the course
   const GAP = 20; // metres
   const ZONE = 30; // metres along the course each side of a ferry's line: its hull and rope
   const LANE = 12; // metres the ferry is off the course there at least: half a ship and a ferry
