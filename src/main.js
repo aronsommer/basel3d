@@ -15,7 +15,6 @@ import { RHEINWEG, RHEINRUNDE } from "./rheinweg.js";
 import { createSwimmers } from "./swimmers.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
-import { PLACE as UFO, createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createDriving } from "./drive.js";
@@ -24,14 +23,11 @@ import { LANDINGS, createFerries } from "./ferries.js";
 import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
 import {
-  EXHIBITS,
   FERRY,
-  FLOCK,
   MUSEUM,
   OPEN,
   OVERVIEW,
   ROAD,
-  SERPENT,
   SWIM,
   TRACK,
   TRAM,
@@ -49,10 +45,8 @@ import { createPride, dress, prideShader } from "./pride.js";
 import { clockTime, createClocks } from "./clocks.js";
 import { createRunners } from "./runners.js";
 import { createSpace } from "./space.js";
-import { createRega } from "./rega.js";
 import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
-import { createJet } from "./jet.js";
 import { dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
 import { createGraffiti } from "./graffiti.js";
@@ -65,9 +59,7 @@ import { MAGENTA, checkLines } from "./lines.js";
 import { riders } from "./riders.js";
 import { createShips } from "./ships.js";
 import { CELL, CELLS, WARN, carCell, createMovers } from "./movers.js";
-import { createFlight, createHelicopter, createPlanes } from "./aircraft.js";
-import { FLOCKS, createBirds } from "./birds.js";
-import { createSerpent } from "./serpent.js";
+import { createFlight } from "./aircraft.js";
 import { createTrees } from "./trees.js";
 
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
@@ -542,28 +534,9 @@ async function showGround(kind) {
 }
 const tree = createTrees(treePositions, canopyTrees, terrainInfo, heightAt);
 scene.add(...tree.meshes);
-// In the Rhine in front of the Roche towers, its head as high as the taller one (205 m), looking
-// at the middle between the two towers.
-const serpent = createSerpent(1717, 68, 8.5, 1739, -196, heightAt);
-inCity("serpent", [{ x: 1717, z: 68 }]);
-scene.add(serpent.group);
-// And one in the museum (src/museum.js).
-const museumSerpent = OPEN && createSerpent(...SERPENT.at, 8.5, ...SERPENT.look, heightAt);
-if (OPEN) scene.add(museumSerpent.group);
-// Circling over the monster and the Roche towers (around the point between them), HELICOPTER
-// times life size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking)
-// stays 40 m above the monster's horns (221 m) and 50 m above the taller tower (213 m).
-const HELICOPTER = 6;
+const { serpents } = build("A3", { heightAt }); // src/catalog.js
 const flight = createFlight(intoArea);
-inCity("helicopter", [{ x: 1728, z: -64 }]);
-// Another circling over the museum (src/museum.js).
-const helicopters = [
-  createHelicopter(1728, -64, 150, 300, HELICOPTER, flight),
-  ...EXHIBITS.helicopter.map(({ x, z, radius, high }) =>
-    createHelicopter(x, z, radius, heightAt(x, z) + high, HELICOPTER, flight),
-  ),
-];
-scene.add(...helicopters.map(({ group }) => group));
+const helicopters = build("V14", { heightAt, flight }).vehicles; // src/catalog.js
 // The check lines, drawn over the scene in a pass of their own (render).
 const overlay = new THREE.Scene();
 
@@ -722,20 +695,8 @@ if (OPEN) scene.add(...museumRunners.meshes);
 // The Fasnacht clique marching round the Marktplatz (src/catalog.js), and in the museum another.
 const { cliques } = build("S8", { heightAt });
 overlay.add(ships.route);
-const planes = createPlanes(
-  boost,
-  flight,
-  EXHIBITS.plane.map((p) => ({ ...p, y: heightAt(p.x, p.z) })),
-);
-scene.add(...planes.meshes);
-const birds = createBirds(boost, heightAt);
-inCity(
-  "birds",
-  FLOCKS.map(([x, z]) => ({ x, z })),
-);
-scene.add(birds.mesh);
-const museumBirds = OPEN && createBirds(boost, heightAt, [FLOCK]);
-if (OPEN) scene.add(museumBirds.mesh);
+const { planes } = build("V13", { heightAt, boost, flight }); // src/catalog.js
+const birds = build("A4", { boost, heightAt }); // src/catalog.js
 
 // The menu shows the names (see updateNames) and the loops of the trams (each line on its
 // own), trains and cars, the course of the ships and the pedestrians' loops (kindLines.walk, set
@@ -894,18 +855,14 @@ const labels = [
   });
   return { at, range, element: nameLayer.appendChild(element) };
 });
-// The UFO (src/ufo.js) hovers over where a ray from above first meets a roof or the ground; another
-// in the museum (src/museum.js).
-const ufoRoof = (x, z) => {
-  fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
-  return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
-};
-inCity("ufo", [{ x: UFO[0], z: UFO[1] }]);
-const ufos = [
-  createUfo(boost, ufoRoof),
-  ...EXHIBITS.ufo.map(({ x, z }) => createUfo(boost, ufoRoof, [x, z])),
-];
-scene.add(...ufos.flatMap(({ meshes }) => meshes));
+// The UFO (src/catalog.js) hovers over where a ray from above first meets a roof or the ground.
+const ufos = build("V12", {
+  boost,
+  roof(x, z) {
+    fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
+    return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
+  },
+}).vehicles;
 scene.add(...createPassage());
 // The map's rails (src/rails.js), on the ground and on the decks, but those of destroyed bridges.
 function addRails() {
@@ -1164,48 +1121,9 @@ function alongBuilding(number, near) {
 const grounding = new Map(); // building number → what to call then
 const landOn = (number, land, { x, z }) =>
   grounding.set(number, [...(grounding.get(number) ?? []), () => land(heightAt(x, z))]);
-// The Rega's helicopters (src/rega.js), an H145 and the AW109 "Da Vinci", each on a helipad on
-// the roof of the Universitätsspital at an LV95 point, along its walls, else on the ground there;
-// and both in the museum (src/museum.js), on the ground.
-// The H's upright about from LV95 2610964.8, 1267835.8 towards 2610973.9, 1267829.9.
-const HELIPADS_FACE = Math.atan2(2610973.9 - 2610964.8, 1267835.8 - 1267829.9);
-const regas = [
-  [[2610981.2, 1267851.6], "h145"], // midway along LV95 2610963.7, 1267836.3 to 2610979.6, 1267828.4
-  [[2610963.1, 1267820.5], "aw109"], // midway along LV95 2610949.3, 1267815.5 to 2610964.4, 1267805.8
-].map(([point, model]) => {
-  const at = fromLV95(point);
-  const roof = roofAt(point);
-  const heading = roof ? alongBuilding(roof.number, HELIPADS_FACE) : HELIPADS_FACE;
-  const rega = createRega({ ...at, y: heightAt(at.x, at.z), ...roof, heading }, model, boost);
-  if (roof) landOn(roof.number, rega.land, at);
-  return rega;
-});
-inCity(
-  "rega",
-  regas.map(({ pad }) => pad.position),
-);
-// The museum's side by side, on one height: the ground's highest under them.
-const padsAt = Math.max(...EXHIBITS.rega.map(({ x, z }) => heightAt(x, z)));
-regas.push(
-  ...EXHIBITS.rega.map(({ x, z, heading, model }) =>
-    createRega({ x, y: padsAt, z, heading }, model, boost),
-  ),
-);
-scene.add(...regas.flatMap(({ pad, group }) => [pad, group]));
-// A fighter jet (src/jet.js) on the roof of the BIZ tower (WGS84 47.548078, 7.591792), else on
-// the ground there, its nose to the north.
-const [jetX, jetZ] = fromWGS84(47.548078, 7.591792);
-const jetAt = { x: jetX, y: heightAt(jetX, jetZ), z: jetZ };
-const jetRoof = roofOver(jetAt);
-inCity("jet", [jetAt]);
-const jets = [
-  createJet({ ...jetAt, ...jetRoof, heading: Math.PI }, boost, flight.LEVEL),
-  ...EXHIBITS.jet.map(({ x, z, heading }) =>
-    createJet({ x, y: heightAt(x, z), z, heading }, boost, flight.LEVEL),
-  ),
-]; // and one in the museum (src/museum.js)
-if (jetRoof) landOn(jetRoof.number, jets[0].land, jetAt);
-scene.add(...jets.map(({ group }) => group));
+// The Rega's helicopters and the fighter jet (src/catalog.js), on roofs.
+const regas = build("V10", { heightAt, roofOver, alongBuilding, landOn, boost }).vehicles;
+const jets = build("V11", { heightAt, roofOver, landOn, boost, flight }).vehicles;
 // The friends dancing on the Roche towers' roofs (src/catalog.js); destroy() removes them with
 // their tower.
 const onRoofs = new Map(); // building number → the meshes that go with it
@@ -2130,8 +2048,7 @@ const rides = [
   ferryRide,
   ...planes.crafts.map(({ ride }) => ride),
   ...helicopters.map(({ ride }) => ride),
-  serpent.ride,
-  ...(OPEN ? [museumSerpent.ride] : []),
+  ...serpents.map(({ ride }) => ride),
   ...ufoRides,
   ...jetRides,
   ...regaRides,
@@ -3107,8 +3024,7 @@ renderer.setAnimationLoop((time) => {
   for (const clique of cliques) clique.update(dt);
   training.update(dt);
   bike.update(dt);
-  serpent.update(time / 1000);
-  if (OPEN) museumSerpent.update(time / 1000);
+  for (const serpent of serpents) serpent.update(time / 1000);
   const flier = fly(dt);
   for (const helicopter of helicopters)
     helicopter.update(time / 1000, flier === helicopter ? flown : null);
@@ -3136,7 +3052,6 @@ renderer.setAnimationLoop((time) => {
   rockets.update(dt);
   planes.update(time / 1000, flier, flown);
   birds.update(time / 1000);
-  if (OPEN) museumBirds.update(time / 1000);
   if (riding) {
     riding.ride.cab(riding.vehicle, camera); // after all that moves
     turnHead();

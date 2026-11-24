@@ -5,9 +5,11 @@
 // maker takes from src/main.js. src/main.js builds each at its places (build); kinds not yet here
 // it still builds itself.
 import * as THREE from "three";
+import { createHelicopter, createPlanes } from "./aircraft.js";
 import { createAmbulances } from "./ambulance.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createBike } from "./bike.js";
+import { FLOCKS, createBirds } from "./birds.js";
 import { createBoats } from "./boats.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
@@ -15,11 +17,15 @@ import { createClique } from "./fasnacht.js";
 import { createFireTrucks } from "./firetruck.js";
 import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
+import { createJet } from "./jet.js";
 import { createMotorcycles } from "./motorcycle.js";
 import { TOSS, createPeople, mix } from "./people.js";
 import { createPolice } from "./police.js";
 import { createQuads } from "./quad.js";
+import { createRega } from "./rega.js";
+import { createSerpent } from "./serpent.js";
 import { createTanks } from "./tank.js";
+import { PLACE as UFO, createUfo } from "./ufo.js";
 import { createXrts } from "./xrt.js";
 import { createSwans, createZoo } from "./zoo.js";
 
@@ -400,6 +406,11 @@ const ANIMALS = [
   ["wisents", 2612915.8, 1269373.7, -1.4],
 ].map(([group, e, n, heading]) => ({ group, ...lv95([e, n]), heading }));
 
+// The Rega's helipads: the H's upright about from LV95 2610964.8, 1267835.8 towards 2610973.9,
+// 1267829.9.
+const HELIPADS_FACE = Math.atan2(2610973.9 - 2610964.8, 1267835.8 - 1267829.9);
+const [CIRCLE, HELICOPTER] = [150, 6]; // the attack helicopter's: metres round, times life size
+
 // The maker of what one drives, by its create (src/police.js and the like), on the ground or bridge
 // at its places.
 const driven =
@@ -510,6 +521,28 @@ export const CATALOG = {
       return { objects: zoo.meshes, update: zoo.update };
     },
   },
+  A3: {
+    // In the Rhine in front of the Roche towers, its head as high as the taller one (205 m),
+    // looking at the middle between the two towers.
+    name: "Sea serpent",
+    places: [{ x: 1717, z: 68, look: [1739, -196] }],
+    make(places, { heightAt }) {
+      const serpents = places.map(({ x, z, look }) => createSerpent(x, z, 8.5, ...look, heightAt));
+      return { objects: serpents.map(({ group }) => group), serpents };
+    },
+  },
+  A4: {
+    name: "Birds",
+    places: FLOCKS.map(([x, z]) => ({ x, z })),
+    make(places, { boost, heightAt }) {
+      const birds = createBirds(
+        boost,
+        heightAt,
+        places.map(({ x, z }) => [x, z]),
+      );
+      return { objects: [birds.mesh], update: birds.update };
+    },
+  },
   V1: {
     // In St. Johann and on the Rhine in Klybeck by the Dreirosenbrücke, both facing south, and on
     // the Claraplatz by the men there (LV95 2611656.5, 1267907.4), facing southwest, an unmarked
@@ -585,6 +618,80 @@ export const CATALOG = {
     name: "Dinosaur",
     places: [{ ...lv95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }],
     make: driven(createDinos),
+  },
+  V10: {
+    // An H145 and the AW109 "Da Vinci", each on a helipad on the roof of the Universitätsspital,
+    // along its walls, else on the ground there; in the museum side by side, on one height: the
+    // ground's highest under them.
+    name: "Rega helicopter",
+    places: [
+      { ...lv95([2610981.2, 1267851.6]), model: "h145" }, // midway along LV95 2610963.7, 1267836.3 to 2610979.6, 1267828.4
+      { ...lv95([2610963.1, 1267820.5]), model: "aw109" }, // midway along LV95 2610949.3, 1267815.5 to 2610964.4, 1267805.8
+    ],
+    make(places, { heightAt, roofOver, alongBuilding, landOn, boost }) {
+      const pads = Math.max(...places.filter((p) => p.museum).map((p) => heightAt(p.x, p.z)));
+      const regas = places.map((p) => {
+        if (p.museum) return createRega({ ...p, y: pads }, p.model, boost);
+        const roof = roofOver(p);
+        const heading = roof ? alongBuilding(roof.number, HELIPADS_FACE) : HELIPADS_FACE;
+        const rega = createRega({ ...p, y: heightAt(p.x, p.z), ...roof, heading }, p.model, boost);
+        if (roof) landOn(roof.number, rega.land, p);
+        return rega;
+      });
+      return { objects: regas.flatMap(({ pad, group }) => [pad, group]), vehicles: regas };
+    },
+  },
+  V11: {
+    // On the roof of the BIZ tower (WGS84 47.548078, 7.591792), else on the ground there, its nose
+    // to the north.
+    name: "Fighter jet",
+    places: [{ ...at(47.548078, 7.591792), heading: Math.PI }],
+    make(places, { heightAt, roofOver, landOn, boost, flight }) {
+      const jets = places.map((p) => {
+        const on = { ...p, y: heightAt(p.x, p.z) };
+        const roof = !p.museum && roofOver(on);
+        const jet = createJet({ ...on, ...roof, heading: p.heading }, boost, flight.LEVEL);
+        if (roof) landOn(roof.number, jet.land, on);
+        return jet;
+      });
+      return { objects: jets.map(({ group }) => group), vehicles: jets };
+    },
+  },
+  V12: {
+    // Hovering over where a ray from above first meets a roof or the ground (roof).
+    name: "UFO",
+    places: [{ x: UFO[0], z: UFO[1] }],
+    make(places, { boost, roof }) {
+      const ufos = places.map(({ x, z }) => createUfo(boost, roof, [x, z]));
+      return { objects: ufos.flatMap(({ meshes }) => meshes), vehicles: ufos };
+    },
+  },
+  V13: {
+    // Circling over the city (src/aircraft.js), keeping to no place; parked in the museum.
+    name: "Airliner",
+    places: [],
+    make(places, { heightAt, boost, flight }) {
+      const planes = createPlanes(
+        boost,
+        flight,
+        places.map((p) => ({ ...p, y: heightAt(p.x, p.z) })),
+      );
+      return { objects: planes.meshes, planes };
+    },
+  },
+  V14: {
+    // Circling over the monster and the Roche towers (around the point between them), CIRCLE
+    // metres round, HELICOPTER times life size. At 300 m ± 25 m its lowest point (about 12 m below
+    // its centre when banking) stays 40 m above the monster's horns (221 m) and 50 m above the
+    // taller tower (213 m). In the museum as wide, 300 m over the ground there.
+    name: "Attack helicopter",
+    places: [{ x: 1728, z: -64 }],
+    make(places, { heightAt, flight }) {
+      const helicopters = places.map(({ x, z, museum }) =>
+        createHelicopter(x, z, CIRCLE, (museum ? heightAt(x, z) : 0) + 300, HELICOPTER, flight),
+      );
+      return { objects: helicopters.map(({ group }) => group), vehicles: helicopters };
+    },
   },
   V15: {
     // Between the Mittlere Brücke and the Johanniterbrücke (LV95 2611109.0, 1267968.1).

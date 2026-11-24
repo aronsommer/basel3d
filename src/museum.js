@@ -1,6 +1,6 @@
 // The museum on two empty industrial sites in Klybeck, by Novartis, and round them: every kind
 // placed in the city (INVENTORY.md), built by the same code there, each with its id on a plate on
-// the ground (createLabels): all one can drive or fly oneself (AT, EXHIBITS) on a parking east of
+// the ground (createLabels): all one can drive or fly oneself (AT) on a parking east of
 // the people's site, the dinosaur among them; on the southern site the catalog's other kinds
 // (exhibitsOf); east of it an airliner and beyond it the
 // Rega's helicopters on their pads, the attack helicopter circling high over them; north of it
@@ -80,6 +80,11 @@ const PEOPLE = site(
   -0.065,
 );
 const place = (lx, lz, more) => ({ ...VEHICLES.at(lx, lz), heading: VEHICLES.heading, ...more });
+// A point (WGS84) as scene { x, z }.
+const point = (lat, lon) => {
+  const [x, z] = fromWGS84(lat, lon);
+  return { x, z };
+};
 // A place midway between two points (WGS84), facing from the first towards the second.
 function between(from, to) {
   const [[ax, az], [bx, bz]] = [from, to].map(([lat, lon]) => fromWGS84(lat, lon));
@@ -89,9 +94,8 @@ function between(from, to) {
 // By kind: the vehicles on the parking east of the people's site (spot); the jet and the UFO
 // north of the site; the airliner at its east side, facing south; east of it, towards the Rhine,
 // the Rega's helicopters on their pads side by side at PADS, facing south (on one height,
-// src/main.js), the helicopter circling CIRCLE metres round their middle, HIGH metres over the
-// ground, as wide and high as the city's (clear of the serpent); the boats on the Rhine.
-const [CIRCLE, HIGH] = [150, 300];
+// src/catalog.js), the helicopter circling round their middle, as wide and high as the city's
+// (clear of the serpent); the boats on the Rhine.
 const PADS = [
   [47.580308, 7.582358],
   [47.580294, 7.582661],
@@ -153,37 +157,26 @@ const AT = {
     };
     return { V15: at(a), V16: at(b) };
   })(),
+  V10: PADS.map(([x, z]) => ({ x, z, heading: VEHICLES.heading })),
+  V11: [between([47.580464, 7.581148], [47.58021, 7.581115])],
+  V12: [between([47.580319, 7.580016], [47.580765, 7.580092])],
+  V13: [between([47.579728, 7.581653], [47.579172, 7.581513])],
+  V14: [{ x: (PADS[0][0] + PADS[1][0]) / 2, z: (PADS[0][1] + PADS[1][1]) / 2, heading: 0 }],
+  // The sea serpent in the Rhine south of the boats, looking at the scenes; a flock of birds north
+  // of the trains' round.
+  A3: [{ ...point(47.5791, 7.5836), look: fromWGS84(47.5797, 7.5805) }],
+  A4: [point(47.584733, 7.580797)],
 };
-const ALL = {
-  rega: ["h145", "aw109"].map((model, k) => {
-    const [x, z] = PADS[k];
-    return { x, z, heading: VEHICLES.heading, model };
-  }),
-  jet: [between([47.580464, 7.581148], [47.58021, 7.581115])],
-  ufo: [between([47.580319, 7.580016], [47.580765, 7.580092])],
-  plane: [between([47.579728, 7.581653], [47.579172, 7.581513])],
-  helicopter: [
-    {
-      x: (PADS[0][0] + PADS[1][0]) / 2,
-      z: (PADS[0][1] + PADS[1][1]) / 2,
-      heading: 0,
-      radius: CIRCLE,
-      high: HIGH,
-    },
-  ],
-};
-export const EXHIBITS = Object.fromEntries(
-  Object.entries(ALL).map(([kind, places]) => [kind, OPEN ? places : []]),
-);
 // The catalog's kinds (src/catalog.js) in the museum: where it shows the kind with this id and
 // name, placed in the city at places: one of each variant (places differing but in x, z and
-// heading), each marked museum (for makers laying it out otherwise there), with the vehicles if one
-// drives it (V), else on the site of the scenes (SCENES; LAYOUT, the animals' groups ZOO: metres
-// west and south of its middle, its label's metres south of it) or, not there, in
-// a row SCENES_ROW metres south of the vehicles' site's middle, from SCENE_FROM metres west (east
-// negative) on east, SCENE metres apart; in the order asked, all facing south. Each one's label in
-// LABELS (label): "id name", of a kind with more variants "id-k name" (k from 1, in the order of
-// its places), a group's name (animals) instead of its own; its city, the variant's places.
+// heading; one if it keeps to no place), each marked museum (for makers laying it out otherwise
+// there), if one drives or flies it (V) at its place in AT, else on the next free spot; else on
+// the site of the scenes (SCENES; LAYOUT, the animals' groups ZOO: metres west and south of its
+// middle, its label's metres south of it) or, not there, in a row SCENES_ROW metres south of the
+// vehicles' site's middle, from SCENE_FROM metres west (east negative) on east, SCENE metres apart;
+// in the order asked, all facing south. Each one's label in LABELS (label): "id name", of a kind with more
+// variants "id-k name" (k from 1, in the order of its places), a group's name (animals) instead of
+// its own; its city, the variant's places, if any.
 const SCENES = site(
   [
     [47.579972, 7.578862],
@@ -359,33 +352,11 @@ const apart = (places) =>
     [],
   );
 // [x, z] d metres ahead of a place ({ x, z, heading }).
-const ahead = ({ x, z, heading }, d) => [x + Math.sin(heading) * d, z + Math.cos(heading) * d];
-// Metres ahead of the middle of what one drives or flies its label lies, by kind (vehicle: any
-// other, up to 2.5 m to its nose): 3 m beyond its nose (from the half lengths in their files).
-const AHEAD = {
-  vehicle: 5,
-  rega: 9,
-  jet: 14,
-  plane: 30,
-  ufo: 22,
-  helicopter: 0,
-};
-// Those not yet in the catalog (EXHIBITS), labelled as its kinds are, under the ids that are to be
-// theirs there: by kind [id, name].
-const NAMES = {
-  rega: ["V10", "Rega helicopter"],
-  jet: ["V11", "Fighter jet"],
-  ufo: ["V12", "UFO"],
-  plane: ["V13", "Airliner"],
-  helicopter: ["V14", "Attack helicopter"],
-};
-for (const [kind, places] of Object.entries(EXHIBITS))
-  places.forEach((place, k) => {
-    const [id, name] = NAMES[kind];
-    const number = places.length > 1 ? `${id}-${k + 1}` : id;
-    label(`${number} ${name}`, ...ahead(place, AHEAD[kind] ?? AHEAD.vehicle), { kind });
-  });
-// A kind (of EXHIBITS, or as labelled below) built at these places in the city (src/main.js),
+const ahead = ({ x, z, heading = 0 }, d) => [x + Math.sin(heading) * d, z + Math.cos(heading) * d];
+// Metres ahead of the middle of what one drives or flies its label lies, where LABEL_AT does not
+// place it: 3 m beyond the nose of one up to 2.5 m long.
+const AHEAD = 5;
+// A kind (as labelled below) built at these places in the city (src/main.js),
 // which it returns: its labels' city, one each in order where it has as many, else all.
 export function inCity(kind, places) {
   const plates = LABELS.filter((l) => l.kind === kind);
@@ -396,16 +367,18 @@ export function inCity(kind, places) {
 export function exhibitsOf(id, name, places) {
   if (!OPEN) return [];
   const keyed = places.map(({ x, z, heading, ...rest }) => [JSON.stringify(rest), rest]);
-  const variants = new Map(keyed);
+  const variants = new Map(places.length ? keyed : [["{}", {}]]); // one, keeping to no place
   return [...variants].map(([key, rest], k) => {
-    const more = { city: apart(places.filter((_, i) => keyed[i][0] === key)) };
+    const city = apart(places.filter((_, i) => keyed[i][0] === key));
+    const more = city.length ? { city } : {}; // no pins without places
     const number = variants.size > 1 ? `${id}-${k + 1}` : id;
     const named = rest.group ? rest.group[0].toUpperCase() + rest.group.slice(1) : name;
     const text = `${number} ${named}`;
     const museum = { ...rest, museum: true };
-    if (id.startsWith("V")) {
-      const at = { ...(AT[id]?.[k] ?? spot(SPOTS.findIndex((_, s) => !taken.has(s)))), ...museum };
-      label(text, ...ahead(at, AHEAD.vehicle), more);
+    const fixed = AT[id]?.[k];
+    if (fixed || id.startsWith("V")) {
+      const at = { ...museum, ...(fixed ?? spot(SPOTS.findIndex((_, s) => !taken.has(s)))) };
+      label(text, ...ahead(at, AHEAD), more);
       return at;
     }
     const layout = LAYOUT[id] ?? ZOO[rest.group];
@@ -560,10 +533,6 @@ export const SWIM = [
   [47.582381, 7.583786],
 ].map(([lat, lon]) => fromWGS84(lat, lon));
 
-// The sea serpent (src/serpent.js) in the Rhine south of the boats, looking at the scenes, and a
-// flock of birds (src/birds.js) north of the trains' round: scene [x, z].
-export const SERPENT = { at: fromWGS84(47.5791, 7.5836), look: fromWGS84(47.5797, 7.5805) };
-export const FLOCK = fromWGS84(47.584733, 7.580797);
 // A ferry across the Rhine south of the serpent, as src/ferries.js's LANDINGS (the left bank's
 // landing first), without a name, so not among the city's names.
 export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
@@ -585,8 +554,6 @@ if (OPEN) {
   label("P3-2 Scooters", ...SWIM[3]);
   label("T5 Ferry", ...fromWGS84(47.578274, 7.582951), { kind: "ferries" }); // by its landing
   label("A2 Whales", ...fromWGS84(47.5797, 7.5838)); // among the ships passing
-  label("A3 Sea serpent", ...fromWGS84(47.5791, 7.5826), { kind: "serpent" }); // on the bank
-  label("A4 Birds", ...FLOCK, { kind: "birds" });
   label("Museum", 0, 0, { size: 9, home: true }); // to its overview (src/main.js)
   label("Pins All on / off", 0, 0, { all: true, size: 6 }); // for all labels' pins (src/main.js)
 }
