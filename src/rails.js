@@ -65,22 +65,18 @@ export function createRails(buffer, { x0, z0, chunk }, ground, deck) {
     polygonOffset: true, // in front of the ground it lies on
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
-    fog: true,
-    uniforms: { ...THREE.UniformsUtils.merge([THREE.UniformsLib.fog]), daylight },
+    uniforms: { daylight },
     vertexShader: /* glsl */ `
       attribute vec2 track;
       varying vec2 vTrack;
-      #include <fog_pars_vertex>
       void main() {
         vTrack = track;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `
       varying vec2 vTrack;
       uniform float daylight;
-      #include <fog_pars_fragment>
       void main() {
         float pixel = fwidth(vTrack.x); // metres a pixel spans across the track
         // The share of the pixel a rail covers.
@@ -91,7 +87,6 @@ export function createRails(buffer, { x0, z0, chunk }, ground, deck) {
         gl_FragColor = vec4(vec3(0.2, 0.2, 0.21) * daylight, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-        #include <fog_fragment>
       }`,
   });
   const rails = new THREE.Group();

@@ -1,5 +1,5 @@
 // Day or night, switched (set) and eased over FADE seconds: the sun's or moon's light and the sky
-// light, the sky's, fog's and water's colours. The night is a mild dusk, blue, with stars, lit
+// light, the sky's and water's colours. The night is a mild dusk, blue, with stars, lit
 // windows and lamps; by day all is as it was before there were nights.
 import * as THREE from "three";
 
@@ -10,7 +10,7 @@ export const night = { value: 0 };
 export const daylight = { value: 1 };
 
 // Day and night: the light's colour, strength and direction (towards it); the sky light's colours
-// from above and below and its strength; the sky's colours at the horizon (also the fog's) and
+// from above and below and its strength; the sky's colours at the horizon and
 // overhead; daylight. The day's are those of old.
 const DAY = {
   light: [0xffdfb4, 2.7, [-1, 1, 1]],
@@ -25,10 +25,10 @@ const NIGHT = {
   daylight: 0.5,
 };
 
-// sun, hemisphere: the lights; sky: its mesh (src/sky.js); fog: the scene's; water: the terrain's
+// sun, hemisphere: the lights; sky: its mesh (src/sky.js); water: the terrain's
 // water colours (its uniforms waterDark and waterLight); dim: unlit materials with a colour,
 // darkened with daylight. { set(on): to night or day, update(dt) }.
-export function createDaylight({ sun, hemisphere, sky, fog, water, dim = [] }) {
+export function createDaylight({ sun, hemisphere, sky, water, dim = [] }) {
   const dimmed = [water.waterDark.value, water.waterLight.value, ...dim.map((m) => m.color)].map(
     (colour) => [colour, colour.clone()],
   );
@@ -48,7 +48,6 @@ export function createDaylight({ sun, hemisphere, sky, fog, water, dim = [] }) {
     mix(DAY.heaven[0], NIGHT.heaven[0], uniforms.horizon.value);
     mix(DAY.heaven[1], NIGHT.heaven[1], uniforms.zenith.value);
     uniforms.sun.value.copy(sun.position);
-    fog.color.copy(uniforms.horizon.value);
     daylight.value = number(DAY.daylight, NIGHT.daylight);
     for (const [colour, day] of dimmed) colour.copy(day).multiplyScalar(daylight.value);
   }

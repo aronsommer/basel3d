@@ -79,7 +79,7 @@ const TREE_FAR = 1500;
 // Metres from a terrain chunk beyond which it is a grid of heights TERRAIN_COARSE metres apart.
 const TERRAIN_DETAIL = 2000;
 const TERRAIN_COARSE = 40;
-const SKY = 0xbcdcf2; // at the horizon, and the fog's
+const SKY = 0xbcdcf2; // at the horizon
 const MOVER_KINDS = ["tram", "train", "car"]; // public/<kind>s.json, .bin
 // Far from the camera, moving things grow so they can be seen from above: from BOOST_FROM metres
 // on, linearly up to BOOST_MAX times. Up close they have their real size. Vehicles on tracks and
@@ -118,7 +118,6 @@ function build(id, city) {
   scene.add(...built.objects);
   return built;
 }
-scene.fog = new THREE.Fog(SKY, 3000, 9000);
 // Strong sky light keeps the sides facing away from the sun bright; the sun is warm. Both, and the
 // sky, change with the time of day (createDaylight).
 const hemisphere = new THREE.HemisphereLight(0xe2eaf2, 0xbaa88c, 2);
@@ -127,10 +126,11 @@ sun.position.set(-1, 1, 1); // from the south-west
 const sky = createSky(SKY, sun.position.clone().normalize());
 scene.add(hemisphere, sun, sky);
 
-// Nothing beyond the fog's end is visible anyway.
 const FOV = 55; // degrees, top to bottom; FPV_FOV through a drone's camera, which is wide
 const FPV_FOV = 90;
-const camera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 1, scene.fog.far);
+// Metres seen: the area's far corner from the farthest zoom (orbit.maxDistance and its 8 km × √2).
+const FAR = 17000;
+const camera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 1, FAR);
 const orbit = new MapControls(camera, renderer.domElement);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = 1.45;
@@ -2962,7 +2962,6 @@ const daylight = createDaylight({
   sun,
   hemisphere,
   sky,
-  fog: scene.fog,
   water,
   dim: [lawn.material],
 });

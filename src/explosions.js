@@ -787,9 +787,7 @@ function createParticles(scene, camera, additive, capacity) {
   const tint = attribute("tint", 4); // colour, opacity
   geometry.instanceCount = 0;
   const material = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
     vertexShader: /* glsl */ `
-      #include <fog_pars_vertex>
       attribute vec3 centre;
       attribute vec3 shape;
       attribute vec4 tint;
@@ -801,10 +799,8 @@ function createParticles(scene, camera, additive, capacity) {
         vec4 mvPosition = modelViewMatrix * vec4(centre, 1.0);
         mvPosition.xy += vec2(position.x, position.y + shape.z) * shape.xy;
         gl_Position = projectionMatrix * mvPosition;
-        #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */ `
-      #include <fog_pars_fragment>
       varying vec2 vCorner;
       varying vec4 vTint;
       void main() {
@@ -812,9 +808,7 @@ function createParticles(scene, camera, additive, capacity) {
         gl_FragColor = vec4(vTint.rgb, vTint.a * fade);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
-        #include <fog_fragment>
       }`,
-    fog: true,
     transparent: true,
     depthWrite: false,
     blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, // fire adds, smoke covers

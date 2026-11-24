@@ -3,10 +3,10 @@ import { daylight, night } from "./daylight.js";
 
 const ZENITH = 0x4296e1; // a softer take on the Rhine's light blue (waterLight in src/main.js)
 
-// The sky: from horizon (the fog's colour) up to ZENITH, with a glow round the sun (a unit
-// vector towards it) by day, slowly drifting fair-weather clouds, as bright as the day
-// (src/daylight.js), and at night stars. A triangle over the whole screen at
-// the far end of the view, drawn after all that is opaque, so only where sky is seen.
+// The sky: from horizon up to ZENITH, with a glow round the sun (a unit vector towards it) by day,
+// slowly drifting fair-weather clouds, as bright as the day (src/daylight.js), and at night stars;
+// below the horizon mirrored, so the world floats in it. A triangle over the whole screen at the
+// far end of the view, drawn after all that is opaque, so only where sky is seen.
 export function createSky(horizon, sun) {
   const time = { value: 0 };
   const sky = new THREE.Mesh(
@@ -47,18 +47,16 @@ export function createSky(horizon, sun) {
         }
         void main() {
           vec3 d = normalize(direction);
-          vec3 c = horizon;
-          if (d.y > 0.0) {
-            c = mix(horizon, zenith, 1.0 - exp(-d.y * 10.0));
-            float s = max(dot(d, sun), 0.0);
-            c += vec3(1.0, 0.78, 0.5) * (pow(s, 8.0) * 0.18 + pow(s, 400.0) * 0.8) * smoothstep(0.0, 0.1, d.y)
-              * smoothstep(-0.1, 0.05, sun.y) * (1.0 - night);
-            c += step(0.9975, hash(floor(d.xz / (d.y + 0.25) * 180.0))) * night * smoothstep(0.05, 0.3, d.y);
-            vec2 p = d.xz / (d.y + 0.1) * 2.5 + time * vec2(0.012, 0.007);
-            float n = 0.5 * noise(p) + 0.25 * noise(p * 2.03) + 0.125 * noise(p * 4.01) + 0.0625 * noise(p * 8.05);
-            float cover = smoothstep(0.52, 0.72, n) * smoothstep(0.0, 0.08, d.y);
-            c = mix(c, mix(vec3(0.86, 0.9, 0.95), vec3(1.0), smoothstep(0.52, 0.85, n)) * daylight, cover * 0.9);
-          }
+          float s = d.y > 0.0 ? max(dot(d, sun), 0.0) : 0.0; // the sun's glow only above the horizon
+          d.y = abs(d.y); // below it, beyond the world's edge, the sky mirrored
+          vec3 c = mix(horizon, zenith, 1.0 - exp(-d.y * 10.0));
+          c += vec3(1.0, 0.78, 0.5) * (pow(s, 8.0) * 0.18 + pow(s, 400.0) * 0.8) * smoothstep(0.0, 0.1, d.y)
+            * smoothstep(-0.1, 0.05, sun.y) * (1.0 - night);
+          c += step(0.9975, hash(floor(d.xz / (d.y + 0.25) * 180.0))) * night * smoothstep(0.05, 0.3, d.y);
+          vec2 p = d.xz / (d.y + 0.1) * 2.5 + time * vec2(0.012, 0.007);
+          float n = 0.5 * noise(p) + 0.25 * noise(p * 2.03) + 0.125 * noise(p * 4.01) + 0.0625 * noise(p * 8.05);
+          float cover = smoothstep(0.52, 0.72, n) * smoothstep(0.0, 0.08, d.y);
+          c = mix(c, mix(vec3(0.86, 0.9, 0.95), vec3(1.0), smoothstep(0.52, 0.85, n)) * daylight, cover * 0.9);
           gl_FragColor = vec4(c, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
