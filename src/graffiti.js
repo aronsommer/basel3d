@@ -26,9 +26,9 @@ const GRAFFITI = [
   {
     where: "A row of 14 m high houses, about 650 m south-east of Basel SBB's station building",
     kind: "piece",
-    from: [47.544206, 7.596833, 285.3],
-    to: [47.544359, 7.596338, 285.5],
-    text: "FCB",
+    from: [47.544213, 7.596809, 286.5],
+    to: [47.544376, 7.59629, 287.2],
+    text: "FCB 1893",
     back: FCB,
   },
   {
