@@ -1067,16 +1067,21 @@ const museumWalkers =
     { count: MUSEUM_WALKERS, radius: MUSEUM_RADIUS, every: true },
   );
 if (OPEN) scene.add(...museumWalkers.meshes);
-// The museum's secret switch (src/museum.js): a click or tap on it, or walking the dot on it,
-// opens or closes the museum; the mouse over it gets the hand cursor, as over a vehicle.
+// The museum's secret switch (src/museum.js): a click on it, a tap on it or up to reach px from
+// its top (if in sight), or walking the dot on it, opens or closes the museum; the mouse over
+// it gets the hand cursor, as over a vehicle.
 const button = createButton(heightAt);
 scene.add(button);
-function buttonAt(x, y) {
+function buttonAt(x, y, reach = 0) {
   raycaster.setFromCamera(
     new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1),
     camera,
   );
-  return raycaster.intersectObject(button).length > 0;
+  if (raycaster.intersectObject(button).length > 0) return true;
+  if (!reach) return false;
+  const top = button.position.clone().setY(button.position.y + 0.25); // the button's top
+  const { x: bx, y: by, front } = onScreen(top);
+  return front && Math.hypot(bx - x, by - y) < reach && !hidden(top);
 }
 // Those on foot the cyclists (src/runners.js) keep off.
 const pedestrians = [swimmers.people, walkers.members];
@@ -2499,7 +2504,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
     if (mouse && riding?.ride === footRide) captureMouse();
     return;
   }
-  if (buttonAt(e.clientX, e.clientY)) return toggleMuseum();
+  if (buttonAt(e.clientX, e.clientY, mouse ? 0 : FINGER)) return toggleMuseum();
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
   else if (mouse && riding?.ride === footRide) captureMouse();

@@ -1,37 +1,107 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { part } from "./parts.js";
+import { part, profile } from "./parts.js";
 import { riders } from "./riders.js";
 
 // Two airliners circling over the city on an oval, one higher and the other way round, so they
 // are always in view, and one parked at each of parked ({ x, y, z, heading }: its wheels on y).
-// 1.5 times life size (and more far away, see boost), white with a blue tail, no airline. Each is
-// a craft to fly (createFlight), back on its oval or place at once when let go.
+// 1.5 times life size (and more far away, see boost), white with dark windows and a red tail
+// with a Swiss cross, no airline. Each is a craft to fly (createFlight), back on its oval or
+// place at once when let go.
 export function createPlanes(boost, flight, parked = []) {
   const SPEED = 80; // metres per second
   const SCALE = 1.5;
   const LIFT = 60; // metres
   // Along +z, in metres: fuselage, nose, wings, tailplane, fin, engines.
   const WHITE = 0xf2f2f0;
+  const GLASS = 0x111418;
   const along = (g) => g.rotateX(Math.PI / 2); // its axis along z, its top ahead
   const fuselage = along(new THREE.CylinderGeometry(2, 2, 30, 8));
-  const nose = new THREE.ConeGeometry(2, 5, 8).rotateX(Math.PI / 2);
+  // A rounded nose, half an egg 5 m long: rings every 22.5° from the base, eight faces round.
+  const nose = along(
+    new THREE.SphereGeometry(2, 8, 4, 0, 2 * Math.PI, 0, Math.PI / 2).scale(1, 2.5, 1),
+  );
+  // The cockpit window: the nose's faces, a little outside them, cut to a level band from 0.5 to
+  // 1.2 m over its axis and from 2.2 m ahead of its base, round its front.
+  const cuts = [
+    [[0, 1, 0], 0.5],
+    [[0, -1, 0], -1.2],
+    [[0, 0, 1], 2.2],
+  ];
+  // A polygon's part where n · p >= d (Sutherland–Hodgman).
+  const cut = (polygon, [n, d]) =>
+    polygon.flatMap((a, i) => {
+      const b = polygon[(i + 1) % polygon.length];
+      const [da, db] = [a, b].map((p) => n[0] * p[0] + n[1] * p[1] + n[2] * p[2] - d);
+      const kept = da >= 0 ? [a] : [];
+      return da * db < 0 ? [...kept, a.map((v, k) => v + ((b[k] - v) * da) / (da - db))] : kept;
+    });
+  const shell = nose.clone().scale(1.01, 1.01, 1.01).toNonIndexed().attributes.position.array;
+  const band = [];
+  for (let i = 0; i < shell.length; i += 9) {
+    const triangle = [0, 3, 6].map((k) => [...shell.subarray(i + k, i + k + 3)]);
+    const polygon = cuts.reduce(cut, triangle);
+    for (let k = 1; k < polygon.length - 1; k++) band.push(polygon[0], polygon[k], polygon[k + 1]);
+  }
+  const cockpit = new THREE.BufferGeometry().setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(band.flat(), 3),
+  );
   const tailCone = new THREE.ConeGeometry(2, 6, 8).rotateX(-Math.PI / 2);
+  // A swept wing on side (±1), from its root at x 0 out to span, [leading, trailing] edge z at
+  // root and tip, rising a little outwards.
+  const wing = (side, span, [rootLead, rootTrail], [tipLead, tipTrail], thick) =>
+    new THREE.ExtrudeGeometry(
+      new THREE.Shape([
+        new THREE.Vector2(0, rootLead),
+        new THREE.Vector2(side * span, tipLead),
+        new THREE.Vector2(side * span, tipTrail),
+        new THREE.Vector2(0, rootTrail),
+      ]),
+      { depth: thick, bevelEnabled: false },
+    )
+      .rotateX(Math.PI / 2)
+      .translate(0, thick / 2, 0)
+      .rotateZ(side * 0.08);
+  const APOTHEM = 2 * Math.cos(Math.PI / 8); // of the fuselage's faces
+  // A cabin window at z on the fuselage's upper side face.
+  const porthole = (side, z) => {
+    const angle = (3 * Math.PI) / 8;
+    const r = APOTHEM + 0.01; // nearly flush with the face
+    const g = new THREE.BoxGeometry(0.6, 0.04, 0.5).rotateZ(-side * angle);
+    return part(g, GLASS, [side * r * Math.sin(angle), r * Math.cos(angle), z]);
+  };
+  // The fin from the side ([z, y]), red with a white Swiss cross through it, showing both sides.
+  const fin = profile(
+    [
+      [-13, 1.8],
+      [-18.3, 8],
+      [-19.8, 8],
+      [-19.4, 0],
+    ],
+    0.5,
+  );
   const geometry = mergeGeometries([
     part(fuselage, WHITE, [0, 0, 0]),
-    part(nose, WHITE, [0, 0, 17.5]),
+    part(nose, WHITE, [0, 0, 15]),
     part(tailCone, WHITE, [0, 0, -18]),
-    part(new THREE.BoxGeometry(34, 0.5, 5), WHITE, [0, -0.8, 1]), // wings
-    part(new THREE.BoxGeometry(12, 0.4, 3), WHITE, [0, 0.5, -17]), // tailplane
-    part(new THREE.BoxGeometry(0.5, 7, 4), 0x1f4e9a, [0, 4, -18]), // fin
+    part(fin, 0xd52b1e, [0, 0, 0]),
+    part(cockpit, GLASS, [0, 0, 15]),
+    part(new THREE.BoxGeometry(0.6, 2.7, 0.8), WHITE, [0, 4.6, -17.5]),
+    part(new THREE.BoxGeometry(0.6, 0.8, 2.7), WHITE, [0, 4.6, -17.5]),
+    ...[-1, 1].flatMap((side) => [
+      part(wing(side, 17, [4, -2], [-3, -5], 0.5), WHITE, [0, -0.8, 0]),
+      part(wing(side, 6, [-15.2, -18.6], [-18.2, -19.6], 0.4), WHITE, [0, 0.5, 0]), // tailplane
+      ...Array.from({ length: 17 }, (_, i) => porthole(side, 12 - 1.5 * i)),
+    ]),
     // An engine under each wing: a nacelle wider at the front, a dark fan in it behind a
     // spinner, a narrower exhaust behind and a pylon up to the wing.
     ...[-6, 6].flatMap((x) => [
-      part(along(new THREE.CylinderGeometry(1.25, 0.95, 4, 12)), 0xc9cdd2, [x, -2, 3]),
-      part(along(new THREE.CylinderGeometry(1.05, 1.05, 0.1, 12)), 0x22262b, [x, -2, 5]),
-      part(along(new THREE.ConeGeometry(0.35, 0.8, 8)), WHITE, [x, -2, 5.3]),
-      part(along(new THREE.CylinderGeometry(0.65, 0.35, 1.4, 10)), 0x4a4f55, [x, -2, 0.3]),
-      part(new THREE.BoxGeometry(0.3, 0.8, 2.4), WHITE, [x, -1.1, 2.4]),
+      part(along(new THREE.CylinderGeometry(1.25, 0.95, 4, 12)), 0xc9cdd2, [x, -2, 1.5]),
+      part(along(new THREE.CylinderGeometry(1.05, 1.05, 0.1, 12)), 0x22262b, [x, -2, 3.5]),
+      part(along(new THREE.ConeGeometry(0.35, 0.8, 8)), WHITE, [x, -2, 3.8]),
+      part(along(new THREE.CylinderGeometry(0.65, 0.35, 1.4, 10)), 0x4a4f55, [x, -2, -1.2]),
+      part(new THREE.BoxGeometry(0.3, 1, 2.4), WHITE, [x, -1, 0.9]),
     ]),
   ]).scale(SCALE, SCALE, SCALE);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
