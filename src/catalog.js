@@ -352,9 +352,9 @@ const MARCH = [at(47.558424, 7.58759), at(47.557929, 7.58797)];
 // The animals (A1, src/zoo.js) at LV95 points, each group with its heading: of the Zoo Basel
 // (flamingos beside the hippos and amid the seals), a crocodile in the Merian Gärten, and wild
 // boars, foxes, a wildcat, red deer, chamois, swans, goats (twice), small monkeys, ducks, geese, a
-// lynx, donkeys, wolves (twice) and a howling wolf in the Lange Erlen; clear(x, z, r): whether no
-// tree reaches within r metres there. In the museum one of each group, named after it and
-// numbered in this order (src/museum.js, ZOO), the big ones first.
+// lynx, donkeys, wolves (twice), a howling wolf and wisents (twice) in the Lange Erlen; clear(x, z,
+// r): whether no tree reaches within r metres there. In the museum one of each group, named after
+// it and numbered in this order (src/museum.js, ZOO).
 const ANIMALS = [
   ["elephants", 2610681.3, 1266433.3, -1],
   ["rhinos", 2610587.7, 1266255.8, 0.8],
@@ -382,6 +382,8 @@ const ANIMALS = [
   ["howling wolf", 2612841.2, 1269383.6, -1.2],
   ["wolf", 2612810.9, 1269370.5, 1.8],
   ["wolf", 2612805.8, 1269381.3, 0.4],
+  ["wisents", 2612861.8, 1269335.7, 0.3],
+  ["wisents", 2612915.8, 1269373.7, -1.4],
 ].map(([group, e, n, heading]) => ({ group, ...lv95([e, n]), heading }));
 
 export const CATALOG = {

@@ -6,7 +6,8 @@
 // a crocodile opening its jaws slowly; wild boars and their striped piglets rooting, foxes and a
 // wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans,
 // mallards and geese swimming round in rings, goats grazing, small monkeys hopping about and a lynx
-// looking round, donkeys grazing, wolves looking round or howling. Apart from them, swans at given
+// looking round, donkeys grazing, wolves looking round or howling, wisents (a calf among them)
+// grazing. Apart from them, swans at given
 // places pecking now and then (createSwans).
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -40,6 +41,8 @@ const LYNX = 0xb08a5a;
 const DONKEY = 0x8a8580;
 const PALE = 0xd8d0c4;
 const WOLF = 0x7a7670;
+const WISENT = 0x4a3324;
+const SHAG = 0x33231a;
 // Two eyes, w wide and high and d deep, x to each side of the middle, at y, z.
 const eyes = (w, d, x, y, z, color = BLACK) =>
   [-1, 1].map((s) => part(box(w, w, d), color, [s * x, y, z]));
@@ -477,6 +480,32 @@ const KINDS = {
       speed: 0.4,
     },
   },
+  wisent: {
+    body: [
+      part(box(0.8, 0.85, 1.3), WISENT, [0, 1.15, -0.45]),
+      part(box(1, 1.25, 1), SHAG, [0, 1.35, 0.6]), // shaggy forequarters
+      part(box(0.7, 0.3, 0.8), SHAG, [0, 2.05, 0.45]), // hump
+      ...legs(0.2, 0.8, 0.28, 0.75, WISENT),
+      part(box(0.06, 0.6, 0.06), WISENT, [0, 1.15, -1.13]), // tail
+      part(box(0.1, 0.15, 0.1), SHAG, [0, 0.8, -1.13]), // its tuft
+    ],
+    swing: {
+      geometry: mergeGeometries([
+        part(box(0.6, 0.65, 0.6), SHAG, [0, -0.15, 0.35]), // head
+        part(box(0.4, 0.3, 0.25), 0x241812, [0, -0.35, 0.7]), // muzzle
+        part(box(0.3, 0.35, 0.3), SHAG, [0, -0.6, 0.3]), // beard
+        ...[-1, 1].flatMap((x) => [
+          part(box(0.2, 0.07, 0.07), 0x2a2420, [x * 0.38, 0.05, 0.35]), // horn
+          part(box(0.06, 0.16, 0.06), 0x2a2420, [x * 0.47, 0.15, 0.35]), // its tip
+        ]),
+        ...eyes(0.07, 0.05, 0.3, -0.02, 0.5),
+      ]),
+      pivot: [0, 1.35, 1.1],
+      rest: 0.45,
+      amount: 0.45, // grazing, then looking up
+      speed: 0.35,
+    },
+  },
   seal: {
     body: [
       part(box(0.6, 0.5, 1.6), SEAL, [0, -0.1, 0]),
@@ -551,6 +580,7 @@ const REACH = {
   donkey: 0.8,
   wolf: 0.6,
   howler: 0.6,
+  wisent: 1.5,
 };
 
 // Each group: its animals as [kind, x, z (metres from its place, facing along its heading, before
@@ -679,6 +709,13 @@ const GROUPS = {
     ["chamois", 0.6, -1.3, 2.2, 0.6],
   ],
   seals: ring("seal", 5, 1.2),
+  wisents: [
+    ["wisent", 0, 0, 0, 1],
+    ["wisent", 2.8, 1, 0.5, 1.05],
+    ["wisent", -2.6, 1.3, -0.6, 0.95],
+    ["wisent", 1, -2.6, 2.6, 1],
+    ["wisent", 2.6, -2, 1.2, 0.45], // a calf
+  ],
 };
 
 // The groups at their places ({ group, x, z, heading }); ground(x, z): the height there; clear(x,

@@ -244,6 +244,7 @@ const ZOO_ROWS = [
     ["howling wolf", 2.1, 2],
     ["wolf", 2.1, 1.9],
   ],
+  [["wisents", 10.3, 6.2]],
 ];
 const [ZOO_FROM, ZOO_ROW, GAP, LABEL_BEYOND, PLATE] = [40, 38, 3, 3.5, 7];
 const ZOO = Object.fromEntries(

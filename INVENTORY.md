@@ -40,16 +40,16 @@ place in the museum too.
 
 ## Animals
 
-| Id  | What                                                                                                                                                | Where                         | File                   |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ---------------------- |
-| A1  | Zoo: giraffes, elephants, zebras, rhinos, penguins, hippos, seals, flamingos (by the hippos and amid the seals)                                     | Zoo Basel                     | `zoo.js`, `catalog.js` |
-| A1  | A crocodile                                                                                                                                         | Merian Gärten                 | `zoo.js`, `catalog.js` |
-| A1  | Wild boars, foxes, a wildcat, red deer, chamois, swans, ducks, geese, goats (twice), small monkeys, a lynx, donkeys, wolves (twice), a howling wolf | Lange Erlen                   | `zoo.js`, `catalog.js` |
-| S1  | A swan family, fed by the old man                                                                                                                   | Rhine bank, St. Johann        | `zoo.js` (createSwans) |
-| A4  | 12 flocks of birds                                                                                                                                  | bridges, parks, squares       | `birds.js`             |
-| A2  | Whale families among the ships                                                                                                                      | Rhine                         | `ships.js`             |
-| A3  | The sea serpent                                                                                                                                     | Rhine before the Roche towers | `serpent.js`           |
-| P2  | Swan families beside the Rhine swimmers                                                                                                             | Rheinweg round                | `swimmers.js`          |
+| Id  | What                                                                                                                                                                             | Where                         | File                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ---------------------- |
+| A1  | Zoo: giraffes, elephants, zebras, rhinos, penguins, hippos, seals, flamingos (by the hippos and amid the seals)                                                                  | Zoo Basel                     | `zoo.js`, `catalog.js` |
+| A1  | A crocodile                                                                                                                                                                      | Merian Gärten                 | `zoo.js`, `catalog.js` |
+| A1  | Wild boars, foxes, a wildcat, red deer, chamois, swans, ducks, geese, goats (twice), small monkeys, a lynx, donkeys, wolves (twice), a howling wolf, wisents with a calf (twice) | Lange Erlen                   | `zoo.js`, `catalog.js` |
+| S1  | A swan family, fed by the old man                                                                                                                                                | Rhine bank, St. Johann        | `zoo.js` (createSwans) |
+| A4  | 12 flocks of birds                                                                                                                                                               | bridges, parks, squares       | `birds.js`             |
+| A2  | Whale families among the ships                                                                                                                                                   | Rhine                         | `ships.js`             |
+| A3  | The sea serpent                                                                                                                                                                  | Rhine before the Roche towers | `serpent.js`           |
+| P2  | Swan families beside the Rhine swimmers                                                                                                                                          | Rheinweg round                | `swimmers.js`          |
 
 ## People in scenes
 
