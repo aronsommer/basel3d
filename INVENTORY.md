@@ -114,8 +114,8 @@ place in the museum too.
 ## Every number
 
 Each plate in the museum, so a number names one thing. The variants and groups after a dash
-follow the order of their places (`catalog.js`) or spots (`museum.js`); a change there renumbers
-them, so this list goes with it.
+follow the order of their places (`catalog.js`), spots (`museum.js`) or turns (`movers.js`,
+`ships.js`); a change there renumbers them, so this list goes with it.
 
 | Id    | Plate                                                    |
 | ----- | -------------------------------------------------------- |
@@ -174,11 +174,23 @@ them, so this list goes with it.
 | V14   | Attack helicopter                                        |
 | V15   | Fireboat                                                 |
 | V16   | Police boat                                              |
-| T1    | Road vehicles                                            |
-| T2    | Trams                                                    |
-| T3    | Trains                                                   |
-| T4    | Ships                                                    |
+| T1-1  | Car                                                      |
+| T1-2  | SUV                                                      |
+| T1-3  | Sports car                                               |
+| T1-4  | Van                                                      |
+| T1-5  | Lorry                                                    |
+| T1-6  | Tipper                                                   |
+| T1-7  | Bus                                                      |
+| T2-1  | Tram, BVB green                                          |
+| T2-2  | Tram, BLT yellow                                         |
+| T3-1  | Passenger train                                          |
+| T3-2  | Goods train                                              |
+| T4-1  | Tanker                                                   |
+| T4-2  | Container ship                                           |
+| T4-3  | Passenger ship                                           |
+| T4-4  | Speedboat                                                |
 | T5    | Ferry                                                    |
 | P1    | Pedestrians                                              |
 | P2    | Rhine swimmers (with swans)                              |
-| P3    | Cyclists and scooters                                    |
+| P3-1  | Cyclists                                                 |
+| P3-2  | Scooters                                                 |

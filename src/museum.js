@@ -278,13 +278,25 @@ const LABEL_AT = {
   V14: [47.580301, 7.58251],
   V15: [47.580278, 7.583495],
   V16: [47.57987, 7.583411],
-  T1: [47.580427, 7.578878],
-  T2: [47.580824, 7.579386],
-  T3: [47.582189, 7.579545],
-  T4: [47.580097, 7.583764],
+  "T1-1": [47.58067, 7.578924],
+  "T1-2": [47.58063, 7.578916],
+  "T1-3": [47.580589, 7.578908],
+  "T1-4": [47.580548, 7.578901],
+  "T1-5": [47.580508, 7.578893],
+  "T1-6": [47.580467, 7.578886],
+  "T1-7": [47.580427, 7.578878],
+  "T2-1": [47.580824, 7.579386],
+  "T2-2": [47.580784, 7.579378],
+  "T3-1": [47.582189, 7.579545],
+  "T3-2": [47.582149, 7.579537],
+  "T4-1": [47.580219, 7.583787],
+  "T4-2": [47.580178, 7.583779],
+  "T4-3": [47.580138, 7.583772],
+  "T4-4": [47.580097, 7.583764],
   P1: [47.582619, 7.580194],
   P2: [47.581607, 7.583398],
-  P3: [47.581955, 7.583248],
+  "P3-1": [47.581955, 7.583248],
+  "P3-2": [47.581915, 7.58324],
   T5: [47.578054, 7.582944],
   A2: [47.580043, 7.583755],
   A3: [47.579126, 7.582883],
@@ -552,20 +564,18 @@ export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
 // What moves on its own courses and walks, labelled beside them under ids of their own (T traffic,
 // P people moving), and the animals not in the catalog (A).
 if (OPEN) {
-  const middle = (points) =>
-    [0, 1].map((k) => points.reduce((sum, p) => sum + p[k], 0) / points.length);
-  const inside = (points, d) => {
-    const [[x, z], [mx, mz]] = [points[0], middle(points)];
-    const length = Math.hypot(mx - x, mz - z);
-    return [x + ((mx - x) / length) * d, z + ((mz - z) / length) * d];
-  };
-  label("T1 Road vehicles", ...inside(ROAD, 8));
-  label("T2 Trams", ...inside(TRAM, 8));
-  label("T3 Trains", ...inside(TRACK, 10));
-  label("T4 Ships", ...fromWGS84(47.580192, 7.583482)); // between the boats, near the ships' way
+  // The traffic, a plate per variant (placed in LABEL_AT), in the order they take in turn there
+  // (src/movers.js: ROAD of src/vehicles.js, tram colours, kinds of train; src/ships.js's types).
+  Object.entries({
+    T1: ["Car", "SUV", "Sports car", "Van", "Lorry", "Tipper", "Bus"],
+    T2: ["Tram, BVB green", "Tram, BLT yellow"],
+    T3: ["Passenger train", "Goods train"],
+    T4: ["Tanker", "Container ship", "Passenger ship", "Speedboat"],
+  }).forEach(([id, names]) => names.forEach((name, k) => label(`${id}-${k + 1} ${name}`)));
   label("P1 Pedestrians", MUSEUM.x, MUSEUM.z);
   label("P2 Rhine swimmers", ...SWIM[4]);
-  label("P3 Cyclists and scooters", ...SWIM[3]);
+  label("P3-1 Cyclists", ...SWIM[3]); // src/runners.js's RIDES in order
+  label("P3-2 Scooters", ...SWIM[3]);
   label("T5 Ferry", ...fromWGS84(47.578274, 7.582951)); // on the bank by its landing
   label("A2 Whales", ...fromWGS84(47.5797, 7.5838)); // among the ships passing
   label("A3 Sea serpent", ...fromWGS84(47.5791, 7.5826)); // on the bank before it
