@@ -34,6 +34,7 @@ import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
 import {
   EXHIBITS,
+  FERRY,
   FLOCK,
   MUSEUM,
   OPEN,
@@ -46,6 +47,7 @@ import {
   createButton,
   createLabels,
   exhibitsOf,
+  settle,
   toggle as toggleMuseum,
 } from "./museum.js";
 import { createStation } from "./station.js";
@@ -554,15 +556,16 @@ scene.add(serpent.group);
 // And one in the museum (src/museum.js).
 const museumSerpent = OPEN && createSerpent(...SERPENT.at, 8.5, ...SERPENT.look, heightAt);
 if (OPEN) scene.add(museumSerpent.group);
-// Circling over the monster and the Roche towers (around the point between them), six times life
-// size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking) stays 40 m
-// above the monster's horns (221 m) and 50 m above the taller tower (213 m).
+// Circling over the monster and the Roche towers (around the point between them), HELICOPTER
+// times life size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking)
+// stays 40 m above the monster's horns (221 m) and 50 m above the taller tower (213 m).
+const HELICOPTER = 6;
 const flight = createFlight(intoArea);
-// Another, life size, circling over the museum (src/museum.js).
+// Another circling over the museum (src/museum.js).
 const helicopters = [
-  createHelicopter(1728, -64, 150, 300, 6, flight),
+  createHelicopter(1728, -64, 150, 300, HELICOPTER, flight),
   ...EXHIBITS.helicopter.map(({ x, z, radius, high }) =>
-    createHelicopter(x, z, radius, heightAt(x, z) + high, 1, flight),
+    createHelicopter(x, z, radius, heightAt(x, z) + high, HELICOPTER, flight),
   ),
 ];
 scene.add(...helicopters.map(({ group }) => group));
@@ -662,9 +665,9 @@ for (const mover of movers) {
   overlay.add(mover.routes);
   for (const deck of brokenDecks) mover.cut(deck);
 }
-// The ferries (src/ferries.js), which the ships wait for, and the Basiliskbrunnen
-// (src/catalog.js) on the ground.
-const ferries = createFerries(fromWGS84, heightAt, boost);
+// The ferries (src/ferries.js), the museum's too (src/museum.js), which the ships wait for, and the
+// Basiliskbrunnen (src/catalog.js) on the ground.
+const ferries = createFerries(fromWGS84, heightAt, boost, OPEN ? [FERRY] : []);
 scene.add(ferries.group);
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y
@@ -851,15 +854,17 @@ const nameLayer = document.getElementById("names");
 scene.updateMatrixWorld(); // for the rays from above
 const fromAbove = new THREE.Raycaster();
 const DOWN = new THREE.Vector3(0, -1, 0);
-// With them the ferries, at the middle of their line, and the Basiliskbrunnen.
+// With them the ferries named, at the middle of their line, and the Basiliskbrunnen.
 const labels = [
   ...JSON.parse(new TextDecoder().decode(namesJson)),
-  ...ferries.ferries.map(({ name, a, r, length }) => ({
-    name,
-    kind: "landmark",
-    x: a.x + (r.x * length) / 2,
-    z: a.z + (r.z * length) / 2,
-  })),
+  ...ferries.ferries
+    .filter(({ name }) => name)
+    .map(({ name, a, r, length }) => ({
+      name,
+      kind: "landmark",
+      x: a.x + (r.x * length) / 2,
+      z: a.z + (r.z * length) / 2,
+    })),
   ...CATALOG.L1.places.map(({ x, z }) => ({ name: "Basiliskbrunnen", kind: "landmark", x, z })),
 ].map(({ name, kind, x, z }) => {
   const at = new THREE.Vector3(x, heightAt(x, z), z);
@@ -1044,7 +1049,7 @@ const walkers = createWalkers(
   space,
 );
 scene.add(...walkers.meshes);
-// The museum's passers-by (src/museum.js) on its walks: MUSEUM_WALKERS parties, each kind in turn,
+// The museum's pedestrians (src/museum.js) on its walks: MUSEUM_WALKERS parties, each kind in turn,
 // within MUSEUM_RADIUS metres of its centre, the camera near it.
 const [MUSEUM_WALKERS, MUSEUM_RADIUS] = [40, 80];
 const museumCentre = new THREE.Vector3(MUSEUM.x, heightAt(MUSEUM.x, MUSEUM.z), MUSEUM.z);
@@ -2994,8 +2999,10 @@ let afloat = 0; // seconds the ferries and ships have moved, so they keep in ste
 // The museum's labels on the ground (src/museum.js), once all is built. "Move labels" in the Dev
 // panel (src/dev.js): while ticked, a label dragged follows the pointer over the ground and clicks
 // do nothing else; unticked, every label's place is copied (src/copy.js), "text: latitude,
-// longitude, altitude" a line, to be set so in src/museum.js.
-const museumLabels = OPEN && createLabels(heightAt, renderer.capabilities.getMaxAnisotropy());
+// longitude, altitude" a line, to be set so in src/museum.js. Over the Rhine they lie over its
+// water, not its bed.
+const labelGround = (x, z) => Math.max(heightAt(x, z), WATER);
+const museumLabels = OPEN && createLabels(labelGround, renderer.capabilities.getMaxAnisotropy());
 if (museumLabels) scene.add(museumLabels);
 let movingLabels = false;
 let draggedLabel = null; // { mesh, orbit: whether the view's controls were on }
@@ -3024,8 +3031,9 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (!draggedLabel) return;
   pointerRay(e);
-  if (raycaster.ray.intersectPlane(dragPlane, dragHit))
-    draggedLabel.mesh.position.set(dragHit.x, draggedLabel.mesh.position.y, dragHit.z);
+  if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
+  draggedLabel.mesh.position.set(dragHit.x, 0, dragHit.z);
+  settle(draggedLabel.mesh, labelGround);
 });
 addEventListener("pointerup", () => {
   if (!draggedLabel) return;

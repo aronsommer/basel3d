@@ -1,18 +1,20 @@
-// The museum on two empty industrial sites in Klybeck, by Novartis, and round them: all one can
-// drive or fly oneself (EXHIBITS, placed by src/main.js with the others, so they can be): the
-// vehicles on a parking east of the people's site, the dinosaur among them; on the southern site
-// the catalog's kinds (exhibitsOf); east of it an airliner and beyond it the Rega's helicopters on
-// their pads, the other helicopter circling over them; north of it the jet and the UFO; the boats
-// on the Rhine east of it; on the northern site generated passers-by walking round (MUSEUM), a
-// track round them for a train (TRACK), a small one for a tram (TRAM), west of them a road the
-// generated cars drive (ROAD).
+// The museum on two empty industrial sites in Klybeck, by Novartis, and round them: every kind
+// placed in the city (INVENTORY.md), built by the same code there, each with its id on a plate on
+// the ground (createLabels): all one can drive or fly oneself (EXHIBITS, placed by src/main.js with
+// the others, so they can be) on a parking east of the people's site, the dinosaur among them; on
+// the southern site the catalog's kinds (exhibitsOf); east of it an airliner and beyond it the
+// Rega's helicopters on their pads, the attack helicopter circling high over them; north of it
+// the jet and the UFO; on the Rhine east of it the boats, the serpent, a ferry, the ships and
+// whales passing and the swimmers' round, cyclists on its bank; on the northern site pedestrians
+// walking round (MUSEUM), a track round them for a train (TRACK), a small one for a tram (TRAM),
+// west of them a road the generated cars drive (ROAD); north of all a flock of birds.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { fromWGS84 } from "./geo.js";
 import { part } from "./parts.js";
 
 // Whether the museum is open in this browser: all of it is there only then (none of its exhibits,
-// courses, passers-by). Its secret switch, a red button (createButton, src/main.js), opens or
+// courses, pedestrians). Its secret switch, a red button (createButton, src/main.js), opens or
 // closes it (toggle), which takes the page loading again.
 const KEY = "basel3d.museum"; // "1" (open)
 export const OPEN = (() => {
@@ -84,8 +86,8 @@ function between(from, to) {
 // north of the site; the airliner at its east side, facing south; east of it, towards the Rhine,
 // the Rega's helicopters on their pads side by side at PADS, facing south (on one height,
 // src/main.js), the helicopter circling CIRCLE metres round their middle, HIGH metres over the
-// ground; the boats on the Rhine.
-const [CIRCLE, HIGH] = [40, 50];
+// ground, as wide and high as the city's (clear of the serpent); the boats on the Rhine.
+const [CIRCLE, HIGH] = [150, 300];
 const PADS = [
   [47.580308, 7.582358],
   [47.580294, 7.582661],
@@ -207,7 +209,7 @@ const LAYOUT = {
 // each row centred west to east in the catalog's order (so numbered as read): per group how far
 // it goes from its place while it moves, all round and south (metres, measured), its neighbours
 // GAP more apart, at least PLATE metres for its label, which lies beyond what it reaches south
-// (LABEL_BEYOND more).
+// (LABEL_BEYOND more); and metres east it is set, for one lying to one side of its place.
 const ZOO_ROWS = [
   [
     ["elephants", 16.5, 8.9],
@@ -219,13 +221,13 @@ const ZOO_ROWS = [
   ],
   [
     ["deer", 8.3, 5.7],
-    ["flamingos", 15.5, 4.6],
+    ["flamingos", 15.5, 4.6, 6.1],
     ["boars", 7, 5.2],
     ["donkeys", 7.1, 5],
     ["chamois", 4.8, 3.4],
     ["goats", 5.7, 3.9],
     ["foxes", 4.2, 2.7],
-    ["crocodiles", 4.8, 3],
+    ["crocodile", 4.8, 3],
     ["monkeys", 3.1, 1.7],
   ],
   [
@@ -235,7 +237,7 @@ const ZOO_ROWS = [
     ["geese", 6.4, 5.5],
     ["wildcat", 1.5, 1],
     ["lynx", 1.6, 1.5],
-    ["howler", 2.1, 2],
+    ["howling wolf", 2.1, 2],
     ["wolf", 2.1, 1.9],
   ],
 ];
@@ -246,10 +248,10 @@ const ZOO = Object.fromEntries(
     const width = row.reduce((sum, g) => sum + 2 * half(g), 0) + GAP * (row.length - 1);
     let west = width / 2; // from the west end eastwards
     return row.map((g) => {
-      const [group, , south] = g;
+      const [group, , south, east = 0] = g;
       const at = west - half(g);
       west -= 2 * half(g) + GAP;
-      return [group, [at, ZOO_FROM + r * ZOO_ROW, south + LABEL_BEYOND]];
+      return [group, [at - east, ZOO_FROM + r * ZOO_ROW, south + LABEL_BEYOND]];
     });
   }),
 );
@@ -282,6 +284,7 @@ const LABEL_AT = {
   P1: [47.582619, 7.580194],
   P2: [47.581607, 7.583398],
   P3: [47.581955, 7.583248],
+  T5: [47.578054, 7.582944],
   A2: [47.580043, 7.583755],
   A3: [47.579126, 7.582883],
   A4: [47.584733, 7.580797],
@@ -299,7 +302,7 @@ const LABEL_AT = {
   "A1-5": [47.578123, 7.580338],
   "A1-6": [47.578096, 7.580687],
   "A1-7": [47.57795, 7.578757],
-  "A1-8": [47.577936, 7.579167],
+  "A1-8": [47.577927, 7.579105],
   "A1-9": [47.577895, 7.579447],
   "A1-10": [47.577877, 7.579673],
   "A1-11": [47.577875, 7.579872],
@@ -360,7 +363,7 @@ const NAMES = {
   jet: ["V11", "Fighter jet"],
   ufo: ["V12", "UFO"],
   plane: ["V13", "Airliner"],
-  helicopter: ["V14", "Helicopter"],
+  helicopter: ["V14", "Attack helicopter"],
   fireboat: ["V15", "Fireboat"],
   policeboat: ["V16", "Police boat"],
 };
@@ -495,7 +498,7 @@ export const ROAD = [
 const REACH = 300;
 const MIDDLE = VEHICLES.at(0, 0);
 export const atMuseum = (x, z) => Math.hypot(x - MIDDLE.x, z - MIDDLE.z) < REACH;
-// The people's site: generated passers-by (src/walkers.js) of each kind in turn walking round
+// The people's site: generated pedestrians (src/walkers.js) of each kind in turn walking round
 // rectangles about its middle (WALKS: metres from it west and east, north and south), their
 // loops as public/walks.bin has them: buffer, x0, z0 (whence its points count, in eighths of a
 // metre); x, z: its middle.
@@ -541,6 +544,9 @@ export const SWIM = [
 // flock of birds (src/birds.js) north of the trains' round: scene [x, z].
 export const SERPENT = { at: fromWGS84(47.5791, 7.5836), look: fromWGS84(47.5797, 7.5805) };
 export const FLOCK = fromWGS84(47.584733, 7.580797);
+// A ferry across the Rhine south of the serpent, as src/ferries.js's LANDINGS (the left bank's
+// landing first), without a name, so not among the city's names.
+export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
 
 // What moves on its own courses and walks, labelled beside them under ids of their own (T traffic,
 // P people moving), and the animals not in the catalog (A).
@@ -556,19 +562,42 @@ if (OPEN) {
   label("T2 Trams", ...inside(TRAM, 8));
   label("T3 Trains", ...inside(TRACK, 10));
   label("T4 Ships", ...fromWGS84(47.580192, 7.583482)); // between the boats, near the ships' way
-  label("P1 Passers-by", MUSEUM.x, MUSEUM.z);
+  label("P1 Pedestrians", MUSEUM.x, MUSEUM.z);
   label("P2 Rhine swimmers", ...SWIM[4]);
   label("P3 Cyclists and scooters", ...SWIM[3]);
+  label("T5 Ferry", ...fromWGS84(47.578274, 7.582951)); // on the bank by its landing
   label("A2 Whales", ...fromWGS84(47.5797, 7.5838)); // among the ships passing
   label("A3 Sea serpent", ...fromWGS84(47.5791, 7.5826)); // on the bank before it
   label("A4 Birds", ...FLOCK);
 }
 
-// The labels (LABELS) as plates flat on the ground (ground(x, z): the height there), LIFT metres
-// over it and drawn before it, turned as the site of the scenes: on dark, in white, the id (all up
-// to the first space) in letters LETTER metres high, below it the rest half as high; readable
-// from the south, sharp also seen aslant (anisotropy: the renderer's most).
-const [LETTER, LIFT] = [1.6, 0.3];
+// The labels (LABELS) as plates flat over the ground (ground(x, z): the height there; settle),
+// drawn before it, turned as the site of the scenes: on dark, in white, the id (all up to the
+// first space) in letters LETTER metres high, below it the rest half as high; readable from the
+// south, sharp also seen aslant (anisotropy: the renderer's most).
+const [LETTER, LIFT, STEP] = [1.6, 0.3, 1];
+// Lays a label along the ground under it (looked at every STEP metres across it; the plane
+// fitting it best), LIFT metres over where the ground rises highest above that plane, so no bump
+// or slope hides any of it.
+export function settle(mesh, ground) {
+  const { width, height } = mesh.geometry.parameters;
+  const [cos, sin] = [Math.cos(mesh.rotation.y), Math.sin(mesh.rotation.y)];
+  const [n, m] = [Math.ceil(width / STEP), Math.ceil(height / STEP)];
+  const points = []; // [metres across, metres along, height]
+  for (let i = 0; i <= n; i++)
+    for (let j = 0; j <= m; j++) {
+      const [a, b] = [(i / n - 0.5) * width, (j / m - 0.5) * height];
+      const [x, z] = [mesh.position.x + a * cos + b * sin, mesh.position.z - a * sin + b * cos];
+      points.push([a, b, ground(x, z)]);
+    }
+  // On the symmetric grid the best plane's slopes and middle height fall out one by one.
+  const sum = (f) => points.reduce((total, p) => total + f(p), 0);
+  const [across, along] = [0, 1].map((k) => sum((p) => p[k] * p[2]) / sum((p) => p[k] ** 2));
+  const middle = sum((p) => p[2]) / points.length;
+  const above = Math.max(...points.map(([a, b, y]) => y - middle - across * a - along * b));
+  mesh.position.y = middle + above + LIFT;
+  mesh.rotation.set(-Math.atan(along), mesh.rotation.y, Math.atan(across), "YXZ");
+}
 const [BIG, SMALL, PAD] = [96, 48, 32]; // canvas px: the id's letters, the name's, the margin
 export function createLabels(ground, anisotropy) {
   const group = new THREE.Group();
@@ -610,9 +639,10 @@ export function createLabels(ground, anisotropy) {
         polygonOffsetUnits: -4,
       }),
     );
-    mesh.position.set(x, ground(x, z) + LIFT, z);
-    mesh.userData.text = text;
     mesh.rotation.y = SCENES.heading;
+    mesh.position.set(x, 0, z);
+    settle(mesh, ground);
+    mesh.userData.text = text;
     group.add(mesh);
   }
   return group;

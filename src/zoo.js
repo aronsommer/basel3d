@@ -1,8 +1,8 @@
 // Zoo animals, low-poly and BIG times their size so they are seen well, each kind in a group
 // around its place: giraffes nodding, elephants swinging their trunks, zebras grazing, rhinos
 // nodding, a parade of penguins waddling round in a ring; in the water hippos opening their mouths
-// wide, beside them flamingos (some on one leg) bobbing their heads, and seals swimming round in a
-// ring;
+// wide and seals swimming round in a ring, flamingos (some on one leg) bobbing their heads beside
+// the hippos and amid the seals;
 // a crocodile opening its jaws slowly; wild boars and their striped piglets rooting, foxes and a
 // wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans,
 // mallards and geese swimming round in rings, goats grazing, small monkeys hopping about and a lynx
@@ -596,16 +596,16 @@ const GROUPS = {
     ["hippo", 1.5, -3, 1, 0.95],
     ["hippo", 5, -2.5, -0.8, 0.5],
   ],
-  // Beside the hippos (at their place, as about them).
+  // Together, to one side of their place.
   flamingos: [
     ["flamingo", -2, 0.5, 0.4, 1],
     ["flamingoOnTwo", -2.6, 1.2, -0.5, 1],
     ["flamingo", -1.8, 2, 2.6, 0.9],
     ["flamingoOnTwo", -3, -0.5, 1.9, 1.05],
-    ["flamingo", 7, 0, 1.2, 1],
-    ["flamingoOnTwo", 6.5, 1.2, -1, 0.95],
+    ["flamingo", -4.4, 0.2, 1.2, 1],
+    ["flamingoOnTwo", -4.6, 1.4, -1, 0.95],
   ],
-  crocodiles: [["crocodile", 0, 0, 0, 1]],
+  crocodile: [["crocodile", 0, 0, 0, 1]],
   boars: [
     ["boar", 0, 0, 0, 1],
     ["boar", 1.6, 0.8, 0.6, 0.95],
@@ -671,7 +671,7 @@ const GROUPS = {
     ["donkey", 0.6, -1.4, 2.4, 0.6], // a foal
   ],
   wolf: [["wolf", 0, 0, 0, 1]],
-  howler: [["howler", 0, 0, 0, 1.1]],
+  "howling wolf": [["howler", 0, 0, 0, 1.1]],
   chamois: [
     ["chamois", 0, 0, 0, 1],
     ["chamois", 1.3, 0.7, 0.7, 0.95],

@@ -128,13 +128,13 @@ const PULLEY = mergeGeometries([
 // { name, mesh, material, a, r, length, at(seconds) }: on the line from its Grossbasel landing a
 // (scene x, z) along r (towards Kleinbasel) length metres long, at(seconds) metres from a.
 // place(latitude, longitude): scene [x, z]; boost(position): how much wider and higher to draw it
-// far away.
-export function createFerries(place, heightAt, boost) {
+// far away; more: further ferries, as LANDINGS.
+export function createFerries(place, heightAt, boost, more = []) {
   const group = new THREE.Group();
   const masts = [];
   const cables = [];
   const painted = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const ferries = LANDINGS.map(([name, grossbasel, kleinbasel, standing], i) => {
+  const ferries = [...LANDINGS, ...more].map(([name, grossbasel, kleinbasel, standing], i) => {
     const [ax, az] = place(...grossbasel);
     const [bx, bz] = place(...kleinbasel);
     const length = Math.hypot(bx - ax, bz - az);

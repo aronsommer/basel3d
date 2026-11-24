@@ -350,11 +350,11 @@ const DRILL = [3, 2]; // the goalkeeping coach throws, the third goalkeeper catc
 const MARCH = [at(47.558424, 7.58759), at(47.557929, 7.58797)];
 
 // The animals (A1, src/zoo.js) at LV95 points, each group with its heading: of the Zoo Basel
-// (flamingos beside the hippos), a crocodile in the Merian Gärten, and wild boars, foxes, a
-// wildcat, red deer, chamois, swans, goats (twice), small monkeys, ducks, geese, a lynx, donkeys
-// and wolves (twice) in the Lange Erlen; clear(x, z, r): whether no tree reaches within r metres
-// there. In the museum one of each group, numbered in this order (src/museum.js, ZOO), the big ones
-// first.
+// (flamingos beside the hippos and amid the seals), a crocodile in the Merian Gärten, and wild
+// boars, foxes, a wildcat, red deer, chamois, swans, goats (twice), small monkeys, ducks, geese, a
+// lynx, donkeys, wolves (twice) and a howling wolf in the Lange Erlen; clear(x, z, r): whether no
+// tree reaches within r metres there. In the museum one of each group, named after it and
+// numbered in this order (src/museum.js, ZOO), the big ones first.
 const ANIMALS = [
   ["elephants", 2610681.3, 1266433.3, -1],
   ["rhinos", 2610587.7, 1266255.8, 0.8],
@@ -363,14 +363,15 @@ const ANIMALS = [
   ["zebras", 2610415.1, 1266286.4, 2],
   ["seals", 2610402.7, 1266201.5, 0],
   ["deer", 2612649.0, 1269188.8, 0],
-  ["flamingos", 2610590.8, 1266337.9, 1], // with the hippos
+  ["flamingos", 2610587.3, 1266337.9, 1], // beside the hippos
+  ["flamingos", 2610409.0, 1266203.4, 0], // amid the seals
   ["boars", 2612577.6, 1269243.4, 0],
   ["donkeys", 2612959.8, 1269327.0, 0],
   ["chamois", 2612705.9, 1269201.7, 0],
   ["goats", 2612720.7, 1269278.9, 0],
   ["goats", 2612871.7, 1269272.5, 1.5],
   ["foxes", 2612577.1, 1269194.8, 0],
-  ["crocodiles", 2613500.5, 1264409.6, 0],
+  ["crocodile", 2613500.5, 1264409.6, 0],
   ["monkeys", 2612733.4, 1269327.0, 0],
   ["penguins", 2610437.5, 1266003.1, 0],
   ["swans", 2612675.9, 1269269.7, 0],
@@ -378,7 +379,7 @@ const ANIMALS = [
   ["geese", 2612797.5, 1269228.5, 0],
   ["wildcat", 2612617.9, 1269241.3, 0],
   ["lynx", 2612850.6, 1269239.8, 0],
-  ["howler", 2612841.2, 1269383.6, -1.2],
+  ["howling wolf", 2612841.2, 1269383.6, -1.2],
   ["wolf", 2612810.9, 1269370.5, 1.8],
   ["wolf", 2612805.8, 1269381.3, 0.4],
 ].map(([group, e, n, heading]) => ({ group, ...lv95([e, n]), heading }));
