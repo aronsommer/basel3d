@@ -704,6 +704,10 @@ scene.add(...swimmers.meshes);
 const museumSwimmers =
   OPEN && createSwimmers(SWIM, heightAt, WATER, [], space, { walkers: 6, joggers: 4 });
 if (OPEN) scene.add(...museumSwimmers.meshes);
+// And cyclists and e-scooter riders on their way up the bank.
+const museumRunners =
+  OPEN && createRunners([SWIM.slice(0, 6)], heightAt, danger, space, { bike: 2, scooter: 2 });
+if (OPEN) scene.add(...museumRunners.meshes);
 // The Fasnacht clique marching round the Marktplatz (src/catalog.js), and in the museum another.
 const { cliques } = build("S8", { heightAt });
 overlay.add(ships.route);
@@ -3042,6 +3046,7 @@ renderer.setAnimationLoop((time) => {
   if (OPEN) museumWalkers.update(dt, museumCentre, camera.position);
   swimmers.update(dt);
   if (OPEN) museumSwimmers.update(dt);
+  if (OPEN) museumRunners.update(dt, [museumSwimmers.people]);
   for (const clique of cliques) clique.update(dt);
   training.update(dt);
   bike.update(dt);

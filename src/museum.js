@@ -281,6 +281,7 @@ const LABEL_AT = {
   T4: [47.580097, 7.583764],
   P1: [47.582619, 7.580194],
   P2: [47.581607, 7.583398],
+  P3: [47.581955, 7.583248],
   L1: [47.579824, 7.578917],
   S8: [47.578568, 7.580543],
   "V1-1": [47.581149, 7.581207],
@@ -549,6 +550,7 @@ if (OPEN) {
   label("T4 Ships", ...fromWGS84(47.580192, 7.583482)); // between the boats, near the ships' way
   label("P1 Passers-by", MUSEUM.x, MUSEUM.z);
   label("P2 Rhine swimmers", ...SWIM[4]);
+  label("P3 Cyclists and scooters", ...SWIM[3]);
 }
 
 // The labels (LABELS) as plates flat on the ground (ground(x, z): the height there), LIFT metres

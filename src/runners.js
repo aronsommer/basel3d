@@ -60,7 +60,7 @@ const scooter = mergeGeometries([
     part(new THREE.BoxGeometry(0.06, 0.04, 0.04), 0x111111, [s * 0.2, 1.06, 0.66]),
   ), // grips
 ]);
-// The vehicles: how many, metres a second, metres right of the path's middle, the frame, its
+// The vehicles: how many (unless given, even), metres a second, metres right of the path's middle, the frame, its
 // colours and size, metres to its front wheel, where its rider stands ([y, z] in the frame, were
 // they standing), the rider's size and lean forward (radians) and pose.
 const RIDES = {
@@ -242,9 +242,10 @@ function move(m, wanted, dt, ground, space, reach) {
 
 // The cyclists and e-scooter riders on these routes (each [x, z] points); ground(x, z):
 // the height there; danger(x, y, z, reach): null if no traffic is there, else the shortest way out
-// of it ([x, z]) within reach metres (src/main.js); space: src/space.js's. { meshes, update(dt,
-// people) }: people as for among.
-export function createRunners(routes, ground, danger, space) {
+// of it ([x, z]) within reach metres (src/main.js); space: src/space.js's; counts: how many of a
+// kind ({ bike, scooter }, each even), if not as in RIDES. { meshes, update(dt, people) }: people as
+// for among.
+export function createRunners(routes, ground, danger, space, counts = {}) {
   const stretches = routes.map(stretchOf);
   const total = stretches.reduce((sum, { length }) => sum + length, 0);
   // A stretch, the longer the likelier, and a spot on it not within APART metres of one placed
@@ -264,8 +265,9 @@ export function createRunners(routes, ground, danger, space) {
   // bikes their wheels in another.
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const color = new THREE.Color();
-  const kinds = Object.values(RIDES).map((ride) => {
-    const { count, speed, lane, frame, colours, pose } = ride;
+  const kinds = Object.entries(RIDES).map(([name, ride]) => {
+    const { speed, lane, frame, colours, pose } = ride;
+    const count = counts[name] ?? ride.count;
     const frames = new THREE.InstancedMesh(frame, material, count);
     const crowds = { man: createCrowd("man", count / 2, false) };
     crowds.woman = createCrowd("woman", count / 2, false);
