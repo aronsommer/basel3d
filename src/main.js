@@ -828,8 +828,9 @@ function updateBadges() {
 
 // While "Names" is ticked: the quarters and towns on the ground and the landmarks just above their
 // top, the first roof, bridge deck or ground hit from above (tools/names.mjs). Landmarks further
-// than LANDMARK_RANGE from the camera are hidden, so the centre stays readable from afar.
-const LANDMARK_RANGE = 3000; // metres
+// than LANDMARK_RANGE from the camera are hidden, so the centre stays readable from afar; the many
+// Basiliskbrunnen further than BASILISK_RANGE, so they do not drown the others.
+const [LANDMARK_RANGE, BASILISK_RANGE] = [3000, 1000]; // metres
 // Shown as last chosen in this browser, else not.
 const NAMES_KEY = "basel3d.names"; // "1" (on) or "0"
 const namesBox = document.getElementById("names-box");
@@ -881,8 +882,14 @@ const labels = [
       x: a.x + (r.x * length) / 2,
       z: a.z + (r.z * length) / 2,
     })),
-  ...CATALOG.L1.places.map(({ x, z }) => ({ name: "Basiliskbrunnen", kind: "landmark", x, z })),
-].map(({ name, kind, x, z }) => {
+  ...CATALOG.L1.places.map(({ x, z }) => ({
+    name: "Basiliskbrunnen",
+    kind: "landmark",
+    x,
+    z,
+    range: BASILISK_RANGE,
+  })),
+].map(({ name, kind, x, z, range = kind === "place" ? Infinity : LANDMARK_RANGE }) => {
   const at = new THREE.Vector3(x, heightAt(x, z), z);
   if (kind === "landmark") {
     fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
@@ -894,7 +901,7 @@ const labels = [
     className: kind,
     hidden: true,
   });
-  return { at, kind, element: nameLayer.appendChild(element) };
+  return { at, range, element: nameLayer.appendChild(element) };
 });
 // The UFO (src/ufo.js) hovers over where a ray from above first meets a roof or the ground; another
 // in the museum (src/museum.js).
@@ -1437,9 +1444,9 @@ function updateNames() {
   const on = namesBox.checked;
   if (!on && !namesOn) return; // all hidden already
   namesOn = on;
-  for (const { at, kind, element } of labels) {
+  for (const { at, range, element } of labels) {
     const { x, y, front } = onScreen(at);
-    const near = kind === "place" || camera.position.distanceTo(at) < LANDMARK_RANGE;
+    const near = camera.position.distanceTo(at) < range;
     const shown = on && front && near;
     if (element.hidden === shown) element.hidden = !shown;
     if (shown) element.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
