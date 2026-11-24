@@ -983,7 +983,7 @@ const walkers = createWalkers(
 scene.add(...walkers.meshes);
 // The museum's pedestrians (src/museum.js) on its walks: MUSEUM_WALKERS parties, each kind in turn,
 // within MUSEUM_RADIUS metres of its centre, the camera near it.
-const [MUSEUM_WALKERS, MUSEUM_RADIUS] = [40, 80];
+const [MUSEUM_WALKERS, MUSEUM_RADIUS] = [55, 80];
 const museumCentre = new THREE.Vector3(MUSEUM.x, heightAt(MUSEUM.x, MUSEUM.z), MUSEUM.z);
 const museumWalkers =
   OPEN &&
