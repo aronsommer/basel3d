@@ -32,6 +32,8 @@ basel3d/
 ├── style.css          styles of the page
 ├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
+├── src/catalog.js     every kind with an id: its name, its places in the city and how it is built
+├── src/museum.js      the museum: where each kind of the catalog stands there, and its plate
 ├── src/geo.js         scene x, z <-> LV95 and WGS84
 ├── src/lines.js       lines to check the ways of what moves
 ├── src/riders.js      riding along on single objects: the camera's eye, the highlight
