@@ -14,7 +14,7 @@ import { fromWGS84 } from "./geo.js";
 import { part } from "./parts.js";
 
 // Whether the museum is open in this browser: all of it is there only then (none of its exhibits,
-// courses, pedestrians). Its secret switch, a red button (createButton, src/main.js), opens or
+// courses, pedestrians). Its secret switch, a push button (createButton, src/main.js), opens or
 // closes it (toggle), which takes the page loading again.
 const KEY = "basel3d.museum"; // "1" (open)
 export const OPEN = (() => {
@@ -30,7 +30,8 @@ export function toggle() {
   } catch {} // storage blocked: it stays as it is
   location.reload();
 }
-// The switch: a big red push button on a low grey base on the ground, among trees west of the
+// The switch: a big push button, red while the museum is closed and a lighter green while it is
+// open, on a low grey base on the ground, 1.5 m across and 0.375 m high, among trees west of the
 // museum (ground(x, z): the height there).
 export function createButton(ground) {
   const [x, z] = fromWGS84(47.582627, 7.576159);
@@ -38,8 +39,8 @@ export function createButton(ground) {
   const mesh = new THREE.Mesh(
     mergeGeometries([
       part(cylinder(0.5, 0.15), 0x8c9196, [0, 0.075, 0]), // base
-      part(cylinder(0.32, 0.1), 0xd8231f, [0, 0.2, 0]), // the button
-    ]),
+      part(cylinder(0.32, 0.1), OPEN ? 0x3ee05a : 0xd8231f, [0, 0.2, 0]), // the button
+    ]).scale(1.5, 1.5, 1.5),
     new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
   );
   mesh.position.set(x, ground(x, z), z);

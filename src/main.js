@@ -1079,7 +1079,7 @@ function buttonAt(x, y, reach = 0) {
   );
   if (raycaster.intersectObject(button).length > 0) return true;
   if (!reach) return false;
-  const top = button.position.clone().setY(button.position.y + 0.25); // the button's top
+  const top = button.position.clone().setY(button.position.y + 0.375); // the button's top
   const { x: bx, y: by, front } = onScreen(top);
   return front && Math.hypot(bx - x, by - y) < reach && !hidden(top);
 }
