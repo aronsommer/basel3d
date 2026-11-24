@@ -27,8 +27,8 @@ const NIGHT = {
 
 // sun, hemisphere: the lights; sky: its mesh (src/sky.js); water: the terrain's
 // water colours (its uniforms waterDark and waterLight); dim: unlit materials with a colour,
-// darkened with daylight. { set(on): to night or day, update(dt) }.
-export function createDaylight({ sun, hemisphere, sky, water, dim = [] }) {
+// darkened with daylight; on: night from the start. { set(on): to night or day, update(dt) }.
+export function createDaylight({ sun, hemisphere, sky, water, dim = [], on = false }) {
   const dimmed = [water.waterDark.value, water.waterLight.value, ...dim.map((m) => m.color)].map(
     (colour) => [colour, colour.clone()],
   );
@@ -36,7 +36,7 @@ export function createDaylight({ sun, hemisphere, sky, water, dim = [] }) {
   const [dayWay, nightWay] = [DAY, NIGHT].map(({ light }) => new THREE.Vector3(...light[2]));
   const mix = (day, dark, out) => out.copy(a.set(day)).lerp(b.set(dark), night.value);
   const number = (day, dark) => day + (dark - day) * night.value;
-  let target = 0;
+  let target = (night.value = on ? 1 : 0);
   function apply() {
     mix(DAY.light[0], NIGHT.light[0], sun.color);
     sun.intensity = number(DAY.light[1], NIGHT.light[1]);

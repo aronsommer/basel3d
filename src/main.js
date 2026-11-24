@@ -236,7 +236,7 @@ const [
     ...MAP_FILES,
   ],
   // Up to 90%: the rest is building the scene, until the loading screen goes.
-  (percent) => (progress.textContent = `${Math.floor(percent * 0.9)}%`),
+  (percent) => (progress.style.transform = `scaleX(${percent * 0.009})`),
 );
 const moverFiles = rest.slice(0, MOVER_KINDS.length * 2);
 const groundBuffers = rest.slice(MOVER_KINDS.length * 2);
@@ -2871,19 +2871,19 @@ const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints
 
 // Day or night (src/daylight.js) by "Night" in the menu, as last chosen in this browser, else day;
 // the mown lawn darkening with the light, as no light shines on it.
+const NIGHT_KEY = "basel3d.night"; // "1" (on) or "0"
+const nightBox = document.getElementById("night-box");
+try {
+  nightBox.checked = localStorage.getItem(NIGHT_KEY) === "1";
+} catch {} // storage blocked
 const daylight = createDaylight({
   sun,
   hemisphere,
   sky,
   water,
   dim: [lawn.material],
+  on: nightBox.checked,
 });
-const NIGHT_KEY = "basel3d.night"; // "1" (on) or "0"
-const nightBox = document.getElementById("night-box");
-try {
-  nightBox.checked = localStorage.getItem(NIGHT_KEY) === "1";
-} catch {} // storage blocked
-daylight.set(nightBox.checked);
 nightBox.addEventListener("change", () => {
   daylight.set(nightBox.checked);
   try {

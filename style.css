@@ -17,7 +17,7 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #bfd8ea;
+  background: #000;
   font:
     12px/1.4 "Inter",
     sans-serif;
@@ -39,7 +39,6 @@ p {
   margin: 0;
 }
 /* Glass: dark, translucent, blurring the scene behind it. */
-#loading,
 #off,
 #walk,
 #north,
@@ -54,15 +53,22 @@ p {
   -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
   backdrop-filter: blur(32px) saturate(200%);
 }
+/* A white outlined bar on black, in the middle, as Unity's loader; #progress fills it
+   (src/main.js). */
 #loading {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  padding: 10px 16px;
-  font-size: 18px;
-  white-space: nowrap; /* one line, also on phones */
-  border-radius: var(--radius);
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  box-sizing: border-box;
+  width: 141px;
+  height: 18px;
+  border: 2px solid #fff;
+}
+#progress {
+  height: 100%;
+  background: #fff;
+  transform: scaleX(0);
+  transform-origin: left;
 }
 /* The buttons and the menu look alike: 36px tall (8px + 20px + 8px) like the
    steering buttons on desktop. */
