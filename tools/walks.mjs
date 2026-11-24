@@ -8,14 +8,14 @@
 //   streets and squares on the ground or a bridge, AISLE metres either side of their middle, but not into the streets'
 //   sidewalks; those mostly along pedestrian streets and squares are busy.
 // No aisle reaches into water (OSM water areas but bridges) or beside the passage under the
-// Mittlere Brücke (src/passage.js); lines running off the grid (MARGIN
-// beyond BOX) and loops enclosing less than SMALLEST or more than WETTEST of them on water, or
-// more than HOUSED of them in buildings (under their roofs in public/basel.bin, tools/compact.mjs:
-// mapped through or past a building, they would walk unseen in its walls; of a loop shorter than
-// SHORT a smaller share), are left out. Each is simplified to within SIMPLIFY metres, left out if it then crosses itself, and
-// written as a Uint16 count of points (plus BUSY for a busy one) and the points as Uint16 pairs
-// (east, south) in 1/TREE_GRID m from the area's north-west corner; the last point leads back to
-// the first.
+// Mittlere Brücke (src/passage.js); lines running off the grid (MARGIN beyond BOX) and loops
+// enclosing less than SMALLEST or more than WETTEST of them on water, or more than HOUSED of them
+// in buildings (under their roofs in public/basel.bin, tools/compact.mjs: mapped through a
+// building, they would walk unseen in its walls), or shorter than SHORTEST round (where they would
+// walk in circles, mostly in yards closed by houses), are left out. Each is simplified to within
+// SIMPLIFY metres, left out if it then crosses itself, and written as a Uint16 count of points
+// (plus BUSY for a busy one) and the points as Uint16 pairs (east, south) in 1/TREE_GRID m from the
+// area's north-west corner; the last point leads back to the first.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { E_MIN, N_MAX, PUBLIC, TREE_GRID } from "./area.mjs";
@@ -34,8 +34,8 @@ const INSET = 2; // metres
 const SMALLEST = 50; // m²
 const SIMPLIFY = 0.5; // metres
 const WETTEST = 0.02; // share of a loop on water at most
-const HOUSED = [0.5, 0.05]; // share of a loop in buildings at most, and of one shorter than SHORT
-const SHORT = 100; // metres
+const HOUSED = 0.5; // share of a loop in buildings at most
+const SHORTEST = 100; // metres round
 const BUSY = 0x8000;
 const STREETS = [
   "motorway",
@@ -308,7 +308,8 @@ const kept = (loops) =>
     (points) =>
       Math.abs(area(points)) > SMALLEST &&
       onWater(points) < WETTEST &&
-      housed(points) <= HOUSED[length(points) < SHORT ? 1 : 0],
+      length(points) >= SHORTEST &&
+      housed(points) <= HOUSED,
   );
 // Busy: most of its points nearer pedestrian streets than other ways.
 const busy = (points) =>
