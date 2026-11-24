@@ -18,8 +18,8 @@ const GRAFFITI = [
   {
     where: "An 82 m tower's side, south-west of Basel SBB's station building",
     kind: "piece",
-    from: [47.546187, 7.58733, 292.2],
-    to: [47.546345, 7.586954, 292.1],
+    from: [47.546187, 7.58733, 298.2],
+    to: [47.546345, 7.586954, 298.1],
     text: "FCB",
     back: FCB,
   },
