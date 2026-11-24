@@ -235,7 +235,8 @@ const [
     ...MOVER_KINDS.flatMap((kind) => [`${kind}s.json`, `${kind}s.bin`]),
     ...MAP_FILES,
   ],
-  (percent) => (progress.textContent = `${percent}%`),
+  // Up to 90%: the rest is building the scene, until the loading screen goes.
+  (percent) => (progress.textContent = `${Math.floor(percent * 0.9)}%`),
 );
 const moverFiles = rest.slice(0, MOVER_KINDS.length * 2);
 const groundBuffers = rest.slice(MOVER_KINDS.length * 2);
