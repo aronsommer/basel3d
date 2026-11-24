@@ -1,4 +1,4 @@
-// Day or night, switched (set) and eased over FADE seconds: the sun's or moon's light and the sky
+// Day or night, switched (set) and eased over FADE seconds: the sun's light (none at night) and the sky
 // light, the sky's and water's colours. The night is a mild dusk, blue, with stars, lit
 // windows and lamps; by day all is as it was before there were nights.
 import * as THREE from "three";
@@ -19,10 +19,10 @@ const DAY = {
   daylight: 1,
 };
 const NIGHT = {
-  light: [0xb4c2ff, 0.9, [0.6, 1, -0.4]],
-  sky: [0x7584b0, 0x3d362c, 1.15],
-  heaven: [0x3c4c7c, 0x101d44],
-  daylight: 0.5,
+  light: [0xb4c2ff, 0, [0.6, 1, -0.4]], // none: lit alike from every side
+  sky: [0x8492bc, 0x5a5870, 2],
+  heaven: [0x4a5a8c, 0x16244e],
+  daylight: 0.6,
 };
 
 // sun, hemisphere: the lights; sky: its mesh (src/sky.js); water: the terrain's

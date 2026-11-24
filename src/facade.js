@@ -2,14 +2,14 @@
 // of each building (the alpha of its wall colour, tools/buildings.mjs): bits 0–2 the style, 3 shop
 // windows on the ground floor, 4 balconies, 5–7 a seed. A grid of bays in metres runs along each
 // wall, whole storeys fill its height (_wall: its bottom and top, its building's foot). Far away,
-// where they would flicker, a wall takes their average colour. At night (src/daylight.js) some
-// windows glow, all shopfronts.
+// where they would flicker, soft rows and columns of them, then their average. At night
+// (src/daylight.js) some windows glow, all shopfronts.
 // All colours are linear; none is black.
 import { night } from "./daylight.js";
 const SETTINGS = {
   cell: "vec2(3.1, 3.3)", // metres of a bay and a storey
   churchCell: "vec2(3.1, 4.6)",
-  glass: "vec3(0.16, 0.19, 0.23)",
+  glass: "vec3(0.24, 0.27, 0.31)",
   frame: "vec3(0.72, 0.70, 0.64)",
   dark: "vec3(0.12, 0.125, 0.13)", // frames of modern windows, shopfronts
   glow: "vec3(1.6, 1.15, 0.67)", // a lit window's light
@@ -89,13 +89,13 @@ const FACADE = `
         float shm = facadeFill(facadeBox(vec2(abs(p.x) - wh.x - 0.31, p.y - wc.y), vec2(0.26, wh.y)), aa) * hasShut;
         float mu = facadeFill(min(abs(p.x), abs(p.y - wc.y - 0.28)) - 0.028, aa) * fine;
         col = mix(col, stone, sm * (townHall ? 1.0 : step(0.2, h2)));
-        col = mix(col, shut * (0.8 + 0.25 * step(0.5, fract(p.y * 8.0)) * near), shm);
+        col = mix(col, shut * (1.2 + 0.25 * step(0.5, fract(p.y * 8.0)) * near), shm);
         col = mix(col, stone * 1.1, sl);
         col = mix(col, ${SETTINGS.frame}, fm);
         glass = gm * (1.0 - mu * 0.85);
         col = mix(col, ${SETTINGS.frame}, gm * mu);
       }
-      col *= mix(0.74, 1.0, smoothstep(0.5, 0.72, vFacade.y - vWall.z)); // plinth
+      col *= mix(0.88, 1.0, smoothstep(0.5, 0.72, vFacade.y - vWall.z)); // plinth
     } else if (style == 1) {
       // Modern: wide windows with dark frames, a ledge per storey, some balconies and shops.
       vec2 wc = vec2(0.0, 0.06), wh = vec2(min(1.02, cs.x * 0.5 - 0.34), 0.80);
@@ -116,7 +116,7 @@ const FACADE = `
         col = mix(wall * 0.5, ${SETTINGS.dark}, facadeFill(ds, aa) - glass);
         glassColour = vec3(0.30, 0.26, 0.20);
       }
-      col *= mix(0.78, 1.0, smoothstep(0.3, 0.5, vFacade.y - vWall.z));
+      col *= mix(0.9, 1.0, smoothstep(0.3, 0.5, vFacade.y - vWall.z));
     } else if (style == 2) {
       // Offices: a band of glass per storey, mullions at the bays, lines between the bands.
       float gm = facadeFill(abs(p.y - 0.14) - 0.80, aa);
@@ -153,12 +153,14 @@ const FACADE = `
     }
     col = mix(col, glassColour * (0.85 + 0.3 * wid), glass);
     }
-    // Too far to resolve the windows: the facade's average.
+    // Too far to resolve the windows: soft rows and columns of them, by their share, each faded
+    // out before it would flicker; then the wall, darkened by their share.
     float share = style == 3 ? 0.75 : style == 2 ? 0.42 : style == 4 || style == 7 ? 0.0 : 0.2;
-    diffuseColor.rgb = mix(col, mix(wall, ${SETTINGS.glass}, share * 0.6), far);
-    // Lit at night: some windows, every shopfront; far away their share of the facade.
+    vec2 wave = 0.5 + 0.5 * cos(6.2832 * p / cs) * (1.0 - smoothstep(0.25, 0.5, fwidth(q) / cs));
+    diffuseColor.rgb = mix(col, wall * (1.0 - min(2.0 * share * wave.x * wave.y, 0.6)), far);
+    // Lit at night: some windows, every shopfront; far away their share, in the soft rows.
     float lit = gf > 0.5 && (bits & 8) != 0 ? 1.0 : step(fract(wid * 7.31), ${SETTINGS.lit});
-    facadeGlow = mix(glass * lit, share * ${SETTINGS.lit}, far);
+    facadeGlow = mix(glass * lit, 4.0 * wave.x * wave.y * share * ${SETTINGS.lit}, far);
   }
 }
 `;
