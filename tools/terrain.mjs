@@ -25,7 +25,7 @@ const OUT = join(PUBLIC, "terrain");
 
 // --- Terrain: newest swissALTI3D 2 m tile per square kilometre ("2612-1266") overlapping the area.
 async function altiUrls() {
-  const newest = await newestTiles("ch.swisstopo.swissalti3d", "_2_2056_5728.tif");
+  const newest = await newestTiles("ch.swisstopo.swissalti3d", "_2_2056_5728.tif", ALTI_DIR);
   return [...newest]
     .filter(([key]) => {
       const [e, n] = key.split("-").map((k) => k * 1000);

@@ -6,6 +6,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  readdirSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
@@ -56,17 +57,26 @@ export async function photoMosaic() {
   return mosaic;
 }
 
-// Newest asset per tile in the area: Map tile → { year, href }. Item ids end in _<year>_<tile>.
-export async function newestTiles(collection, assetSuffix) {
+// Newest asset per tile: Map tile → { year, href }. Taken from the files already in dir, so the
+// data stays fixed; only if there are none, from the catalogue (item ids end in _<year>_<tile>).
+// Delete dir to fetch the newest data again.
+export async function newestTiles(collection, assetSuffix, dir) {
   const newest = new Map();
+  const add = (year, tile, href) => {
+    if (!(newest.get(tile)?.year >= year)) newest.set(tile, { year, href });
+  };
+  for (const name of existsSync(dir) ? readdirSync(dir) : []) {
+    const match = name.endsWith(assetSuffix) && name.match(/_(\d{4})_(\d{4}-\d{2,4})_/);
+    if (match) add(match[1], match[2], name);
+  }
+  if (newest.size) return newest;
   let url = `https://data.geo.admin.ch/api/stac/v1/collections/${collection}/items?bbox=${BBOX_WGS84}&limit=100`;
   while (url) {
     const page = await (await fetch(url)).json();
     for (const item of page.features) {
       const match = item.id.match(/_(\d{4})_(\d{4}-\d{2,4})$/);
       const asset = Object.values(item.assets).find((a) => a.href.endsWith(assetSuffix));
-      if (match && asset && !(newest.get(match[2])?.year >= match[1]))
-        newest.set(match[2], { year: match[1], href: asset.href });
+      if (match && asset) add(match[1], match[2], asset.href);
     }
     url = page.links.find((l) => l.rel === "next")?.href;
   }

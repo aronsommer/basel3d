@@ -97,7 +97,8 @@ basel3d/
 │   ├── names.mjs      OSM places + landmarks chosen by OSM id → names.json
 │   ├── heights.mjs    terrain height at a point, for the converters
 │   ├── pack.mjs       packs whole numbers into few bytes, for terrain.bin, the routes and basel.bin (read by src/pack.js)
-│   └── size.mjs       → size.json, runs after every converter
+│   ├── size.mjs       → size.json, runs after every converter
+│   └── data.mjs       checks data/ against data.json, runs after every converter
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
 
@@ -121,7 +122,7 @@ npm run names       # needs nothing else
 
 Run out of order, a script stops with an error where a file it reads is missing (`public/terrain/`, `basel.glb`, `data/bridges.bin`, `trees.bin`), but not without the aerial photo: then the buildings get a default roof colour, and the map loses the patches in its green areas and turns the built-up land slightly green. So check that `data/swissimage/` is filled before `npm run buildings` and `npm run map`.
 
-**Which data.** OpenStreetMap (cached in `data/osm.json`, `osm-churches.json`, `osm-trams.json`, `osm-trains.json`, `osm-names.json`), the aerial photo, the swissTLM3D layers and the canton's bridge models are downloaded once into `data/` and then reused, so they stay as they are until deleted. swissALTI3D and swissBUILDINGS3D are looked up in the STAC catalogue on every run: when swisstopo publishes a newer version of a tile, it is downloaded and used. Downloaded anew, everything comes in its current state, so the result can differ a little from the one in the repo. `data/reference/buildings.json` is not shared; without it the buildings take their roof colours from the aerial photo and guessed wall colours (see 2.).
+**Which data.** OpenStreetMap (cached in `data/osm.json`, `osm-churches.json`, `osm-trams.json`, `osm-trains.json`, `osm-names.json`), the aerial photo, swissALTI3D, swissBUILDINGS3D (the newest version of each tile in the STAC catalogue), the swissTLM3D layers and the canton's bridge models are downloaded once into `data/` and then reused, so they stay as they are until deleted. `tools/data.json` lists every file of `data/` with its size; after every script `tools/data.mjs` reports files that are missing, new or of another size, and `npm run accept-data` takes `data/` as it is. Downloaded anew, everything comes in its current state, so the result can differ a little from the one in the repo. `data/reference/buildings.json` is not shared; without it the buildings take their roof colours from the aerial photo and guessed wall colours (see 2.).
 
 1. **Terrain and aerial photo:** `npm run terrain` downloads the data to `data/` by itself:
    - swissALTI3D from the STAC catalogue, per 1 km tile as a mesh at most 1 m off it (about 750,000 triangles in all, `terrain.bin`, 0.75 MB): on a grid of 513 points a side (about 2 m apart), right-angled triangles halved along their longest side only where the ground needs it (as in mapbox/martini), stored as one bit per triangle and each new point's height in cm as how it differs from the middle of the side it halves. So quay walls, bridge ends, embankments and the roads under bridges keep their shape. The viewer draws it within 2 km of the camera, further away a grid of heights 40 m apart. Where swissALTI3D has no data (outside Switzerland) a 10 m grid filled from its edge stands in,

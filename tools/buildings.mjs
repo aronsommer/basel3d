@@ -602,7 +602,7 @@ async function writeGlb() {
 }
 
 mkdirSync(SRC, { recursive: true });
-const tiles = await newestTiles("ch.swisstopo.swissbuildings3d_3_0", ".citygml.zip");
+const tiles = await newestTiles("ch.swisstopo.swissbuildings3d_3_0", ".citygml.zip", SRC);
 if (!tiles.size) throw new Error("No swissBUILDINGS3D tiles found");
 // Fixed order (by map sheet), so the same input always gives a byte-identical basel.glb.
 for (const sheet of [...tiles.keys()].sort()) {
