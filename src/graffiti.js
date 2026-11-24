@@ -1,22 +1,24 @@
-// Graffiti in Cherry Bomb One (public/CherryBombOne.woff2, its Latin letters), black and white
-// (paint), all of them in GRAFFITI: small tags and big pieces, each where it says.
+// Graffiti (pieceOf) in Cherry Bomb One (public/CherryBombOne.woff2, its Latin letters) or Rocker
+// (public/Rocker.woff2), black and white (paint), or in Honk (public/Honk.woff2): on walls, roofs
+// and bridges in GRAFFITI, small tags and big pieces, each where it says; and whole cars (wholeCar,
+// WHOLE_CARS).
 import * as THREE from "three";
 import { fromWGS84 } from "./geo.js";
 
-// Every graffito, each { where, kind, from, to, text, back, roof, deep, flip }. To add one: in the
-// viewer press C over each end of where it goes, on the wall or roof (C copies the point: lat, lon,
-// metres above sea), and give where (words, to know it by), its kind (KINDS: a tag or piece), its
-// text (any Latin letters) and, for a slab behind it, back (two colours, 0xrrggbb, the one above
-// the other: FCB). Its text runs along the way from one point to the other, at most as wide as
-// that; before the wall there, its middle at the points' height but at least its kind's raise in
-// metres above the ground and at most up to TOP metres below the wall's top, out before every wall
-// behind it (AHEAD); or with roof on the roof (or bridge) there, read from down its slope (on a
-// flat one from left at from to right at to), in the slope's middle, at most up to EDGE metres from
-// its ends; with deep too (metres), level and from left to right instead, in the band that wide
-// along the way, from and to the middles of its ends, OFF above its highest roof (for a rippled
-// one); with flip, turned round. One that finds no wall or roof there is left out, with a warning
-// in the console.
-const FCB = [0x1d3fbf, 0xd51f2a]; // blue over red
+// Every graffito, each { where, kind, from, to, text, back, roof, deep, flip } and any of a whole
+// car piece's look (pieceOf). To add one: in the viewer press C over each end of where it goes, on
+// the wall or roof (C copies the point: lat, lon, metres above sea), and give where (words, to know
+// it by), its kind (KINDS: a tag or piece), its text (any Latin letters) and, for a slab behind it,
+// back (two colours, 0xrrggbb, the one above the other: FCB). Its text runs along the way from one
+// point to the other, at most as wide as that; before the wall there, its middle at the points'
+// height but at least its kind's raise in metres above the ground and at most up to TOP metres
+// below the wall's top, out before every wall behind it (AHEAD); or with roof on the roof (or
+// bridge) there, read from down its slope (on a flat one from left at from to right at to), in the
+// slope's middle, at most up to EDGE metres from its ends; with deep too (metres), level and from
+// left to right instead, in the band that wide along the way, from and to the middles of its ends,
+// OFF above its highest roof (for a rippled one); with flip, turned round. One that finds no wall
+// or roof there is left out, with a warning in the console.
+const FCB = [0xd51f2a, 0x1d3fbf]; // red over blue: Rotblau, red first
 const GRAFFITI = [
   {
     where: "An 82 m tower's side, south-west of Basel SBB's station building",
@@ -57,7 +59,7 @@ const GRAFFITI = [
     from: [47.583233, 7.589103],
     to: [47.582569, 7.591653],
     deep: 31,
-    text: "GANGSTER GANG 69",
+    text: "GANGSTERZZZ",
   },
   {
     where: "A 215 m long bridge's top, about 3.2 km north-north-east of the Marktplatz",
@@ -117,11 +119,14 @@ function distances(w, h, is) {
   return d;
 }
 // A word at size px on a canvas of its own: its letters, outlined black (closed), in a white cut
-// line, then the letters black and their white face up left of it; with the baseline's height.
-function sheetOf(text, size) {
-  const font = `${size}px "Cherry Bomb One"`;
+// line (but with cut false), then the letters black and their white face up left of it (or face: a
+// colour, or colours from the top of an H down to the baseline, or { stripes: colours } as many
+// even stripes so, or per letter as face(k) says; with rim framed: framed), in font (a family);
+// with the baseline's height.
+function sheetOf(text, size, font, face, rim, cut = true) {
+  font = `${size}px "${font}"`;
   const canvas = document.createElement("canvas");
-  const c = canvas.getContext("2d");
+  const c = canvas.getContext("2d", { willReadFrequently: true });
   c.font = font;
   const m = c.measureText(text);
   // Room for the outline grown by FILL, so it closes as if nothing were beyond the canvas.
@@ -140,13 +145,49 @@ function sheetOf(text, size) {
   for (let i = 0; i < w * h; i++) {
     const black = cover(inside[i] - FILL * size);
     for (let k = 0; k < 3; k++) image.data[4 * i + k] = WHITE[k] + (BLACK[k] - WHITE[k]) * black;
-    image.data[4 * i + 3] = 255 * cover(inside[i] - (FILL - CUT) * size);
+    image.data[4 * i + 3] = 255 * cover(inside[i] - (FILL - (cut ? CUT : 0)) * size);
   }
   c.putImageData(image, 0, 0);
   c.fillStyle = `rgb(${BLACK})`;
   c.fillText(text, x, y);
-  c.fillStyle = `rgb(${WHITE})`;
-  c.fillText(text, x - SHADE * size, y - SHADE * size);
+  const [fx, fy] = [x - SHADE * size, y - SHADE * size];
+  const fillOf = (face) => {
+    if (face === undefined) return `rgb(${WHITE})`;
+    const top = fy - c.measureText("H").actualBoundingBoxAscent;
+    const gradient = c.createLinearGradient(0, top, 0, fy);
+    if (face.stripes) {
+      const n = face.stripes.length;
+      face.stripes.forEach((rgb, i) => {
+        gradient.addColorStop(i / n, hex(rgb));
+        gradient.addColorStop((i + 1) / n, hex(rgb));
+      });
+      return gradient;
+    }
+    const colours = [face].flat();
+    colours.forEach((rgb, i) =>
+      gradient.addColorStop(i / Math.max(colours.length - 1, 1), hex(rgb)),
+    );
+    return gradient;
+  };
+  // With face a function, the k-th letter's face is face(k): the word filled so, but only from
+  // where the letter starts to where the next does.
+  const [chars, each] = [[...text], typeof face === "function"];
+  for (let k = 0; k < (each ? chars.length : 1); k++) {
+    c.save();
+    if (each) {
+      const [a, b] = [k, k + 1].map((n) => fx + c.measureText(chars.slice(0, n).join("")).width);
+      c.beginPath();
+      c.rect(k ? a : 0, 0, (k < chars.length - 1 ? b : w) - (k ? a : 0), h);
+      c.clip();
+    }
+    c.fillStyle = fillOf(each ? face(k) : face);
+    c.fillText(text, fx, fy);
+    c.restore();
+  }
+  if (rim) {
+    const faces = alphaOf(w, h, font, text, fx, fy);
+    framed(c, (i) => faces[i] >= 128, size, rim);
+  }
   // Without the room for growing, but the cut line.
   const margin = Math.floor((FILL - CUT) * size) - 1;
   const out = document.createElement("canvas");
@@ -154,10 +195,17 @@ function sheetOf(text, size) {
   out.getContext("2d").drawImage(canvas, -margin, -margin);
   return { sheet: out, baseline: Math.round(y) - margin };
 }
-// A canvas with text at size px, its words each on its own (sheetOf), GAP apart, on one baseline;
-// with back, on its slab (slab).
-function paint(text, size, back) {
-  const words = text.split(" ").map((w) => sheetOf(w, size));
+// A canvas with text at size px in font (a family), its words each on its own (sheetOf, in face or
+// its own of faces, or each letter in the next of letters; rim and cut), GAP apart, on one
+// baseline; with back, on its slab (slab).
+function paint(text, size, back, font = "Cherry Bomb One", face, rim, cut, faces = [], letters) {
+  let first = 0; // the first letter of the word's place in text, spaces aside
+  const words = text.split(" ").map((w, i) => {
+    const from = first;
+    first += [...w].length;
+    const own = letters ? (k) => letters[(from + k) % letters.length] : (faces[i] ?? face);
+    return sheetOf(w, size, font, own, rim, cut);
+  });
   const above = Math.max(...words.map(({ baseline }) => baseline));
   const below = Math.max(...words.map(({ sheet, baseline }) => sheet.height - baseline));
   const gap = Math.round(GAP * size);
@@ -202,6 +250,441 @@ function slab(canvas, size, [top, bottom]) {
   cut.getContext("2d").drawImage(out, -margin, -margin);
   return cut;
 }
+// Whole cars on the museum's trams and trains (src/main.js), per kind: on each side (right and left
+// of its way) a piece over a car's body, each vehicle wearing of its kind's those for its colour
+// (with livery only for that one): one with all (in turn) if there is any, over all its cars' (its
+// text a word a car if it has as many, else its letters shared out among them; read from the front
+// on the right), else all the others, one per car from its last, its own (in turn) first; each in
+// Honk's palette honk (HONK, with face its letters' face all that colour, with ink their shadow and
+// lines) or, without, as the graffiti in font (a family, Cherry Bomb One if none) with face as
+// sheetOf's (or faces, one per word, or letters, one per letter in turn); with rim framed inside
+// (framed); with cut false without the white cut line; with outline round it (a colour or a list of
+// them, outlined; with splash false not splashed out, with splash a text splashed as that, with
+// short its splashes that share as long) and back on it (two colours). With fill it is as big as it
+// fits (wholeCar). A side may be left bare.
+export const WHOLE_CARS = {
+  // From the last car on, fonts so that no two next to each other (round again too) and no car's
+  // two sides are in the same: right Honk, Cherry, Honk, Rocker, Cherry; left Cherry, Honk,
+  // Cherry, Honk, Rocker.
+  train: [
+    {
+      right: { text: "GANGSTER", honk: 0, rim: "upLeft", outline: 0x00e640 },
+      // Poison green in magenta, its complement.
+      left: {
+        text: "SEXY BASEL",
+        faces: [
+          [0xffd23a, 0xffa800, 0xe07000],
+          [0xb6f22e, 0x6fd62a, 0x1e9e3a],
+        ],
+        rim: "upLeft",
+        outline: 0xff00ff,
+        splash: "BASEL", // as it had when it said only that
+      },
+    },
+    {
+      right: { text: "FC BASEL 1893", back: FCB }, // as on the trams
+      // FCB blue in FCB red.
+      left: { text: "SCHEISS ZÜRI", honk: 7, face: 0x1d3fbf, rim: true, outline: 0xd51f2a },
+    },
+    {
+      right: { text: "BASILISK", honk: 7, face: 0x3cc84e, rim: "upLeft", outline: 0xff8c00 },
+      // Confetti: each letter the next colour round.
+      left: {
+        text: "HUERESOHN",
+        letters: [
+          0xffd400, 0xff9f1a, 0xff5a3c, 0xff3da8, 0xc04bff, 0x6a6bff, 0x2fa8ff, 0x18d4c0, 0x5be36a,
+        ],
+        rim: true,
+        outline: 0xff00ff,
+      },
+    },
+    {
+      // Chrome (silver above a sharp dark horizon, lighter below, so its white rim shows) in blood,
+      // splashed as BASEL but shorter.
+      right: {
+        text: "KILLER BEBBI",
+        font: "Rocker",
+        face: [0xc4c9cf, 0xb2b8bf, 0x9aa1a9, 0x2b3036, 0x484e56, 0x8a919a, 0xd0d4d9],
+        rim: "upLeft",
+        outline: 0xb0000f,
+        splash: "BASEL",
+        short: 0.6,
+      },
+      left: { text: "CRAZY CREW", honk: 7, outline: 0xe01020 },
+    },
+    {
+      // Basel in Polish.
+      right: {
+        text: "BAZYLEA ONE",
+        fill: true,
+        cut: false,
+        outline: [0xffd000, 0xe01020],
+        splash: false,
+      },
+      left: { text: "GANGSTER", font: "Rocker", outline: 0x8a2be2 },
+    },
+  ],
+  tram: [
+    // Only on the BVB's green ones (src/movers.js), both sides: the FCB's song, a line a side, a
+    // word a car, in the FCB's colours.
+    {
+      all: true,
+      livery: 0x2e8b3a,
+      right: { text: "ROT ISCH UNSERI LIEBI", back: FCB },
+      left: { text: "BLAU DIE EWIGI TREUI", back: FCB },
+    },
+    // On any other, a car each, from the last car on fonts as on the trains: right Honk, Cherry,
+    // Rocker, Cherry; left Cherry, Rocker, Honk, Rocker.
+    {
+      // As GANGSTER on the trains.
+      right: { text: "HÖSCH", honk: 0, rim: "upLeft", outline: 0x00e640 },
+      // Striped as the pride flag.
+      left: {
+        text: "LOVE",
+        face: { stripes: [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982] },
+        rim: true,
+        outline: 0xe01020,
+      },
+    },
+    {
+      right: { text: "4057", outline: 0xff00ff }, // Kleinbasel's postcodes, this and 4058
+      left: {
+        text: "RHY",
+        font: "Rocker",
+        face: [0xc4c9cf, 0x9aa1a9, 0x2b3036, 0x8a919a, 0xd0d4d9],
+        rim: "upLeft",
+        outline: 0x1a5cff,
+      },
+    },
+    {
+      right: {
+        text: "ZOLLI",
+        font: "Rocker",
+        face: [0xb6f22e, 0x6fd62a, 0x1e9e3a], // poison green, as in SEXY BASEL
+        rim: "upLeft",
+        outline: 0xe01020,
+      },
+      left: { text: "4058", honk: 1, ink: 0x000000, rim: "upLeft", outline: 0xff2d95 },
+    },
+    {
+      // Lipstick: cherry red to pink, in indigo (not cyan, the colour of what is picked).
+      right: {
+        text: "SEXY",
+        face: [0xd0002a, 0xff2d6f, 0xff7ab8],
+        rim: "upLeft",
+        outline: 0x3a1fd1,
+      },
+      left: { text: "ACAB", font: "Rocker", outline: 0xc000ff },
+    },
+  ],
+};
+// Honk's palettes (its CPAL), each: its shadow's and lines' colours (from the baseline up to half a
+// size above it), then its face's (from the top down to the baseline).
+const HONK = [
+  [0x000000, 0x000000, 0xffffb2, 0xffff78, 0xffc753, 0xff755f, 0xff3caf, 0xff46af],
+  [0x000000, 0x0000ff, 0xb200ff, 0x7823f5, 0x0ab4ff, 0x0dfca2, 0xb4fd52, 0xffff00],
+  [0xffff00, 0xffff00, 0xc8c8c8, 0x000000, 0xc8c8c8, 0x000000, 0xc8c8c8, 0x000000],
+  [0x00ff00, 0x00ffff, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000],
+  [0x010101, 0x5c5b9c, 0xffffff, 0xffffff, 0xffcff5, 0xd9d2ff, 0xa7b5ea, 0x99b1e4],
+  [0x000000, 0x433f99, 0x86528f, 0xb17c9b, 0xe6bca7, 0xf8e5b6, 0xe0a15c, 0xbd7640],
+  [0x000040, 0x000000, 0xee1e2c, 0xff7f00, 0xffca00, 0x37db52, 0x00a7dd, 0xad60e0],
+  [0x000000, 0x000000, 0xffffff, 0xffffff, 0xffffff, 0xffffff, 0xffffff, 0xffffff],
+];
+const hex = (rgb) => `#${rgb.toString(16).padStart(6, "0")}`;
+// Text in Honk's layers (honkArt): as it is, at U+E000 more, at U+E100 more.
+const layered = (text) =>
+  [0, 0xe000, 0xe100].map((more) =>
+    String.fromCharCode(...[...text].map((ch) => ch.charCodeAt(0) + more)),
+  );
+// A canvas just round text (capitals, digits, signs, Ä, Ö, Ü) in Honk at size px in palette (HONK),
+// with face its face all that colour, with ink its shadow and lines all that one, with rim framed
+// inside in white (as wide as the cut line, CUT) wherever it meets black (with rim "upLeft" only
+// where that is above or left of it): its file holds Honk's colour layers as plain letters, the
+// shadow at each character, the face at U+E000 more, the lines over it at U+E100 more; each filled
+// with its gradient.
+function honkArt(text, size, palette, face, ink, rim) {
+  const layers = layered(text);
+  const canvas = document.createElement("canvas");
+  const c = canvas.getContext("2d", { willReadFrequently: true });
+  const font = `${size}px Honk`;
+  c.font = font;
+  const boxes = layers.map((layer) => c.measureText(layer));
+  const [left, right, up, down] = ["Left", "Right", "Ascent", "Descent"].map((side) =>
+    Math.ceil(Math.max(...boxes.map((box) => box[`actualBoundingBox${side}`]))),
+  );
+  [canvas.width, canvas.height] = [left + right, up + down];
+  c.font = font;
+  const colours = HONK[palette].map((rgb, i) => (i < 2 ? (ink ?? rgb) : (face ?? rgb)));
+  [
+    [0, 1],
+    [7, 6, 5, 4, 3, 2],
+    [0, 1],
+  ].forEach((stops, k) => {
+    const gradient = c.createLinearGradient(0, up, 0, up - size / 2);
+    stops.forEach((s, i) => gradient.addColorStop(i / (stops.length - 1), hex(colours[s])));
+    c.fillStyle = gradient;
+    c.fillText(layers[k], left, up);
+  });
+  if (!rim) return canvas;
+  // Where the face shows: no line over it.
+  const [w, h] = [canvas.width, canvas.height];
+  const [faces, lines] = [1, 2].map((k) => alphaOf(w, h, font, layers[k], left, up));
+  const shows = (i) => faces[i] >= 128 && lines[i] < 128;
+  framed(c, shows, size, rim);
+  return canvas;
+}
+// Per px of a w × h canvas, how much text in font (CSS) at x, y covers it, 0 to 255.
+function alphaOf(w, h, font, text, x, y) {
+  const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  [c.canvas.width, c.canvas.height] = [w, h];
+  c.font = font;
+  c.fillText(text, x, y);
+  return c.getImageData(0, 0, w, h).data.filter((_, i) => i % 4 === 3);
+}
+// Frames inside in white, as wide as the cut line (CUT), the face of letters size px on c where
+// shows(i) (per px) holds, wherever it meets what does not: with rim "upLeft" only where that is
+// above or left of it, its strokes' ends round.
+function framed(c, shows, size, rim) {
+  const [w, h] = [c.canvas.width, c.canvas.height];
+  const near = distances(w, h, (i) => !shows(i));
+  const whites = new Float32Array(w * h); // how white each px is
+  for (let i = 0; i < w * h; i++) {
+    if (!shows(i)) continue;
+    whites[i] = cover(CUT * size - near[i]);
+    // With rim "upLeft", only where black is above or left of it: the way away from it (where the
+    // distance grows, over 3 px each way, so the steps of slanted edges do not matter) down or
+    // right, fading in from 0.2 to 0.5 of it; not on a ridge, where it hardly grows.
+    if (rim === "upLeft") {
+      const [gx, gy] = [near[i + 3] - near[i - 3], near[i + 3 * w] - near[i - 3 * w]];
+      const way = Math.max(gx, gy) / Math.max(Math.hypot(gx, gy), 6);
+      whites[i] *= Math.min(Math.max((way - 0.2) / 0.3, 0), 1);
+    }
+  }
+  if (rim === "upLeft") {
+    // Its strokes' ends round: each shrunk to its middle, then grown back about as wide.
+    const half = 0.45 * CUT * size;
+    const inside = distances(w, h, (i) => whites[i] < 0.5);
+    const middle = distances(w, h, (i) => inside[i] > half);
+    for (let i = 0; i < w * h; i++) whites[i] = shows(i) ? cover(half - middle[i]) : 0;
+  }
+  const image = c.getImageData(0, 0, w, h);
+  for (let i = 0; i < w * h; i++)
+    for (let k = 0; k < 3; k++)
+      image.data[4 * i + k] += (WHITE[k] - image.data[4 * i + k]) * whites[i];
+  c.putImageData(image, 0, 0);
+}
+// A canvas with what is on this one in a band width px wide of colour rgb ([r, g, b]), filling gaps
+// up to 2 × close px wide, more px of room round it; then splash(c, edge, pad) may paint more in
+// that colour under it, put at pad, pad: edge(y, d) is the band's outermost px in row y on the left
+// (d = -1) or right (1).
+function band(canvas, width, rgb, more = 0, splash, close = 0) {
+  const pad = Math.ceil(width + close + more) + 1;
+  const [w, h] = [canvas.width + 2 * pad, canvas.height + 2 * pad];
+  const out = document.createElement("canvas");
+  [out.width, out.height] = [w, h];
+  const c = out.getContext("2d", { willReadFrequently: true });
+  c.drawImage(canvas, pad, pad);
+  const shown = c.getImageData(0, 0, w, h).data;
+  const near = distances(w, h, (i) => shown[4 * i + 3] >= 128);
+  // Grown by close more, then shrunk by it: how far inside the band each px is.
+  const inside = close ? distances(w, h, (i) => near[i] > width + close) : null;
+  const image = c.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    image.data.set(rgb, 4 * i);
+    image.data[4 * i + 3] = 255 * cover(close ? inside[i] - close : width - near[i]);
+  }
+  c.putImageData(image, 0, 0);
+  c.fillStyle = `rgb(${rgb})`;
+  const edge = (y, d) => {
+    const row = Math.min(Math.max(Math.round(y), 0), h - 1) * w;
+    let x = d < 0 ? 0 : w - 1;
+    while (x >= 0 && x < w && image.data[4 * (row + x) + 3] < 128) x -= d;
+    return x;
+  };
+  splash?.(c, edge, pad);
+  c.drawImage(canvas, pad, pad);
+  return trim(out);
+}
+// The canvas cut down to what is shown on it.
+function trim(canvas) {
+  const [w, h] = [canvas.width, canvas.height];
+  const alpha = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+  let [x0, y0, x1, y1] = [w, h, 0, 0];
+  for (let i = 0; i < w * h; i++)
+    if (alpha[4 * i + 3]) {
+      const [x, y] = [i % w, Math.floor(i / w)];
+      [x0, y0, x1, y1] = [
+        Math.min(x0, x),
+        Math.min(y0, y),
+        Math.max(x1, x + 1),
+        Math.max(y1, y + 1),
+      ];
+    }
+  const out = document.createElement("canvas");
+  [out.width, out.height] = [x1 - x0, y1 - y0];
+  out.getContext("2d").drawImage(canvas, -x0, -y0);
+  return out;
+}
+// Px of an outline's band (of each, if more), and of the gaps it joins, per px of the letters.
+const [LINE, THIN, JOIN] = [0.08, 0.045, 0.2];
+// What an outline splashes out sideways at each end, per px high of the letters' canvas: how far
+// up and down from its middle its flush end reaches, how far that stands out, how long the
+// tongues growing from it are (shares of reach, in turn from a random one), how wide they start and
+// end, how far they reach at most, fan out and bend at most.
+const SPLASH = {
+  high: 0.38,
+  wall: 0.04,
+  lengths: [1, 0.5, 0.8, 0.3],
+  start: 0.27,
+  end: 0.17,
+  reach: 0.55,
+  fan: 0.6,
+  bend: 0.06,
+};
+// Where the random numbers of an outline's splashes start for letters on a canvas, the dots of
+// umlauts over px above them aside: so the same for the same letters.
+const seedOf = (canvas, over = 0) => canvas.width * 7919 + canvas.height - over;
+// A canvas with what is on this one (letters size px) in a band of colour rgb (0xrrggbb, LINE; or
+// bands of a list of them, inside out), joined over gaps up to JOIN px per px of the letters wide,
+// unless splash is false splashed out at both ends (SPLASH) the same way for the same letters (the
+// dots of umlauts over px above them aside): each end made flush, and from it tongues fanning out,
+// bent, narrowing to round tips.
+function outlined(canvas, size, rgb, over = 0, splash = true, seed, short = 1) {
+  const { high, wall, lengths, start, end, fan, bend } = SPLASH;
+  const reach = SPLASH.reach * short;
+  // With more colours (rgb a list), a THIN band of each round the one before.
+  const colours = [rgb].flat().map((rgb) => [rgb >> 16, (rgb >> 8) & 255, rgb & 255]);
+  const width = (colours.length > 1 ? THIN : LINE) * size;
+  for (const inner of colours.slice(0, -1))
+    canvas = band(canvas, width, inner, 0, undefined, (JOIN * size) / 2);
+  canvas = trim(canvas);
+  const h = canvas.height - over; // its letters', without the dots over px above them
+  seed ??= seedOf(canvas, over);
+  const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const dot = (c, x, y, r) => {
+    c.beginPath();
+    c.arc(x, y, r, 0, 2 * Math.PI);
+    c.fill();
+  };
+  const splashed = (c, edge, pad) => {
+    const y = pad + over + h / 2;
+    const rows = Array.from({ length: 21 }, (_, k) => y + (k / 20 - 0.5) * 2 * high * h);
+    for (const d of [-1, 1]) {
+      // Flush: from each row's edge out to beyond the outermost one.
+      const x = (d < 0 ? Math.min : Math.max)(...rows.map((r) => edge(r, d)));
+      c.beginPath();
+      for (const r of rows) c.lineTo(edge(r, d) - d * 0.02 * h, r);
+      c.lineTo(x + d * wall * h, rows.at(-1));
+      c.lineTo(x + d * wall * h, rows[0]);
+      c.fill();
+      const [n, first] = [lengths.length, Math.floor(random() * lengths.length)];
+      for (let f = 0; f < n; f++) {
+        const t = f / (n - 1) - 0.5; // -0.5 up to 0.5
+        const angle = t * fan + (random() - 0.5) * 0.2;
+        const [dx, dy] = [d * Math.cos(angle), Math.sin(angle)];
+        const length = lengths[(f + first) % n] * (0.9 + 0.2 * random()) * reach * h;
+        const off = (random() - 0.5) * 2 * bend * h;
+        // A curve from the flush end through near its middle (bent off) to its tip, of dots ever
+        // smaller.
+        const by = y + t * (2 * high - start) * h;
+        const [mx, my] = [x + (dx * length) / 2 - dy * off, by + (dy * length) / 2 + dx * off];
+        const [tx, ty] = [x + dx * length, by + dy * length];
+        for (let k = 0; k <= 24; k++) {
+          const u = k / 24;
+          const [p, q, r] = [(1 - u) ** 2, 2 * (1 - u) * u, u * u];
+          dot(
+            c,
+            p * x + q * mx + r * tx,
+            p * by + q * my + r * ty,
+            (((1 - u) * start + u * end) * h) / 2,
+          );
+        }
+      }
+    }
+  };
+  const more = splash ? (1.1 * reach + start) * h : 0; // room for the tongues
+  return band(
+    canvas,
+    width,
+    colours.at(-1),
+    more,
+    splash ? splashed : undefined,
+    (JOIN * size) / 2,
+  );
+}
+// Px high of a whole car's side, and of its margin round the letters in Honk and in the other font.
+const [CAR, MARGIN, CHERRY_MARGIN] = [256, 8, 4];
+// Of a car's length, kept free at each end: in curves its neighbour's covers it.
+const END = 0.028;
+// A canvas with a piece in look at size px (with slab, back as a slab behind it: slab), in Honk's
+// palette honk or else as the graffiti in font (Cherry Bomb One if none), with face, faces,
+// letters, ink, rim and cut as WHOLE_CARS says, outlined (outline, splash, short); and in px how
+// far the dots of its umlauts stand above its letters (over), and those of its font's (lift).
+function pieceOf(
+  { text, font, honk, face, faces, letters, ink, rim, cut, outline, splash, short },
+  size,
+  slab,
+) {
+  let art =
+    honk === undefined
+      ? paint(text, size, slab, font, face, rim, cut, faces, letters)
+      : honkArt(text, size, honk, face, ink, rim);
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = `${size}px "${honk === undefined ? (font ?? "Cherry Bomb One") : "Honk"}"`;
+  const ascent = (text) =>
+    Math.max(
+      ...(honk === undefined ? [text] : layered(text)).map(
+        (layer) => measure.measureText(layer).actualBoundingBoxAscent,
+      ),
+    );
+  const over = ascent(text) - ascent(text.normalize("NFD").replace(/\p{M}/gu, ""));
+  const lift = ascent("ÄÖÜ") - ascent("AOU");
+  // Honk's in a white cut line first, as the other font's are (unless cut is false).
+  if (outline !== undefined)
+    art = outlined(
+      honk === undefined || cut === false ? art : band(art, CUT * size, WHITE),
+      size,
+      outline,
+      over,
+      splash !== false,
+      // With splash a text, splashed as that is in Cherry Bomb One.
+      typeof splash === "string" ? seedOf(trim(paint(splash, size))) : undefined,
+      short,
+    );
+  return { art, over, lift };
+}
+// A whole car's side (WHOLE_CARS), width by height metres: with back, its top colour above a
+// border falling to the right through the middle, its bottom one below; over it its piece
+// (pieceOf) as big as fits, but drawn at most at scale most. Returns [its material, the scale
+// drawn at].
+export function wholeCar(look, width, height, most = Infinity) {
+  const { honk, fill, back } = look;
+  const canvas = document.createElement("canvas");
+  const [w, h] = [Math.round((CAR * width) / height), CAR];
+  [canvas.width, canvas.height] = [w, h];
+  const c = canvas.getContext("2d");
+  if (back) {
+    c.fillStyle = hex(back[0]);
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = hex(back[1]);
+    c.beginPath();
+    c.moveTo(0, 0.4 * h);
+    c.lineTo(w, 0.6 * h);
+    c.lineTo(w, h);
+    c.lineTo(0, h);
+    c.fill();
+  }
+  const { art, over, lift } = pieceOf(look, KINDS.piece.size);
+  const margin = honk === undefined ? CHERRY_MARGIN : MARGIN;
+  // Its letters as high on every car of a size, room for umlauts' dots kept (for them or not; with
+  // fill only for its own, as big as it fits), as wide as fits; all of it in the middle.
+  const high = art.height - over + (fill ? over : lift);
+  const ends = margin + END * w;
+  const scale = Math.min((w - 2 * ends) / art.width, (h - 2 * margin) / high, most);
+  const [aw, ah] = [art.width * scale, art.height * scale];
+  c.drawImage(art, (w - aw) / 2, (h - ah) / 2, aw, ah);
+  return [material(canvas), scale];
+}
 // A material showing a canvas, near the walls without fighting them.
 function material(canvas) {
   const map = new THREE.CanvasTexture(canvas);
@@ -217,19 +700,22 @@ function material(canvas) {
 }
 const plane = () => new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0); // its bottom's middle at 0
 
-// font: the font file's bytes; structures: src/buildings.js; ground(x, z, y): the height walked on
-// there, from near y; roofAt({ x, z }): the topmost roof or bridge there, { number, y }, if any.
-// Resolves to { meshes, marks: per graffito [its building or bridge, a function hiding it] }.
-export async function createGraffiti(font, structures, ground, roofAt) {
-  document.fonts.add(await new FontFace("Cherry Bomb One", font).load());
+// Adds the font with this name from its file's bytes, for drawing.
+export const addFont = async (name, bytes) =>
+  document.fonts.add(await new FontFace(name, bytes).load());
+
+// structures: src/buildings.js; ground(x, z, y): the height walked on there, from near y; roofAt({
+// x, z }): the topmost roof or bridge there, { number, y }, if any. Returns { meshes, marks: per
+// graffito [its building or bridge, a function hiding it] }.
+export function createGraffiti(structures, ground, roofAt) {
   const [meshes, marks] = [[], []];
   const matrix = new THREE.Matrix4();
-  for (const { where, kind, from, to, text, roof, deep, flip = false, back } of GRAFFITI) {
-    const missing = (what) => console.warn(`Graffito "${text}" (${where}): no ${what} there`);
+  for (const { where, kind, from, to, roof, deep, flip = false, back, ...look } of GRAFFITI) {
+    const missing = (what) => console.warn(`Graffito "${look.text}" (${where}): no ${what} there`);
     const [[fx, fz], [tx, tz]] = [fromWGS84(...from), fromWGS84(...to)];
     const length = Math.hypot(tx - fx, tz - fz);
     const [mx, mz] = [(fx + tx) / 2, (fz + tz) / 2];
-    const sheet = paint(text, KINDS[kind].size, back);
+    const sheet = pieceOf(look, KINDS[kind].size, back).art;
     const aspect = sheet.width / sheet.height;
     const mesh = new THREE.Mesh(plane(), material(sheet));
     if (roof) {

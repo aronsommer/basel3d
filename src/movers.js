@@ -102,6 +102,7 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     count,
     operator,
     every,
+    ref,
     length,
     share: share ?? length,
     step: length / count, // metres between points
@@ -364,6 +365,16 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
       }
     });
     for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
+    // The whole cars on their cars (none on one away, as its matrix has no size).
+    for (const { mesh, on } of coats) {
+      const out = mesh.instanceMatrix.array;
+      for (let i = 0; i < on.length; i += 3) {
+        const { model, slot } = vehicles[on[i]];
+        car.fromArray(meshes[model].instanceMatrix.array, 16 * (slot * CARS + on[i + 1]));
+        car.multiply(sides[on[i + 2] > 0 ? 0 : 1]).toArray(out, (16 * i) / 3);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    }
   };
   // Notes for each vehicle what it waits for.
   const look = () => {
@@ -414,6 +425,26 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     out.y += 1.1 * height * boost(out);
     return line.parts.findLast((part) => part.from <= d);
   };
+  // Whole cars: a plane with material over a car's body (BODY, of its height; tramCar, trainCar)
+  // just off its side, its texture read from outside, on each car of on (per car its vehicle, its
+  // number in it, 0 the first, and its side, 1 right of its way, -1 left); one mesh, its instances
+  // these, in painted.
+  const BODY = [0.17, 1.03];
+  const OUT = 0.04; // metres off its side, beyond its windows
+  const sides = [1, -1].map((side) =>
+    new THREE.Matrix4()
+      .makeBasis(new THREE.Vector3(0, 0, -side), yAxis, new THREE.Vector3(side, 0, 0))
+      .scale(new THREE.Vector3(1, BODY[1] - BODY[0], 1))
+      .setPosition(side * (HALF + OUT), (BODY[0] + BODY[1]) / 2, 0),
+  );
+  const [PLANE, car, coats] = [new THREE.PlaneGeometry(1, 1), new THREE.Matrix4(), []];
+  const painted = new THREE.Group();
+  const coat = (material, on) => {
+    const mesh = new THREE.InstancedMesh(PLANE, material, on.length / 3);
+    mesh.frustumCulled = false; // the vehicles move all over the city
+    coats.push({ mesh, on });
+    painted.add(mesh);
+  };
   const vehicleOf = (hit) => fleets[meshes.indexOf(hit.object)][Math.floor(hit.instanceId / CARS)];
   // Shows vehicle v in HIGHLIGHT; -1: none.
   const highlight = (v) =>
@@ -436,5 +467,13 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     highlight,
     cut,
     away: (v) => vehicles[v].away !== undefined, // vanished at a gap, for a while
+    cars: CARS,
+    // The vehicles on the museum's round (src/main.js).
+    museum: vehicles.flatMap(({ line }, v) => (line.ref === "Museum" ? [v] : [])),
+    colour: (v) => vehicles[v].color.getHex(), // of vehicle v
+    // A car's body of vehicle v: its length and height in metres.
+    side: (v) => [vehicles[v].length, vehicles[v].height * (BODY[1] - BODY[0])],
+    coat,
+    painted,
   };
 }

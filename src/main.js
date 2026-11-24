@@ -49,7 +49,7 @@ import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
 import { dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
-import { createGraffiti } from "./graffiti.js";
+import { WHOLE_CARS, addFont, createGraffiti, wholeCar } from "./graffiti.js";
 import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
 import { TIP, createPoints } from "./points.js";
@@ -633,7 +633,7 @@ function drive(dt) {
   for (const mover of movers) mover.move(dt);
 }
 for (const mover of movers) {
-  scene.add(...mover.meshes);
+  scene.add(...mover.meshes, mover.painted);
   overlay.add(mover.routes);
   for (const deck of brokenDecks) mover.cut(deck);
 }
@@ -1193,14 +1193,80 @@ for (const [x, z] of spires) {
   scene.add(flag);
   onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
 }
-// Graffiti on walls, roofs and bridges (src/graffiti.js).
-load(["CherryBombOne.woff2"], () => {})
-  .then(([font]) => createGraffiti(font, structures, walkGround, (at) => roofOver(at, true)))
-  .then(({ meshes, marks }) => {
+// Graffiti on walls, roofs and bridges (src/graffiti.js), in its fonts; while the museum is open,
+// whole cars on its trams and trains, each in turn its kind's in WHOLE_CARS.
+load(["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2"], () => {}).then(
+  async ([cherry, rocker, honk]) => {
+    await Promise.all([
+      addFont("Cherry Bomb One", cherry),
+      addFont("Rocker", rocker),
+      addFont("Honk", honk),
+    ]);
+    const { meshes, marks } = createGraffiti(structures, walkGround, (at) => roofOver(at, true));
     scene.add(...meshes);
     for (const [number, hide] of marks)
       grounding.set(number, [...(grounding.get(number) ?? []), hide]);
-  });
+    // Each part of a design painted once for all cars it goes on, per size of car.
+    MOVER_KINDS.forEach((kind, i) => {
+      const { museum, cars, side, colour, coat } = movers[i];
+      const designs = WHOLE_CARS[kind] ?? [];
+      const parts = new Map(); // design, side, part, size → [its material, the cars it is on]
+      museum.forEach((v, n) => {
+        const [length, height] = side(v);
+        // Those for its colour: one over all its cars if any (in turn), else all the others, one
+        // per car from the last, from the n-th on.
+        const fit = designs.filter(({ livery }) => livery === undefined || livery === colour(v));
+        const wholes = fit.filter(({ all }) => all);
+        const ones = fit.filter(({ all }) => !all);
+        const worn = wholes.length
+          ? [wholes[n % wholes.length]]
+          : ones.map((_, j) => ones[(n + j) % ones.length]);
+        worn.forEach((design, j) => {
+          const { right, left, all } = design;
+          const index = designs.indexOf(design);
+          for (const [s, piece] of [
+            [1, right],
+            [-1, left],
+          ]) {
+            if (!piece) continue;
+            const { text, ...look } = piece;
+            // With all, a word a car if it has as many, else its letters shared out among them.
+            const words = text.split(" ");
+            const texts = !all
+              ? [text]
+              : words.length === cars
+                ? words
+                : Array.from({ length: cars }, (_, k) =>
+                    text.slice(
+                      Math.round((k * text.length) / cars),
+                      Math.round(((k + 1) * text.length) / cars),
+                    ),
+                  );
+            // The longest first: the others' letters no bigger than its.
+            const order = texts.map((_, k) => k).sort((a, b) => texts[b].length - texts[a].length);
+            let most;
+            for (const k of order) {
+              const key = `${index} ${s} ${k} ${length} ${height}`;
+              if (!parts.has(key)) {
+                const [material, scale] = wholeCar(
+                  { text: texts[k], ...look },
+                  length,
+                  height,
+                  most,
+                );
+                most ??= scale;
+                parts.set(key, [material, []]);
+              }
+              // With all from the front on the right, from the back on the left.
+              parts.get(key)[1].push(v, !all ? cars - 1 - j : s > 0 ? k : cars - 1 - k, s);
+            }
+          }
+        });
+      });
+      for (const [material, on] of parts.values()) coat(material, on);
+    });
+  },
+);
 // The Elisabethenkirche, under its nave's roof at WGS84 47.552741, 7.590989, dressed in the
 // rainbow's stripes from its foot to its spire's tip.
 const elisabethen = roofOver({ x: 468.2, z: 497.3 }); // none if it is destroyed
