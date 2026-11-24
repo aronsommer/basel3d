@@ -9,15 +9,19 @@
 //   sidewalks; those mostly along pedestrian streets and squares are busy.
 // No aisle reaches into water (OSM water areas but bridges) or beside the passage under the
 // Mittlere Brücke (src/passage.js); lines running off the grid (MARGIN
-// beyond BOX) and loops enclosing less than SMALLEST or more than WETTEST of them on water are left
-// out. Each is simplified to within SIMPLIFY metres, left out if it then crosses itself, and
+// beyond BOX) and loops enclosing less than SMALLEST or more than WETTEST of them on water, or
+// more than HOUSED of them in buildings (under their roofs in public/basel.bin, tools/compact.mjs:
+// mapped through or past a building, they would walk unseen in its walls; of a loop shorter than
+// SHORT a smaller share), are left out. Each is simplified to within SIMPLIFY metres, left out if it then crosses itself, and
 // written as a Uint16 count of points (plus BUSY for a busy one) and the points as Uint16 pairs
 // (east, south) in 1/TREE_GRID m from the area's north-west corner; the last point leads back to
 // the first.
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { E_MIN, N_MAX, PUBLIC, TREE_GRID } from "./area.mjs";
 import { onBridge, osmElements, roadWidth, SIDEWALK_WIDTH, toLV95 } from "./osm.mjs";
+import { readCity } from "../src/cityfile.js";
+import { LV95 } from "../src/geo.js";
 import { PASSAGE } from "../src/passage.js";
 import { inPassage, passageEnds, passageLength, passageLocal } from "./passage.mjs";
 
@@ -30,6 +34,8 @@ const INSET = 2; // metres
 const SMALLEST = 50; // m²
 const SIMPLIFY = 0.5; // metres
 const WETTEST = 0.02; // share of a loop on water at most
+const HOUSED = [0.5, 0.05]; // share of a loop in buildings at most, and of one shorter than SHORT
+const SHORT = 100; // metres
 const BUSY = 0x8000;
 const STREETS = [
   "motorway",
@@ -255,8 +261,55 @@ function written(points, busy) {
 const onWater = (points) =>
   points.filter(([e, n]) => wet[Math.round((n - n0) / GRID) * w + Math.round((e - e0) / GRID)])
     .length / points.length;
+// The buildings' roofs, each triangle seen from above ([e, n] thrice) under the keys of the ROOF
+// metre squares it reaches into; a loop's share of points under one.
+const ROOF = 20;
+const roofKey = (e, n) => Math.floor(e / ROOF) * 100000 + Math.floor(n / ROOF);
+const roofs = new Map();
+{
+  const city = readFileSync(join(PUBLIC, "basel.bin"));
+  let mesh;
+  readCity(
+    city.buffer.slice(city.byteOffset, city.byteOffset + city.length),
+    (scale, x, y, z, normalized) => (mesh = { s: normalized ? scale / 32767 : scale, x, z }),
+    (number, pos, roof) => {
+      const at = (v) => [
+        pos[3 * v] * mesh.s + mesh.x + LV95[0],
+        LV95[1] - pos[3 * v + 2] * mesh.s - mesh.z,
+      ];
+      for (let i = 0; i < roof.length; i += 3) {
+        const t = [at(roof[i]), at(roof[i + 1]), at(roof[i + 2])];
+        const [es, ns] = [t.map(([e]) => e), t.map(([, n]) => n)];
+        for (let e = Math.min(...es); e < Math.max(...es) + ROOF; e += ROOF)
+          for (let n = Math.min(...ns); n < Math.max(...ns) + ROOF; n += ROOF) {
+            const key = roofKey(e, n);
+            if (!roofs.has(key)) roofs.set(key, []);
+            if (roofs.get(key).at(-1) !== t) roofs.get(key).push(t);
+          }
+      }
+    },
+  );
+}
+const side = ([ae, an], [be, bn], e, n) => (be - ae) * (n - an) - (bn - an) * (e - ae);
+const housed = (points) =>
+  points.filter(([e, n]) =>
+    (roofs.get(roofKey(e, n)) ?? []).some(([a, b, c]) => {
+      const [d1, d2, d3] = [side(a, b, e, n), side(b, c, e, n), side(c, a, e, n)];
+      return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+    }),
+  ).length / points.length;
+const length = (points) =>
+  points.reduce(
+    (sum, [e, n], i) => sum + Math.hypot(e - points.at(i - 1)[0], n - points.at(i - 1)[1]),
+    0,
+  );
 const kept = (loops) =>
-  loops.filter((points) => Math.abs(area(points)) > SMALLEST && onWater(points) < WETTEST);
+  loops.filter(
+    (points) =>
+      Math.abs(area(points)) > SMALLEST &&
+      onWater(points) < WETTEST &&
+      housed(points) <= HOUSED[length(points) < SHORT ? 1 : 0],
+  );
 // Busy: most of its points nearer pedestrian streets than other ways.
 const busy = (points) =>
   points.filter(([e, n]) => nearest(pedestrian, e, n) < nearest(ways, e, n)).length >
