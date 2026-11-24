@@ -72,7 +72,7 @@ const GRAFFITI = [
   },
 ];
 // Per kind: metres above the ground on a wall, and px of its letters when drawn.
-const KINDS = { tag: { raise: 0.3, size: 96 }, piece: { raise: 0.8, size: 300 } };
+const KINDS = { tag: { raise: 0.3, size: 96 }, piece: { raise: 0.8, size: 200 } };
 // Metres: TOP, EDGE and AHEAD as said, OFF off the wall or roof.
 const [TOP, EDGE, AHEAD, OFF] = [2, 0.5, 3, 0.02];
 // Per px of the letters: the black outline's width (it joins them, fills their holes), the white
@@ -250,18 +250,17 @@ function slab(canvas, size, [top, bottom]) {
   cut.getContext("2d").drawImage(out, -margin, -margin);
   return cut;
 }
-// Whole cars on the museum's trams and trains (src/main.js), per kind: on each side (right and left
-// of its way) a piece over a car's body, each vehicle wearing of its kind's those for its colour
-// (with livery only for that one): one with all (in turn) if there is any, over all its cars' (its
-// text a word a car if it has as many, else its letters shared out among them; read from the front
-// on the right), else all the others, one per car from its last, its own (in turn) first; each in
-// Honk's palette honk (HONK, with face its letters' face all that colour, with ink their shadow and
-// lines) or, without, as the graffiti in font (a family, Cherry Bomb One if none) with face as
-// sheetOf's (or faces, one per word, or letters, one per letter in turn); with rim framed inside
-// (framed); with cut false without the white cut line; with outline round it (a colour or a list of
-// them, outlined; with splash false not splashed out, with splash a text splashed as that, with
-// short its splashes that share as long) and back on it (two colours). With fill it is as big as it
-// fits (wholeCar). A side may be left bare.
+// Whole cars on trams and trains (which: src/main.js), per kind: on each side (right and left of
+// its way) a piece over a car's body, each vehicle wearing of its kind's: one with all (in turn) if
+// there is any, over all its cars' (its text a word a car if it has as many, else its letters
+// shared out among them; read from the front on the right), else all the others, one per car from
+// its last, its own (in turn) first; each in Honk's palette honk (HONK, with face its letters' face
+// all that colour, with ink their shadow and lines) or, without, as the graffiti in font (a family,
+// Cherry Bomb One if none) with face as sheetOf's (or faces, one per word, or letters, one per
+// letter in turn); with rim framed inside (framed); with cut false without the white cut line; with
+// outline round it (a colour or a list of them, outlined; with splash false not splashed out, with
+// splash a text splashed as that, with short its splashes that share as long) and back on it (two
+// colours). With fill it is as big as it fits (wholeCar). A side may be left bare.
 export const WHOLE_CARS = {
   // From the last car on, fonts so that no two next to each other (round again too) and no car's
   // two sides are in the same: right Honk, Cherry, Honk, Rocker, Cherry; left Cherry, Honk,
@@ -325,15 +324,13 @@ export const WHOLE_CARS = {
     },
   ],
   tram: [
-    // Only on the BVB's green ones (src/movers.js), both sides: the FCB's song, a line a side, a
-    // word a car, in the FCB's colours.
+    // Both sides: the FCB's song, a line a side, a word a car, in the FCB's colours.
     {
       all: true,
-      livery: 0x2e8b3a,
       right: { text: "ROT ISCH UNSERI LIEBI", back: FCB },
       left: { text: "BLAU DIE EWIGI TREUI", back: FCB },
     },
-    // On any other, a car each, from the last car on fonts as on the trains: right Honk, Cherry,
+    // Else a car each, from the last car on fonts as on the trains: right Honk, Cherry,
     // Rocker, Cherry; left Cherry, Rocker, Honk, Rocker.
     {
       // As GANGSTER on the trains.
@@ -439,7 +436,10 @@ function alphaOf(w, h, font, text, x, y) {
   [c.canvas.width, c.canvas.height] = [w, h];
   c.font = font;
   c.fillText(text, x, y);
-  return c.getImageData(0, 0, w, h).data.filter((_, i) => i % 4 === 3);
+  const data = c.getImageData(0, 0, w, h).data;
+  const alpha = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) alpha[i] = data[4 * i + 3];
+  return alpha;
 }
 // Frames inside in white, as wide as the cut line (CUT), the face of letters size px on c where
 // shows(i) (per px) holds, wherever it meets what does not: with rim "upLeft" only where that is
@@ -474,35 +474,36 @@ function framed(c, shows, size, rim) {
   c.putImageData(image, 0, 0);
 }
 // A canvas with what is on this one in a band width px wide of colour rgb ([r, g, b]), filling gaps
-// up to 2 × close px wide, more px of room round it; then splash(c, edge, pad) may paint more in
-// that colour under it, put at pad, pad: edge(y, d) is the band's outermost px in row y on the left
-// (d = -1) or right (1).
-function band(canvas, width, rgb, more = 0, splash, close = 0) {
-  const pad = Math.ceil(width + close + more) + 1;
-  const [w, h] = [canvas.width + 2 * pad, canvas.height + 2 * pad];
+// up to 2 × close px wide, across px more room left and right of it and up px above and below;
+// then splash(c, edge, top) may paint more in that colour under it, put top px down: edge(y, d)
+// is the band's outermost px in row y on the left (d = -1) or right (1).
+function band(canvas, width, rgb, across = 0, splash, close = 0, up = 0) {
+  const [padX, padY] = [across, up].map((more) => Math.ceil(width + close + more) + 1);
+  const [w, h] = [canvas.width + 2 * padX, canvas.height + 2 * padY];
   const out = document.createElement("canvas");
   [out.width, out.height] = [w, h];
   const c = out.getContext("2d", { willReadFrequently: true });
-  c.drawImage(canvas, pad, pad);
+  c.drawImage(canvas, padX, padY);
   const shown = c.getImageData(0, 0, w, h).data;
   const near = distances(w, h, (i) => shown[4 * i + 3] >= 128);
   // Grown by close more, then shrunk by it: how far inside the band each px is.
   const inside = close ? distances(w, h, (i) => near[i] > width + close) : null;
   const image = c.createImageData(w, h);
+  const data = image.data;
   for (let i = 0; i < w * h; i++) {
-    image.data.set(rgb, 4 * i);
-    image.data[4 * i + 3] = 255 * cover(close ? inside[i] - close : width - near[i]);
+    [data[4 * i], data[4 * i + 1], data[4 * i + 2]] = rgb;
+    data[4 * i + 3] = 255 * cover(close ? inside[i] - close : width - near[i]);
   }
   c.putImageData(image, 0, 0);
   c.fillStyle = `rgb(${rgb})`;
   const edge = (y, d) => {
     const row = Math.min(Math.max(Math.round(y), 0), h - 1) * w;
     let x = d < 0 ? 0 : w - 1;
-    while (x >= 0 && x < w && image.data[4 * (row + x) + 3] < 128) x -= d;
+    while (x >= 0 && x < w && data[4 * (row + x) + 3] < 128) x -= d;
     return x;
   };
-  splash?.(c, edge, pad);
-  c.drawImage(canvas, pad, pad);
+  splash?.(c, edge, padY);
+  c.drawImage(canvas, padX, padY);
   return trim(out);
 }
 // The canvas cut down to what is shown on it.
@@ -541,15 +542,16 @@ const SPLASH = {
   fan: 0.6,
   bend: 0.06,
 };
-// Where the random numbers of an outline's splashes start for letters on a canvas, the dots of
-// umlauts over px above them aside: so the same for the same letters.
-const seedOf = (canvas, over = 0) => canvas.width * 7919 + canvas.height - over;
+// Where the random numbers of an outline's splashes start for a text (1 up to 2^31 - 2): so the
+// same for the same text, at any size.
+const seedOf = (text) =>
+  ([...text].reduce((h, ch) => (h * 31 + ch.codePointAt(0)) % 2147483647, 7) % 2147483646) + 1;
 // A canvas with what is on this one (letters size px) in a band of colour rgb (0xrrggbb, LINE; or
 // bands of a list of them, inside out), joined over gaps up to JOIN px per px of the letters wide,
-// unless splash is false splashed out at both ends (SPLASH) the same way for the same letters (the
-// dots of umlauts over px above them aside): each end made flush, and from it tongues fanning out,
-// bent, narrowing to round tips.
-function outlined(canvas, size, rgb, over = 0, splash = true, seed, short = 1) {
+// unless splash is false splashed out at both ends (SPLASH) as seed (seedOf) says (the dots of
+// umlauts over px above them aside): each end made flush, and from it tongues fanning out, bent,
+// narrowing to round tips.
+function outlined(canvas, size, rgb, over, splash, seed, short = 1) {
   const { high, wall, lengths, start, end, fan, bend } = SPLASH;
   const reach = SPLASH.reach * short;
   // With more colours (rgb a list), a THIN band of each round the one before.
@@ -559,15 +561,14 @@ function outlined(canvas, size, rgb, over = 0, splash = true, seed, short = 1) {
     canvas = band(canvas, width, inner, 0, undefined, (JOIN * size) / 2);
   canvas = trim(canvas);
   const h = canvas.height - over; // its letters', without the dots over px above them
-  seed ??= seedOf(canvas, over);
   const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
   const dot = (c, x, y, r) => {
     c.beginPath();
     c.arc(x, y, r, 0, 2 * Math.PI);
     c.fill();
   };
-  const splashed = (c, edge, pad) => {
-    const y = pad + over + h / 2;
+  const splashed = (c, edge, top) => {
+    const y = top + over + h / 2;
     const rows = Array.from({ length: 21 }, (_, k) => y + (k / 20 - 0.5) * 2 * high * h);
     for (const d of [-1, 1]) {
       // Flush: from each row's edge out to beyond the outermost one.
@@ -602,18 +603,16 @@ function outlined(canvas, size, rgb, over = 0, splash = true, seed, short = 1) {
       }
     }
   };
-  const more = splash ? (1.1 * reach + start) * h : 0; // room for the tongues
-  return band(
-    canvas,
-    width,
-    colours.at(-1),
-    more,
-    splash ? splashed : undefined,
-    (JOIN * size) / 2,
-  );
+  // Room for the tongues: their length beside it, and above and below how far they spread beyond.
+  const across = splash ? (1.1 * reach + start) * h : 0;
+  const spread = high + bend / 2 + Math.sin(fan / 2 + 0.1) * 1.1 * reach; // from the middle
+  const up = splash ? Math.max(0, (spread - 0.5) * h) : 0;
+  const last = colours.at(-1);
+  return band(canvas, width, last, across, splash ? splashed : undefined, (JOIN * size) / 2, up);
 }
 // Px high of a whole car's side, and of its margin round the letters in Honk and in the other font.
-const [CAR, MARGIN, CHERRY_MARGIN] = [256, 8, 4];
+const [CAR, MARGIN, CHERRY_MARGIN] = [160, 5, 3];
+const PAINT = 120; // px of a whole car's letters when painted: about as big as they end up
 // Of a car's length, kept free at each end: in curves its neighbour's covers it.
 const END = 0.028;
 // A canvas with a piece in look at size px (with slab, back as a slab behind it: slab), in Honk's
@@ -647,8 +646,8 @@ function pieceOf(
       outline,
       over,
       splash !== false,
-      // With splash a text, splashed as that is in Cherry Bomb One.
-      typeof splash === "string" ? seedOf(trim(paint(splash, size))) : undefined,
+      // With splash a text, splashed as that is.
+      seedOf(typeof splash === "string" ? splash : text),
       short,
     );
   return { art, over, lift };
@@ -674,7 +673,7 @@ export function wholeCar(look, width, height, most = Infinity) {
     c.lineTo(0, h);
     c.fill();
   }
-  const { art, over, lift } = pieceOf(look, KINDS.piece.size);
+  const { art, over, lift } = pieceOf(look, PAINT);
   const margin = honk === undefined ? CHERRY_MARGIN : MARGIN;
   // Its letters as high on every car of a size, room for umlauts' dots kept (for them or not; with
   // fill only for its own, as big as it fits), as wide as fits; all of it in the middle.
@@ -705,9 +704,9 @@ export const addFont = async (name, bytes) =>
   document.fonts.add(await new FontFace(name, bytes).load());
 
 // structures: src/buildings.js; ground(x, z, y): the height walked on there, from near y; roofAt({
-// x, z }): the topmost roof or bridge there, { number, y }, if any. Returns { meshes, marks: per
-// graffito [its building or bridge, a function hiding it] }.
-export function createGraffiti(structures, ground, roofAt) {
+// x, z }): the topmost roof or bridge there, { number, y }, if any. Resolves to { meshes, marks:
+// per graffito [its building or bridge, a function hiding it] }, each painted in a task of its own.
+export async function createGraffiti(structures, ground, roofAt) {
   const [meshes, marks] = [[], []];
   const matrix = new THREE.Matrix4();
   for (const { where, kind, from, to, roof, deep, flip = false, back, ...look } of GRAFFITI) {
@@ -715,6 +714,7 @@ export function createGraffiti(structures, ground, roofAt) {
     const [[fx, fz], [tx, tz]] = [fromWGS84(...from), fromWGS84(...to)];
     const length = Math.hypot(tx - fx, tz - fz);
     const [mx, mz] = [(fx + tx) / 2, (fz + tz) / 2];
+    await new Promise((go) => setTimeout(go));
     const sheet = pieceOf(look, KINDS[kind].size, back).art;
     const aspect = sheet.width / sheet.height;
     const mesh = new THREE.Mesh(plane(), material(sheet));

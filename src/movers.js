@@ -470,7 +470,6 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     cars: CARS,
     // The vehicles on the museum's round (src/main.js).
     museum: vehicles.flatMap(({ line }, v) => (line.ref === "Museum" ? [v] : [])),
-    colour: (v) => vehicles[v].color.getHex(), // of vehicle v
     // A car's body of vehicle v: its length and height in metres.
     side: (v) => [vehicles[v].length, vehicles[v].height * (BODY[1] - BODY[0])],
     coat,

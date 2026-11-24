@@ -242,6 +242,39 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       pickScene.add(copy);
     });
 
+  // The height of the highest roof (or other face not upright) of a building (or with bridges,
+  // of a bridge too) at the point x, z, at most y, and its number; -Infinity and -1 if none. Hidden
+  // ones are left out, and those not reaching above `above`, unlooked at.
+  function highest(x, z, y, above, bridges) {
+    if (!boxes) measure();
+    let [best, number] = [-Infinity, -1];
+    for (const n of cells.get(cellKey(cellOf(x), cellOf(z))) ?? NONE) {
+      if ((n >= count && !bridges) || !meshesOf[n].length) continue;
+      const b = 6 * n;
+      if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
+      if (boxes[b + 4] <= above) continue;
+      const list = surfacesOf(n).roofs;
+      for (let i = 0; i < list.length; i += 9) {
+        const [ax, az, bx, bz, cx, cz] = [
+          list[i],
+          list[i + 2],
+          list[i + 3],
+          list[i + 5],
+          list[i + 6],
+          list[i + 8],
+        ];
+        const [ay, by, cy] = [list[i + 1], list[i + 4], list[i + 7]];
+        const d1 = side(ax, az, bx, bz, x, z);
+        const d2 = side(bx, bz, cx, cz, x, z);
+        const d3 = side(cx, cz, ax, az, x, z);
+        const sum = d1 + d2 + d3;
+        if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
+        const h = (ay * d2 + by * d3 + cy * d1) / sum; // barycentric
+        if (h <= y && h > best) [best, number] = [h, n];
+      }
+    }
+    return [best, number];
+  }
   return {
     // The number of the building or bridge at a screen point (px), or -1.
     at(clientX, clientY) {
@@ -333,38 +366,13 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           }
       return false;
     },
-    // The height of the highest roof (or other face not upright) of a building (or with bridges,
-    // of a bridge too) at the point x, z, at most y; -Infinity if none. Hidden ones are left out,
-    // and those not reaching above `above`, unlooked at.
-    top(x, z, y, above = -Infinity, bridges = false) {
-      if (!boxes) measure();
-      let best = -Infinity;
-      for (const n of cells.get(cellKey(cellOf(x), cellOf(z))) ?? NONE) {
-        if ((n >= count && !bridges) || !meshesOf[n].length) continue;
-        const b = 6 * n;
-        if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
-        if (boxes[b + 4] <= above) continue;
-        const list = surfacesOf(n).roofs;
-        for (let i = 0; i < list.length; i += 9) {
-          const [ax, az, bx, bz, cx, cz] = [
-            list[i],
-            list[i + 2],
-            list[i + 3],
-            list[i + 5],
-            list[i + 6],
-            list[i + 8],
-          ];
-          const [ay, by, cy] = [list[i + 1], list[i + 4], list[i + 7]];
-          const d1 = side(ax, az, bx, bz, x, z);
-          const d2 = side(bx, bz, cx, cz, x, z);
-          const d3 = side(cx, cz, ax, az, x, z);
-          const sum = d1 + d2 + d3;
-          if (sum === 0 || ((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) continue;
-          const h = (ay * d2 + by * d3 + cy * d1) / sum; // barycentric
-          if (h <= y && h > best) best = h;
-        }
-      }
-      return best;
+    // The height of highest (its roof) at x, z, at most y; -Infinity if none.
+    top: (x, z, y, above = -Infinity, bridges = false) => highest(x, z, y, above, bridges)[0],
+    // The standing building (or with bridges, bridge too) whose roof is highest at x, z: its
+    // number and that height, { number, y }; undefined if none.
+    roof(x, z, bridges = false) {
+      const [y, number] = highest(x, z, Infinity, -Infinity, bridges);
+      return number < 0 ? undefined : { number, y };
     },
     // The triangles of those with these numbers, but hidden ones, in scene coordinates: a Map from
     // each number to [{ color, positions, vertices }] per mesh, nine numbers per triangle and the

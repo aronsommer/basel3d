@@ -816,9 +816,7 @@ document.addEventListener(
   () => (fullscreenBox.checked = !!document.fullscreenElement),
 );
 const nameLayer = document.getElementById("names");
-scene.updateMatrixWorld(); // for the rays from above
-const fromAbove = new THREE.Raycaster();
-const DOWN = new THREE.Vector3(0, -1, 0);
+scene.updateMatrixWorld(); // the world matrices, before the first frame sets them
 // With them the ferries named, at the middle of their line, and the Basiliskbrunnen.
 const labels = [
   ...JSON.parse(new TextDecoder().decode(namesJson)),
@@ -838,12 +836,9 @@ const labels = [
     range: BASILISK_RANGE,
   })),
 ].map(({ name, kind, x, z, range = kind === "place" ? Infinity : LANDMARK_RANGE }) => {
+  // A landmark's on what is highest there: the ground, or a roof or bridge.
   const at = new THREE.Vector3(x, heightAt(x, z), z);
-  if (kind === "landmark") {
-    fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
-    const hit = fromAbove.intersectObjects([buildings.scene, bridges.scene, terrain])[0];
-    if (hit) at.y = hit.point.y;
-  }
+  if (kind === "landmark") at.y = Math.max(at.y, structures.top(x, z, Infinity, -Infinity, true));
   const element = Object.assign(document.createElement("div"), {
     textContent: name,
     className: kind,
@@ -851,13 +846,10 @@ const labels = [
   });
   return { at, range, element: nameLayer.appendChild(element) };
 });
-// The UFO (src/catalog.js) hovers over where a ray from above first meets a roof or the ground.
+// The UFO (src/catalog.js) hovers over the highest roof there, or the ground.
 const ufos = build("V12", {
   boost,
-  roof(x, z) {
-    fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
-    return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
-  },
+  roof: (x, z) => Math.max(heightAt(x, z), structures.top(x, z, Infinity)),
 }).vehicles;
 scene.add(...createPassage());
 // The map's rails (src/rails.js), on the ground and on the decks, but those of destroyed bridges.
@@ -883,10 +875,10 @@ const world = {
 };
 // The places ({ x, z, heading: radians from south towards east }) on the bridge or ground there.
 const parked = (places) =>
-  places.map((place) => {
-    fromAbove.set(new THREE.Vector3(place.x, 2000, place.z), DOWN);
-    return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
-  });
+  places.map((place) => ({
+    ...place,
+    y: Math.max(heightAt(place.x, place.z), ...bridgeDecks().heights(place.x, place.z)),
+  }));
 // What one drives (src/catalog.js), in the city and the museum.
 const police = build("V1", { parked, boost, world }).vehicles;
 const ambulances = build("V2", { parked, boost, world }).vehicles;
@@ -1084,15 +1076,12 @@ const inside = (outline, x, z) =>
   }, false);
 for (const number of structures.within((x, z) => inside(ROCHE, x, z)))
   structures.paint(number, { wall: 0xf4f4f2 });
-// The standing building (or with onBridges, bridge too) a ray from above first meets at LV95 east,
-// north, or over a scene point: its number and the point hit (x, y, z); undefined if none.
+// The standing building (or with onBridges, bridge too) whose roof is highest at LV95 east, north,
+// or over a scene point: its number and the point on it (x, y, z); undefined if none.
 const roofAt = (lv95) => roofOver(fromLV95(lv95));
 function roofOver({ x, z }, onBridges = false) {
-  fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
-  const hit = fromAbove.intersectObjects(
-    onBridges ? [buildings.scene, bridges.scene] : [buildings.scene],
-  )[0];
-  return hit && { number: hit.object.geometry.attributes._building.getX(hit.face.a), ...hit.point };
+  const roof = structures.roof(x, z, onBridges);
+  return roof && { number: roof.number, x, y: roof.y, z };
 }
 // Its green roof (LV95 2612593.3, 1267509.4) grey as another's (LV95 2612855.8, 1267667.0).
 const green = roofAt([2612593.3, 1267509.4]);
@@ -1193,8 +1182,13 @@ for (const [x, z] of spires) {
   scene.add(flag);
   onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
 }
-// Graffiti on walls, roofs and bridges (src/graffiti.js), in its fonts; while the museum is open,
-// whole cars on its trams and trains, each in turn its kind's in WHOLE_CARS.
+// Graffiti on walls, roofs and bridges (src/graffiti.js), in its fonts; and whole cars on trams
+// and trains, each design in WHOLE_CARS on SHARE of the vehicles of its kind in the city (by a
+// chance of their own, so always the same) and on all on the museum's round; of the trams, SONG
+// wear one over all their cars, of those in the museum every other.
+const SHARE = { tram: 0.6, train: 0.8 };
+const SONG = 1 / 3;
+const chance = (v, salt) => (Math.abs(Math.sin(v * 12.9898 + salt)) * 43758.5453) % 1;
 load(["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2"], () => {}).then(
   async ([cherry, rocker, honk]) => {
     await Promise.all([
@@ -1202,25 +1196,33 @@ load(["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2"], () => {}).then(
       addFont("Rocker", rocker),
       addFont("Honk", honk),
     ]);
-    const { meshes, marks } = createGraffiti(structures, walkGround, (at) => roofOver(at, true));
+    const { meshes, marks } = await createGraffiti(structures, walkGround, (at) =>
+      roofOver(at, true),
+    );
     scene.add(...meshes);
     for (const [number, hide] of marks)
       grounding.set(number, [...(grounding.get(number) ?? []), hide]);
-    // Each part of a design painted once for all cars it goes on, per size of car.
+    // Each part of a design once per size of car, with the cars it is on (on) and its group, the
+    // parts of one design's side, the longest first: the others' letters no bigger than its.
+    const parts = [];
     MOVER_KINDS.forEach((kind, i) => {
-      const { museum, cars, side, colour, coat } = movers[i];
-      const designs = WHOLE_CARS[kind] ?? [];
-      const parts = new Map(); // design, side, part, size → [its material, the cars it is on]
-      museum.forEach((v, n) => {
+      const designs = WHOLE_CARS[kind];
+      if (!designs) return;
+      const { count, museum, cars, side, coat } = movers[i];
+      const keyed = new Map(); // design, side, part, size → its part
+      for (let v = 0, n = 0; v < count; v++) {
+        const ours = museum.includes(v);
+        if (!ours && chance(v, 1) >= SHARE[kind]) continue;
         const [length, height] = side(v);
-        // Those for its colour: one over all its cars if any (in turn), else all the others, one
-        // per car from the last, from the n-th on.
-        const fit = designs.filter(({ livery }) => livery === undefined || livery === colour(v));
-        const wholes = fit.filter(({ all }) => all);
-        const ones = fit.filter(({ all }) => !all);
-        const worn = wholes.length
-          ? [wholes[n % wholes.length]]
-          : ones.map((_, j) => ones[(n + j) % ones.length]);
+        // Perhaps one over all its cars (in turn), else all the others, one per car from the last,
+        // from the n-th on; so no two vehicles in turn are the same.
+        const wholes = designs.filter(({ all }) => all);
+        const ones = designs.filter(({ all }) => !all);
+        const worn =
+          wholes.length && (ours ? museum.indexOf(v) % 2 === 0 : chance(v, 2) < SONG)
+            ? [wholes[n % wholes.length]]
+            : ones.map((_, j) => ones[(n + j) % ones.length]);
+        n++;
         worn.forEach((design, j) => {
           const { right, left, all } = design;
           const index = designs.indexOf(design);
@@ -1242,29 +1244,37 @@ load(["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2"], () => {}).then(
                       Math.round(((k + 1) * text.length) / cars),
                     ),
                   );
-            // The longest first: the others' letters no bigger than its.
+            const group = `${index} ${s} ${length} ${height}`;
             const order = texts.map((_, k) => k).sort((a, b) => texts[b].length - texts[a].length);
-            let most;
             for (const k of order) {
-              const key = `${index} ${s} ${k} ${length} ${height}`;
-              if (!parts.has(key)) {
-                const [material, scale] = wholeCar(
-                  { text: texts[k], ...look },
+              const key = `${group} ${k}`;
+              if (!keyed.has(key)) {
+                const part = {
+                  look: { text: texts[k], ...look },
                   length,
                   height,
-                  most,
-                );
-                most ??= scale;
-                parts.set(key, [material, []]);
+                  group,
+                  coat,
+                  on: [],
+                };
+                keyed.set(key, part);
+                parts.push(part);
               }
               // With all from the front on the right, from the back on the left.
-              parts.get(key)[1].push(v, !all ? cars - 1 - j : s > 0 ? k : cars - 1 - k, s);
+              keyed.get(key).on.push(v, !all ? cars - 1 - j : s > 0 ? k : cars - 1 - k, s);
             }
           }
         });
-      });
-      for (const [material, on] of parts.values()) coat(material, on);
+      }
     });
+    // Painted one after another, each in a task of its own, so the page goes on meanwhile.
+    const most = new Map(); // group → the scale its first part was painted at
+    for (const { look, length, height, group, coat, on } of parts) {
+      const [material, scale] = wholeCar(look, length, height, most.get(group));
+      if (!most.has(group)) most.set(group, scale);
+      coat(material, on);
+      await new Promise((go) => setTimeout(go));
+    }
   },
 );
 // The Elisabethenkirche, under its nave's roof at WGS84 47.552741, 7.590989, dressed in the

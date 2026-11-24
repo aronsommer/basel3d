@@ -37,7 +37,7 @@ place in the museum too.
 |     | Novartis Pavillon's light show           | Novartis Campus       | `pavilion.js`                        |
 |     | "PUMA" mown into a lawn                  | Erlenmatt             | `lawn.js`                            |
 |     | Graffiti (FCB pieces and tags)           | GRAFFITI list         | `graffiti.js`                        |
-|     | Whole cars on the trams and trains       | Museum                | `graffiti.js`, `movers.js`           |
+|     | Whole cars on the trams and trains       | City and museum       | `graffiti.js`, `movers.js`           |
 
 ## Animals
 
