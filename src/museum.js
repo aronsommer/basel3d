@@ -184,7 +184,7 @@ export const EXHIBITS = Object.fromEntries(
 // a row SCENES_ROW metres south of the vehicles' site's middle, from SCENE_FROM metres west (east
 // negative) on east, SCENE metres apart; in the order asked, all facing south. Each one's label in
 // LABELS (label): "id name", of a kind with more variants "id-k name" (k from 1, in the order of
-// its places), a group's name (animals) instead of its own.
+// its places), a group's name (animals) instead of its own; its city, the variant's places.
 const SCENES = site(
   [
     [47.579972, 7.578862],
@@ -273,12 +273,12 @@ const LABEL_AT = {
   V7: [47.581796, 7.581272],
   V8: [47.581763, 7.581706],
   V9: [47.581929, 7.581636],
-  "V10-1": [47.580225, 7.582344],
-  "V10-2": [47.580213, 7.58265],
-  V11: [47.580181, 7.581252],
+  "V10-1": [47.580213, 7.582331],
+  "V10-2": [47.580189, 7.582656],
+  V11: [47.580178, 7.581328],
   V12: [47.580301, 7.579932],
   V13: [47.579126, 7.581499],
-  V14: [47.580301, 7.58251],
+  V14: [47.58045, 7.582516],
   V15: [47.580278, 7.583495],
   V16: [47.57987, 7.583411],
   "T1-1": [47.58067, 7.578924],
@@ -288,10 +288,10 @@ const LABEL_AT = {
   "T1-5": [47.580508, 7.578893],
   "T1-6": [47.580467, 7.578886],
   "T1-7": [47.580427, 7.578878],
-  "T2-1": [47.580824, 7.579386],
-  "T2-2": [47.580784, 7.579378],
+  "T2-1": [47.580822, 7.579432],
+  "T2-2": [47.580772, 7.57942],
   "T3-1": [47.582189, 7.579545],
-  "T3-2": [47.582149, 7.579537],
+  "T3-2": [47.582143, 7.579547],
   "T4-1": [47.580219, 7.583787],
   "T4-2": [47.580178, 7.583779],
   "T4-3": [47.580138, 7.583772],
@@ -301,16 +301,18 @@ const LABEL_AT = {
   "P3-1": [47.581955, 7.583248],
   "P3-2": [47.581915, 7.58324],
   T5: [47.578054, 7.582944],
-  A2: [47.580043, 7.583755],
+  A2: [47.580053, 7.583755],
   A3: [47.579126, 7.582883],
   A4: [47.584733, 7.580797],
-  L1: [47.579824, 7.578917],
+  Museum: [47.581634, 7.580101],
+  Pins: [47.581229, 7.580101],
+  L1: [47.579814, 7.578884],
   S8: [47.578568, 7.580543],
   "V1-1": [47.581149, 7.581207],
   "V1-2": [47.581116, 7.581626],
-  S2: [47.579772, 7.579309],
-  S3: [47.579756, 7.579708],
-  S4: [47.579717, 7.580156],
+  S2: [47.579756, 7.579357],
+  S3: [47.579739, 7.579716],
+  S4: [47.579707, 7.58016],
   "A1-1": [47.578269, 7.578712],
   "A1-2": [47.57823, 7.57917],
   "A1-3": [47.578204, 7.57955],
@@ -326,26 +328,36 @@ const LABEL_AT = {
   "A1-13": [47.577851, 7.580221],
   "A1-14": [47.577835, 7.580379],
   "A1-15": [47.577833, 7.58053],
-  "A1-16": [47.577574, 7.578954],
+  "A1-16": [47.577558, 7.578954],
   "A1-17": [47.57755, 7.579217],
-  "A1-18": [47.577552, 7.579424],
+  "A1-18": [47.577545, 7.579438],
   "A1-19": [47.577533, 7.579624],
   "A1-20": [47.577558, 7.579802],
   "A1-21": [47.577542, 7.579933],
   "A1-22": [47.577526, 7.580064],
   "A1-23": [47.577516, 7.580196],
-  S1: [47.579799, 7.5791],
-  "S5-1": [47.57967, 7.58059],
-  "S5-2": [47.57965, 7.580827],
+  S1: [47.579779, 7.579085],
+  "S5-1": [47.57965, 7.580572],
+  "S5-2": [47.579629, 7.580858],
   S7: [47.578605, 7.579277],
   S6: [47.579324, 7.579881],
 };
+// Each label's city: its kind's or variant's places in the city ({ x, z }), for pins (src/main.js);
+// none for what keeps to no place.
 export const LABELS = [];
-function label(text, x, z) {
-  const at = LABEL_AT[text.slice(0, text.indexOf(" "))];
+function label(text, x, z, more) {
+  const at = LABEL_AT[text.split(" ")[0]];
   const [lx, lz] = at ? fromWGS84(...at) : [x, z];
-  LABELS.push({ text, x: lx, z: lz });
+  LABELS.push({ text, x: lx, z: lz, ...more });
 }
+// Places, but none within APART metres of one kept before, so a group gets one pin.
+const APART = 30;
+const apart = (places) =>
+  places.reduce(
+    (kept, { x, z }) =>
+      kept.some((k) => Math.hypot(k.x - x, k.z - z) < APART) ? kept : [...kept, { x, z }],
+    [],
+  );
 // [x, z] d metres ahead of a place ({ x, z, heading }).
 const ahead = ({ x, z, heading }, d) => [x + Math.sin(heading) * d, z + Math.cos(heading) * d];
 // Metres ahead of the middle of what one drives or flies its label lies, by kind (vehicle: any
@@ -387,33 +399,41 @@ for (const [kind, places] of Object.entries(EXHIBITS))
   places.forEach((place, k) => {
     const [id, name] = NAMES[kind];
     const number = places.length > 1 ? `${id}-${k + 1}` : id;
-    label(`${number} ${name}`, ...ahead(place, AHEAD[kind] ?? AHEAD.vehicle));
+    label(`${number} ${name}`, ...ahead(place, AHEAD[kind] ?? AHEAD.vehicle), { kind });
   });
+// A kind (of EXHIBITS, or as labelled below) built at these places in the city (src/main.js),
+// which it returns: its labels' city, one each in order where it has as many, else all.
+export function inCity(kind, places) {
+  const plates = LABELS.filter((l) => l.kind === kind);
+  const each = plates.length > 1 && plates.length === places.length;
+  plates.forEach((l, k) => (l.city = each ? [places[k]] : places));
+  return places;
+}
 export function exhibitsOf(id, name, places) {
   if (!OPEN) return [];
-  const variants = new Map(
-    places.map(({ x, z, heading, ...rest }) => [JSON.stringify(rest), rest]),
-  );
-  return [...variants.values()].map((rest, k) => {
+  const keyed = places.map(({ x, z, heading, ...rest }) => [JSON.stringify(rest), rest]);
+  const variants = new Map(keyed);
+  return [...variants].map(([key, rest], k) => {
+    const more = { city: apart(places.filter((_, i) => keyed[i][0] === key)) };
     const number = variants.size > 1 ? `${id}-${k + 1}` : id;
     const named = rest.group ? rest.group[0].toUpperCase() + rest.group.slice(1) : name;
     const text = `${number} ${named}`;
     const museum = { ...rest, museum: true };
     if (id.startsWith("V")) {
       const at = next(id, museum);
-      label(text, ...ahead(at, AHEAD.vehicle));
+      label(text, ...ahead(at, AHEAD.vehicle), more);
       return at;
     }
     const layout = LAYOUT[id] ?? ZOO[rest.group];
     if (!layout) {
       const at = place(SCENE_FROM + scenes++ * SCENE, SCENES_ROW, museum);
-      label(text, at.x, at.z);
+      label(text, at.x, at.z, more);
       return at;
     }
     const [west, south, below] = layout;
     const across = rest.group ? west : west - k * 18; // a kind's variants on eastwards
     const { x, z } = SCENES.at(across, south + below);
-    label(text, x, z);
+    label(text, x, z, more);
     return { ...SCENES.at(across, south), heading: SCENES.heading, ...museum };
   });
 }
@@ -510,8 +530,8 @@ export const ROAD = [
   [47.580318, 7.57897],
 ].map(([lat, lon]) => fromWGS84(lat, lon));
 // Whether x, z is at the museum's vehicles, within REACH metres of their site's middle (the boats
-// and the circling helicopter too).
-const REACH = 300;
+// and the circling helicopter too: up to 360 m away).
+const REACH = 400;
 const MIDDLE = VEHICLES.at(0, 0);
 export const atMuseum = (x, z) => Math.hypot(x - MIDDLE.x, z - MIDDLE.z) < REACH;
 // The people's site: generated pedestrians (src/walkers.js) of each kind in turn walking round
@@ -579,16 +599,18 @@ if (OPEN) {
   label("P2 Rhine swimmers", ...SWIM[4]);
   label("P3-1 Cyclists", ...SWIM[3]); // src/runners.js's RIDES in order
   label("P3-2 Scooters", ...SWIM[3]);
-  label("T5 Ferry", ...fromWGS84(47.578274, 7.582951)); // on the bank by its landing
+  label("T5 Ferry", ...fromWGS84(47.578274, 7.582951), { kind: "ferries" }); // by its landing
   label("A2 Whales", ...fromWGS84(47.5797, 7.5838)); // among the ships passing
-  label("A3 Sea serpent", ...fromWGS84(47.5791, 7.5826)); // on the bank before it
-  label("A4 Birds", ...FLOCK);
+  label("A3 Sea serpent", ...fromWGS84(47.5791, 7.5826), { kind: "serpent" }); // on the bank
+  label("A4 Birds", ...FLOCK, { kind: "birds" });
+  label("Museum", 0, 0, { size: 9, home: true }); // to its overview (src/main.js)
+  label("Pins All on / off", 0, 0, { all: true, size: 6 }); // for all labels' pins (src/main.js)
 }
 
 // The labels (LABELS) as plates flat over the ground (ground(x, z): the height there; settle),
-// drawn before it, turned as the site of the scenes: on dark, in white, the id (all up to the
-// first space) in letters LETTER metres high, below it the rest half as high; readable from the
-// south, sharp also seen aslant (anisotropy: the renderer's most).
+// drawn before it, square to north (unturned): on dark, in white, the id (all up to the first
+// space) in letters LETTER metres high (size times, if it has one), below it the rest, if any,
+// half as high; readable from the south, sharp also seen aslant (anisotropy: the renderer's most).
 const [LETTER, LIFT, STEP] = [1.6, 0.3, 1];
 // Lays a label along the ground under it (looked at every STEP metres across it; the plane
 // fitting it best), LIFT metres over where the ground rises highest above that plane, so no bump
@@ -615,8 +637,8 @@ export function settle(mesh, ground) {
 const [BIG, SMALL, PAD] = [96, 48, 32]; // canvas px: the id's letters, the name's, the margin
 export function createLabels(ground, anisotropy) {
   const group = new THREE.Group();
-  for (const { text, x, z } of LABELS) {
-    const [id, name] = [text.slice(0, text.indexOf(" ")), text.slice(text.indexOf(" ") + 1)];
+  for (const { text, x, z, city, all, home, size = 1 } of LABELS) {
+    const [id, name = ""] = text.split(/ (.*)/); // the rest, if any
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     const fonts = [`700 ${BIG}px Inter, sans-serif`, `500 ${SMALL}px Inter, sans-serif`];
@@ -626,7 +648,7 @@ export function createLabels(ground, anisotropy) {
     });
     [canvas.width, canvas.height] = [
       Math.ceil(Math.max(...widths)) + 2 * PAD,
-      BIG + SMALL + 2 * PAD,
+      BIG + (name ? SMALL : 0) + 2 * PAD,
     ];
     context.fillStyle = "#1d242b";
     context.beginPath();
@@ -636,13 +658,13 @@ export function createLabels(ground, anisotropy) {
     context.textAlign = "center";
     context.textBaseline = "top";
     context.font = fonts[0];
-    context.fillText(id, canvas.width / 2, PAD * 0.75);
+    context.fillText(id, canvas.width / 2, name ? PAD * 0.75 : PAD); // alone, in the middle
     context.font = fonts[1];
     context.fillText(name, canvas.width / 2, PAD * 0.75 + BIG);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = anisotropy;
-    const metre = LETTER / BIG; // per canvas px
+    const metre = (LETTER / BIG) * size; // per canvas px
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(canvas.width * metre, canvas.height * metre).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({
@@ -653,10 +675,9 @@ export function createLabels(ground, anisotropy) {
         polygonOffsetUnits: -4,
       }),
     );
-    mesh.rotation.y = SCENES.heading;
     mesh.position.set(x, 0, z);
     settle(mesh, ground);
-    mesh.userData.text = text;
+    mesh.userData = { text, city, all, home };
     group.add(mesh);
   }
   return group;

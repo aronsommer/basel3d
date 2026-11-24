@@ -4,12 +4,13 @@
   src: url(fonts/Inter.woff2) format("woff2");
 }
 /* The grid of all that lies over the scene: EDGE from the screen's edges, BUTTON high (8px +
-   20px + 8px, as the menu), GAP apart; glass rounded by RADIUS. */
+   20px + 8px, as the menu), GAP apart; glass rounded by RADIUS. MAGENTA as src/lines.js's. */
 :root {
   --edge: 12px;
   --button: 36px;
   --gap: 8px;
   --radius: 10px;
+  --magenta: #ff00ff;
 }
 html,
 body {
@@ -300,7 +301,7 @@ p {
 }
 /* Neutral but the boxes of the magenta check lines (each tram line's box takes its colour). */
 #menu input[data-kind] {
-  accent-color: #ff00ff;
+  accent-color: var(--magenta);
 }
 /* "Mouse aim" not where the steering buttons are for thumbs (#steer below, by the same rule). */
 @media not (pointer: fine) {
@@ -447,6 +448,10 @@ p {
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+/* The museum's pins (src/main.js): marks without a number, in magenta. */
+#badges .pin::before {
+  background: var(--magenta);
 }
 /* Above the mouse for a moment after C copied the coordinates there (src/main.js). */
 #copied {

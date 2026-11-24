@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { PAVILION_BLACK, pavilionLights } from "./pavilion.js";
 import { fade, audio } from "./sound.js";
 
-const PLACE = [-201.4, -1885.9]; // scene x, z of its place
+export const PLACE = [-201.4, -1885.9]; // scene x, z of its place
 const ABOVE = 7; // metres between its underside and what is below its place
 const NEAR = 60; // metres from its place within which it is drawn life size
 const GREEN = 0x39ff14; // neon green: the bolts, the guns' tips, strips and muzzle flashes

@@ -15,7 +15,7 @@ import { RHEINWEG, RHEINRUNDE } from "./rheinweg.js";
 import { createSwimmers } from "./swimmers.js";
 import { facadeShader } from "./facade.js";
 import { pavilionShader, pavilionTime } from "./pavilion.js";
-import { createUfo } from "./ufo.js";
+import { PLACE as UFO, createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createAmbulances } from "./ambulance.js";
@@ -29,7 +29,7 @@ import { createLawn } from "./lawn.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createBoats } from "./boats.js";
-import { createFerries } from "./ferries.js";
+import { LANDINGS, createFerries } from "./ferries.js";
 import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
 import {
@@ -48,6 +48,7 @@ import {
   createButton,
   createLabels,
   exhibitsOf,
+  inCity,
   settle,
   toggle as toggleMuseum,
 } from "./museum.js";
@@ -66,15 +67,15 @@ import { createWalkers } from "./walkers.js";
 import { createGraffiti } from "./graffiti.js";
 import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
-import { createPoints } from "./points.js";
+import { TIP, createPoints } from "./points.js";
 import { copy } from "./copy.js";
 import { LV95, fromWGS84, toWGS84 } from "./geo.js";
-import { checkLines } from "./lines.js";
+import { MAGENTA, checkLines } from "./lines.js";
 import { riders } from "./riders.js";
 import { createShips } from "./ships.js";
 import { CELL, CELLS, WARN, carCell, createMovers } from "./movers.js";
 import { createFlight, createHelicopter, createPlanes } from "./aircraft.js";
-import { createBirds } from "./birds.js";
+import { FLOCKS, createBirds } from "./birds.js";
 import { createSerpent } from "./serpent.js";
 import { createTrees } from "./trees.js";
 
@@ -553,6 +554,7 @@ scene.add(...tree.meshes);
 // In the Rhine in front of the Roche towers, its head as high as the taller one (205 m), looking
 // at the middle between the two towers.
 const serpent = createSerpent(1717, 68, 8.5, 1739, -196, heightAt);
+inCity("serpent", [{ x: 1717, z: 68 }]);
 scene.add(serpent.group);
 // And one in the museum (src/museum.js).
 const museumSerpent = OPEN && createSerpent(...SERPENT.at, 8.5, ...SERPENT.look, heightAt);
@@ -562,6 +564,7 @@ if (OPEN) scene.add(museumSerpent.group);
 // stays 40 m above the monster's horns (221 m) and 50 m above the taller tower (213 m).
 const HELICOPTER = 6;
 const flight = createFlight(intoArea);
+inCity("helicopter", [{ x: 1728, z: -64 }]);
 // Another circling over the museum (src/museum.js).
 const helicopters = [
   createHelicopter(1728, -64, 150, 300, HELICOPTER, flight),
@@ -669,6 +672,14 @@ for (const mover of movers) {
 // The ferries (src/ferries.js), the museum's too (src/museum.js), which the ships wait for, and the
 // Basiliskbrunnen (src/catalog.js) on the ground.
 const ferries = createFerries(fromWGS84, heightAt, boost, OPEN ? [FERRY] : []);
+// Each midway between its landings, for the museum's pins.
+inCity(
+  "ferries",
+  LANDINGS.map(([, a, b]) => {
+    const [x, z] = fromWGS84((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+    return { x, z };
+  }),
+);
 scene.add(ferries.group);
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y
@@ -727,6 +738,10 @@ const planes = createPlanes(
 );
 scene.add(...planes.meshes);
 const birds = createBirds(boost, heightAt);
+inCity(
+  "birds",
+  FLOCKS.map(([x, z]) => ({ x, z })),
+);
 scene.add(birds.mesh);
 const museumBirds = OPEN && createBirds(boost, heightAt, [FLOCK]);
 if (OPEN) scene.add(museumBirds.mesh);
@@ -887,6 +902,7 @@ const ufoRoof = (x, z) => {
   fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
   return fromAbove.intersectObjects([buildings.scene, terrain])[0].point.y;
 };
+inCity("ufo", [{ x: UFO[0], z: UFO[1] }]);
 const ufos = [
   createUfo(boost, ufoRoof),
   ...EXHIBITS.ufo.map(({ x, z }) => createUfo(boost, ufoRoof, [x, z])),
@@ -930,7 +946,7 @@ const police = build("V1", { parked, boost, world }).vehicles;
 // An ambulance (src/ambulance.js) at WGS84 47.561340, 7.585408, facing as from 47.561249, 7.585620
 // to 47.561237, 7.585649.
 const ambulances = createAmbulances(
-  parked([{ x: 46.3, z: -458.0, heading: 1.02 }, ...EXHIBITS.ambulance]),
+  parked([...inCity("ambulance", [{ x: 46.3, z: -458.0, heading: 1.02 }]), ...EXHIBITS.ambulance]),
   boost,
   world,
 );
@@ -938,28 +954,30 @@ const ambulances = createAmbulances(
 // station's long building (src/firestation.js), nearest the exit at WGS84 47.556211, 7.582375 to
 // 47.556197, 7.582437: its back 1 m before it, square to its front.
 const fireTrucks = createFireTrucks(
-  parked([{ x: -180.97, z: 117.81, heading: -0.344 }, ...EXHIBITS.fire]),
+  parked([...inCity("fire", [{ x: -180.97, z: 117.81, heading: -0.344 }]), ...EXHIBITS.fire]),
   boost,
   world,
 );
 const motorcycles = createMotorcycles(
   parked([
-    { x: 562.5, z: -584.6, heading: 0.88 },
-    { x: 631.0, z: -491.6, heading: 2.13, color: 0x7ee000 },
+    ...inCity("motorcycle", [
+      { x: 562.5, z: -584.6, heading: 0.88 },
+      { x: 631.0, z: -491.6, heading: 2.13, color: 0x7ee000 },
+    ]),
     ...EXHIBITS.motorcycle,
   ]),
   boost,
   world,
 );
 const quads = createQuads(
-  parked([{ x: 628.4, z: -499.3, heading: 1.85 }, ...EXHIBITS.quad]),
+  parked([...inCity("quad", [{ x: 628.4, z: -499.3, heading: 1.85 }]), ...EXHIBITS.quad]),
   boost,
   world,
 );
 // A life-size Traxxas XRT (src/xrt.js) in the St. Johanns-Park at WGS84 47.567823,
 // 7.582330, facing east to the Rhine.
 const xrts = createXrts(
-  parked([{ x: -186.7, z: -1178.4, heading: Math.PI / 2 }, ...EXHIBITS.xrt]),
+  parked([...inCity("xrt", [{ x: -186.7, z: -1178.4, heading: Math.PI / 2 }]), ...EXHIBITS.xrt]),
   boost,
   world,
 );
@@ -1202,6 +1220,10 @@ const regas = [
   if (roof) landOn(roof.number, rega.land, at);
   return rega;
 });
+inCity(
+  "rega",
+  regas.map(({ pad }) => pad.position),
+);
 // The museum's side by side, on one height: the ground's highest under them.
 const padsAt = Math.max(...EXHIBITS.rega.map(({ x, z }) => heightAt(x, z)));
 regas.push(
@@ -1215,6 +1237,7 @@ scene.add(...regas.flatMap(({ pad, group }) => [pad, group]));
 const [jetX, jetZ] = fromWGS84(47.548078, 7.591792);
 const jetAt = { x: jetX, y: heightAt(jetX, jetZ), z: jetZ };
 const jetRoof = roofOver(jetAt);
+inCity("jet", [jetAt]);
 const jets = [
   createJet({ ...jetAt, ...jetRoof, heading: Math.PI }, boost, flight.LEVEL),
   ...EXHIBITS.jet.map(({ x, z, heading }) =>
@@ -1345,25 +1368,23 @@ const lawn = createLawn(
 );
 scene.add(lawn);
 const tanks = createTanks(
-  parked([{ x: 383.8, z: -631.9, heading: Math.PI / 2 }, ...EXHIBITS.tank]),
+  parked([...inCity("tank", [{ x: 383.8, z: -631.9, heading: Math.PI / 2 }]), ...EXHIBITS.tank]),
   boost,
   world,
 );
 // The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west, and
 // one in the museum (src/museum.js).
 const dinos = createDinos(
-  parked([{ ...fromLV95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }, ...EXHIBITS.dino]),
+  parked([
+    ...inCity("dino", [{ ...fromLV95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }]),
+    ...EXHIBITS.dino,
+  ]),
   boost,
   world,
 );
 const drones = createDrones(
   [
-    {
-      x: 577.4,
-      y: 51.3 + 2,
-      z: 79,
-      heading: Math.PI,
-    },
+    ...inCity("drone", [{ x: 577.4, y: 51.3 + 2, z: 79, heading: Math.PI }]),
     ...EXHIBITS.drone.map((p) => ({ ...p, y: heightAt(p.x, p.z) + 2 })),
   ],
   boost,
@@ -1387,13 +1408,13 @@ const boat = (x, z, heading) => [{ x, y: heightAt(x, z), z, heading }];
 const museumBoat = ({ x, z, heading }) => boat(x, z, heading);
 const fireboats = createBoats(
   "fire",
-  [...boat(109, -568.1, 0.62), ...EXHIBITS.fireboat.flatMap(museumBoat)],
+  [...inCity("fireboat", boat(109, -568.1, 0.62)), ...EXHIBITS.fireboat.flatMap(museumBoat)],
   boost,
   onWater,
 );
 const policeBoats = createBoats(
   "police",
-  [...boat(324.4, -526.5, -2.53), ...EXHIBITS.policeboat.flatMap(museumBoat)],
+  [...inCity("policeboat", boat(324.4, -526.5, -2.53)), ...EXHIBITS.policeboat.flatMap(museumBoat)],
   boost,
   onWater,
 );
@@ -2523,6 +2544,8 @@ renderer.domElement.addEventListener("pointerup", (e) => {
     return;
   }
   if (buttonAt(e.clientX, e.clientY, mouse ? 0 : FINGER)) return switchMuseum();
+  const label = labelAt(e.clientX, e.clientY);
+  if (label) return press(label);
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
   else if (mouse && riding?.ride === footRide) captureMouse();
@@ -2721,7 +2744,8 @@ function vehicleOn(clientX, clientY) {
   return hidden(hit.point) ? null : { ride, vehicle };
 }
 
-// The vehicle under the mouse (but the one ridden) shows HIGHLIGHT and gets the hand cursor;
+// The vehicle under the mouse (but the one ridden), unless the museum's switch or a label with pins
+// is, shows HIGHLIGHT and gets the hand cursor, as those do;
 // checked at most once per frame, only after the mouse moved, and not while dragging or steering
 // nor while clicks set one down, destroy (God mode) or record points: then it gets a crosshair.
 // Walking with the mouse captured, the one under the dot in the middle, every frame.
@@ -2733,11 +2757,14 @@ function updateHover() {
   if (mouseLook()) hover = { x: innerWidth / 2, y: innerHeight / 2 };
   if (!hover) return;
   const aiming = placing || god || pointsPanel.recording(); // clicks pick a point, not a vehicle
-  const found = pointers.size || steered() || aiming ? null : vehicleAt(hover.x, hover.y);
-  const onButton = !pointers.size && !steered() && !aiming && buttonAt(hover.x, hover.y);
+  const free = !pointers.size && !steered() && !aiming;
+  // The museum's switch or a label with pins goes before a vehicle, as a click does.
+  const clickable =
+    free && (buttonAt(hover.x, hover.y) || (!mouseLook() && labelAt(hover.x, hover.y)));
+  const found = free && !clickable ? vehicleAt(hover.x, hover.y) : null;
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  renderer.domElement.style.cursor = aiming ? "crosshair" : found || onButton ? "pointer" : "";
+  renderer.domElement.style.cursor = aiming ? "crosshair" : found || clickable ? "pointer" : "";
 }
 
 // The roof, bridge or ground at a screen point (px), or null.
@@ -2880,16 +2907,21 @@ function writeView(time) {
   if (hash !== location.hash) history.replaceState(null, "", hash);
 }
 addEventListener("hashchange", readView);
-// Opens or closes the museum (src/museum.js); opening, the page comes back looking straight down
-// on all of it, north up: so in the URL, which no view written meanwhile overwrites.
+// Puts the view looking straight down on all of the museum (src/museum.js, OVERVIEW), north up,
+// into the URL.
+function overview() {
+  const [lat, lon, height, width] = OVERVIEW;
+  const metres = Math.max(height, (width * innerHeight) / innerWidth); // the screen's height
+  const zoom = Math.log2(
+    (EARTH * Math.cos(THREE.MathUtils.degToRad(lat)) * innerHeight) / (256 * metres),
+  );
+  history.replaceState(null, "", `#map=${zoom.toFixed(2)}/${lat}/${lon}/0/0`);
+}
+// Opens or closes the museum; opening, the page comes back in its overview, which no view written
+// meanwhile overwrites.
 function switchMuseum() {
   if (!OPEN) {
-    const [lat, lon, height, width] = OVERVIEW;
-    const metres = Math.max(height, (width * innerHeight) / innerWidth); // the screen's height
-    const zoom = Math.log2(
-      (EARTH * Math.cos(THREE.MathUtils.degToRad(lat)) * innerHeight) / (256 * metres),
-    );
-    history.replaceState(null, "", `#map=${zoom.toFixed(2)}/${lat}/${lon}/0/0`);
+    overview();
     viewWritten = Infinity;
   }
   toggleMuseum();
@@ -3056,6 +3088,60 @@ function pointerRay({ clientX, clientY }) {
   const at = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(at, camera);
 }
+// A click or tap on a label with a city pins its places there, the label's letters in
+// MAGENTA as the pins (style.css), each on the roof, water or ground there; another unpins them.
+// The label for all pins unpins all if any are pinned, else pins all, in MAGENTA while any
+// are; the label "Museum" (home) shows its overview. The mouse over such a label gets the hand
+// cursor (updateHover).
+const pins = new Map(); // label → its pins, { point, mark }
+function labelAt(clientX, clientY) {
+  if (!museumLabels) return null;
+  pointerRay({ clientX, clientY });
+  const label = raycaster.intersectObjects(museumLabels.children)[0]?.object;
+  const { city, all, home } = label?.userData ?? {};
+  return city || all || home ? label : null;
+}
+function press(label) {
+  if (label.userData.home) {
+    overview();
+    readView();
+    return;
+  }
+  const labels = museumLabels.children;
+  if (!label.userData.all) toggle(label);
+  else {
+    const on = !pins.size;
+    for (const l of labels) if (l.userData.city && pins.has(l) !== on) toggle(l);
+  }
+  labels.find((l) => l.userData.all).material.color.set(pins.size ? MAGENTA : 0xffffff);
+}
+function toggle(label) {
+  const pinned = pins.get(label);
+  label.material.color.set(pinned ? 0xffffff : MAGENTA);
+  if (pinned) {
+    pinned.forEach(({ mark }) => mark.remove());
+    pins.delete(label);
+    return;
+  }
+  const mark = () =>
+    badgeLayer.appendChild(Object.assign(document.createElement("div"), { className: "mark pin" }));
+  pins.set(
+    label,
+    label.userData.city.map(({ x, z }) => ({
+      point: new THREE.Vector3(x, Math.max(labelGround(x, z), structures.top(x, z, Infinity)), z),
+      mark: mark(),
+    })),
+  );
+}
+// Moves the pins to their points, after the camera's updateMatrixWorld.
+function updatePins() {
+  for (const list of pins.values())
+    for (const { point, mark } of list) {
+      const { x, y, front } = onScreen(point);
+      mark.hidden = !front;
+      mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+    }
+}
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (!movingLabels) return;
   pointerRay(e);
@@ -3145,6 +3231,7 @@ renderer.setAnimationLoop((time) => {
   shoot(time / 1000);
   updateBadges();
   pointsPanel.update();
+  updatePins();
   updateNames();
   drawFrame();
 });

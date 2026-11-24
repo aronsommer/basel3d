@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 // Flocks of birds circling above bridges, parks and squares all over the city (flocks, each [x, z],
 // else FLOCKS), flapping their wings. All birds are instances of one V, in one draw call.
-const FLOCKS = [
+export const FLOCKS = [
   [366, -321], // Mittlere Brücke
   [537, 99], // Münster
   [-300, 1150], // Zoo

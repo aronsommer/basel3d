@@ -10,7 +10,7 @@ import { baselstab } from "./baselstab.js";
 // [name, Grossbasel landing, Kleinbasel landing, masts?] as [latitude, longitude], the landings
 // from OSM (route=ferry); masts [Grossbasel, Kleinbasel] where they stand, each else (null) OUT
 // beyond its landing and UP upstream.
-const LANDINGS = [
+export const LANDINGS = [
   ["St. Johann-Fähre Ueli", [47.569383, 7.583405], [47.569397, 7.586203]], // way 24519494
   [
     "Klingental-Fähre Vogel Gryff",

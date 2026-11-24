@@ -117,6 +117,9 @@ Each plate in the museum, so a number names one thing. The variants and groups a
 follow the order of their places (`catalog.js`), spots (`museum.js`) or turns (`movers.js`,
 `ships.js`); a change there renumbers them, so this list goes with it.
 
+A click on a plate pins where its kind (or variant) is in the city, if it keeps to one place;
+the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
+
 | Id    | Plate                                                    |
 | ----- | -------------------------------------------------------- |
 | L1    | Basiliskbrunnen                                          |
