@@ -16,7 +16,7 @@ import { part } from "./parts.js";
 // Whether the museum is open in this browser: all of it is there only then (none of its exhibits,
 // courses, pedestrians). Its secret switch, a push button (createButton, src/main.js), opens or
 // closes it (toggle), which takes the page loading again.
-const KEY = "basel3d.museum"; // "1" (open)
+const KEY = "basel3d.museum"; // "1" (open) or "0"
 export const OPEN = (() => {
   try {
     return localStorage.getItem(KEY) === "1";
