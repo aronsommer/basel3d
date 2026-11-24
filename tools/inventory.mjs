@@ -11,9 +11,10 @@ const anything = new Proxy(() => {}, {
   construct: () => anything,
 });
 globalThis.document = anything;
-const { LABELS, exhibitsOf } = await import("../src/museum.js");
+const { LABELS, exhibitsOf, platesOf } = await import("../src/museum.js");
 const { CATALOG } = await import("../src/catalog.js");
-for (const [id, { name, places }] of Object.entries(CATALOG)) exhibitsOf(id, name, places);
+for (const [id, { name, places, make }] of Object.entries(CATALOG))
+  (make ? exhibitsOf : platesOf)(id, name, places);
 
 const plates = LABELS.map(({ text }) => text.split(" ")[0]).filter((n) => /^[A-Z]\d/.test(n));
 const kinds = new Set(plates.map((n) => n.split("-")[0]));

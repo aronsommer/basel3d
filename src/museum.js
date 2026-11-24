@@ -356,13 +356,16 @@ const ahead = ({ x, z, heading = 0 }, d) => [x + Math.sin(heading) * d, z + Math
 // Metres ahead of the middle of what one drives or flies its label lies, where LABEL_AT does not
 // place it: 3 m beyond the nose of one up to 2.5 m long.
 const AHEAD = 5;
-// A kind (as labelled below) built at these places in the city (src/main.js),
-// which it returns: its labels' city, one each in order where it has as many, else all.
-export function inCity(kind, places) {
-  const plates = LABELS.filter((l) => l.kind === kind);
-  const each = plates.length > 1 && plates.length === places.length;
-  plates.forEach((l, k) => (l.city = each ? [places[k]] : places));
-  return places;
+// The plates alone of a kind of the catalog without make, which src/main.js shows in the museum
+// itself: one for each of its names (one, or a list for what takes its turn there), placed in
+// LABEL_AT, each with its places in the city as its city, if any.
+export function platesOf(id, name, places) {
+  if (!OPEN) return;
+  const names = [name].flat();
+  const city = apart(places);
+  names.forEach((n, k) =>
+    label(`${names.length > 1 ? `${id}-${k + 1}` : id} ${n}`, 0, 0, city.length ? { city } : {}),
+  );
 }
 export function exhibitsOf(id, name, places) {
   if (!OPEN) return [];
@@ -537,25 +540,10 @@ export const SWIM = [
 // landing first), without a name, so not among the city's names.
 export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
 
-// What moves on its own courses and walks, labelled beside them under ids of their own (T traffic,
-// P people moving), and the animals not in the catalog (A).
+// The plates to its overview (src/main.js) and for all labels' pins.
 if (OPEN) {
-  // The traffic, a plate per variant (placed in LABEL_AT), in the order they take in turn there
-  // (src/movers.js: ROAD of src/vehicles.js, tram colours, kinds of train; src/ships.js's types).
-  Object.entries({
-    T1: ["Car", "SUV", "Sports car", "Van", "Lorry", "Tipper", "Bus"],
-    T2: ["Tram, BVB green", "Tram, BLT yellow"],
-    T3: ["Passenger train", "Goods train"],
-    T4: ["Tanker", "Container ship", "Passenger ship", "Speedboat"],
-  }).forEach(([id, names]) => names.forEach((name, k) => label(`${id}-${k + 1} ${name}`)));
-  label("P1 Pedestrians", MUSEUM.x, MUSEUM.z);
-  label("P2 Rhine swimmers", ...SWIM[4]);
-  label("P3-1 Cyclists", ...SWIM[3]); // src/runners.js's RIDES in order
-  label("P3-2 Scooters", ...SWIM[3]);
-  label("T5 Ferry", ...fromWGS84(47.578274, 7.582951), { kind: "ferries" }); // by its landing
-  label("A2 Whales", ...fromWGS84(47.5797, 7.5838)); // among the ships passing
-  label("Museum", 0, 0, { size: 9, home: true }); // to its overview (src/main.js)
-  label("Pins All on / off", 0, 0, { all: true, size: 6 }); // for all labels' pins (src/main.js)
+  label("Museum", 0, 0, { size: 9, home: true });
+  label("Pins All on / off", 0, 0, { all: true, size: 6 });
 }
 
 // The labels (LABELS) as plates flat over the ground (ground(x, z): the height there; settle),

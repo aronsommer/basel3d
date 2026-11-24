@@ -2,8 +2,8 @@
 // other, ever (L landmarks, A animals, S scenes, P people moving, V what one drives or flies, T
 // traffic): its name, its places in the city (scene x, z, …) and make(places, city), which builds
 // it there and returns { objects: for the scene, … what else others need of it }; city: what the
-// maker takes from src/main.js. src/main.js builds each at its places (build); kinds not yet here
-// it still builds itself.
+// maker takes from src/main.js. src/main.js builds each at its places (build); those without make
+// it builds itself (see below).
 import * as THREE from "three";
 import { createHelicopter, createPlanes } from "./aircraft.js";
 import { createAmbulances } from "./ambulance.js";
@@ -14,6 +14,7 @@ import { createBoats } from "./boats.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createClique } from "./fasnacht.js";
+import { LANDINGS } from "./ferries.js";
 import { createFireTrucks } from "./firetruck.js";
 import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
@@ -462,7 +463,7 @@ export const CATALOG = {
     make: (places, city) => ({ objects: places.flatMap((place) => park(place, city)) }),
   },
   S3: { name: "Men in Kleinbasel", ...standing(MEN, MEN_LOOKS) },
-  S4: { name: "Women in a lane", ...standing(WOMEN, WOMEN_LOOKS, [2611565.3, 1267979.1]) },
+  S4: { name: "Women in Kleinbasel", ...standing(WOMEN, WOMEN_LOOKS, [2611565.3, 1267979.1]) },
   S5: {
     name: "Friends dancing on the Roche towers",
     places: TOWERS.map((point, tower) => ({ ...lv95(point), tower })),
@@ -705,4 +706,21 @@ export const CATALOG = {
     places: [{ x: 324.4, z: -526.5, heading: -2.53 }],
     make: afloat("police"),
   },
+  // Kinds src/main.js makes itself, as parts of what the city and the museum share (the traffic,
+  // the ways on foot and the Rhine): without make, only their plates in the museum (platesOf), a
+  // plate each for what takes its turn there, in that order (src/movers.js: ROAD of
+  // src/vehicles.js, tram colours, kinds of train; src/ships.js's types; src/runners.js's RIDES).
+  T1: { name: ["Car", "SUV", "Sports car", "Van", "Lorry", "Tipper", "Bus"], places: [] },
+  T2: { name: ["Tram, BVB green", "Tram, BLT yellow"], places: [] },
+  T3: { name: ["Passenger train", "Goods train"], places: [] },
+  T4: { name: ["Tanker", "Container ship", "Passenger ship", "Speedboat"], places: [] },
+  // Each ferry midway between its landings.
+  T5: {
+    name: "Ferry",
+    places: LANDINGS.map(([, a, b]) => at((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)),
+  },
+  A2: { name: "Whales", places: [] }, // passing with the ships
+  P1: { name: "Pedestrians", places: [] },
+  P2: { name: "Rhine swimmers", places: [] },
+  P3: { name: ["Cyclists", "Scooters"], places: [] },
 };

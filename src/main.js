@@ -19,7 +19,7 @@ import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createDriving } from "./drive.js";
 import { createLawn } from "./lawn.js";
-import { LANDINGS, createFerries } from "./ferries.js";
+import { createFerries } from "./ferries.js";
 import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
 import {
@@ -35,7 +35,7 @@ import {
   createButton,
   createLabels,
   exhibitsOf,
-  inCity,
+  platesOf,
   settle,
   toggle as toggleMuseum,
 } from "./museum.js";
@@ -110,6 +110,9 @@ function build(id, city) {
   scene.add(...built.objects);
   return built;
 }
+// The plates of the kinds it builds otherwise (no make).
+for (const [id, { name, places, make }] of Object.entries(CATALOG))
+  if (!make) platesOf(id, name, places);
 // Strong sky light keeps the sides facing away from the sun bright; the sun is warm. Both, and the
 // sky, change with the time of day (createDaylight).
 const hemisphere = new THREE.HemisphereLight(0xe2eaf2, 0xbaa88c, 2);
@@ -636,14 +639,6 @@ for (const mover of movers) {
 // The ferries (src/ferries.js), the museum's too (src/museum.js), which the ships wait for, and the
 // Basiliskbrunnen (src/catalog.js) on the ground.
 const ferries = createFerries(fromWGS84, heightAt, boost, OPEN ? [FERRY] : []);
-// Each midway between its landings, for the museum's pins.
-inCity(
-  "ferries",
-  LANDINGS.map(([, a, b]) => {
-    const [x, z] = fromWGS84((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
-    return { x, z };
-  }),
-);
 scene.add(ferries.group);
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y

@@ -1,9 +1,9 @@
 # Inventory
 
 Everything placed in the city, found by going through every `scene.add` in `src/main.js`,
-`src/explosions.js` and `src/rockets.js`, each kind with its id in the museum (`src/museum.js`;
-L landmarks, S scenes, A animals, V what one drives or flies, T traffic, P people moving; a
-number after a dash is one of a kind's variants or groups). The museum shows every kind with an id,
+`src/explosions.js` and `src/rockets.js`, each kind with its id in the catalog (`src/catalog.js`)
+and in the museum (`src/museum.js`; L landmarks, S scenes, A animals, V what one drives or flies, T
+traffic, P people moving; a number after a dash is one of a kind's variants or groups). The museum shows every kind with an id,
 built by the same code as in the city; it leaves out the ground and city, the effects and what
 belongs to its building or place (no id below). Anything new placed in the city gets an id and a
 place in the museum too.
@@ -127,7 +127,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | S1    | Old man feeding swans                                    |
 | S2    | Sunbathing, yoga and dancing                             |
 | S3    | Men in Kleinbasel (all 30)                               |
-| S4    | Women in a lane (all 16)                                 |
+| S4    | Women in Kleinbasel (all 16)                             |
 | S5-1  | Friends dancing on the western Roche tower               |
 | S5-2  | Friends dancing on the eastern Roche tower (other looks) |
 | S6    | Girl on a bike and her sister                            |
