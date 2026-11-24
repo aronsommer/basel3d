@@ -5,13 +5,22 @@
 // maker takes from src/main.js. src/main.js builds each at its places (build); kinds not yet here
 // it still builds itself.
 import * as THREE from "three";
+import { createAmbulances } from "./ambulance.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createBike } from "./bike.js";
+import { createBoats } from "./boats.js";
+import { createDinos } from "./dino.js";
+import { createDrones } from "./drone.js";
 import { createClique } from "./fasnacht.js";
+import { createFireTrucks } from "./firetruck.js";
 import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
+import { createMotorcycles } from "./motorcycle.js";
 import { TOSS, createPeople, mix } from "./people.js";
 import { createPolice } from "./police.js";
+import { createQuads } from "./quad.js";
+import { createTanks } from "./tank.js";
+import { createXrts } from "./xrt.js";
 import { createSwans, createZoo } from "./zoo.js";
 
 const at = (lat, lon) => {
@@ -391,6 +400,27 @@ const ANIMALS = [
   ["wisents", 2612915.8, 1269373.7, -1.4],
 ].map(([group, e, n, heading]) => ({ group, ...lv95([e, n]), heading }));
 
+// The maker of what one drives, by its create (src/police.js and the like), on the ground or bridge
+// at its places.
+const driven =
+  (create) =>
+  (places, { parked, boost, world }) => {
+    const vehicles = create(parked(places), boost, world);
+    return { objects: vehicles.map(({ group }) => group), vehicles };
+  };
+// The maker of a kind of boat (src/boats.js), on the water at its places.
+const afloat =
+  (kind) =>
+  (places, { heightAt, boost, onWater }) => {
+    const boats = createBoats(
+      kind,
+      places.map((p) => ({ ...p, y: heightAt(p.x, p.z) })),
+      boost,
+      onWater,
+    );
+    return { objects: boats.map(({ group }) => group), vehicles: boats };
+  };
+
 export const CATALOG = {
   L1: {
     name: "Basiliskbrunnen",
@@ -491,9 +521,81 @@ export const CATALOG = {
       { x: 656.5, z: -507.4, heading: -0.93 },
       { x: 660.7, z: -506.8, heading: -0.93, unmarked: true },
     ],
-    make(places, { parked, boost, world }) {
-      const vans = createPolice(parked(places), boost, world);
-      return { objects: vans.map(({ group }) => group), vehicles: vans };
+    make: driven(createPolice),
+  },
+  V2: {
+    // At WGS84 47.561340, 7.585408, facing as from 47.561249, 7.585620 to 47.561237, 7.585649.
+    name: "Ambulance",
+    places: [{ x: 46.3, z: -458.0, heading: 1.02 }],
+    make: driven(createAmbulances),
+  },
+  V3: {
+    // The turntable ladder out of the fourth gate from the left of the fire station's long
+    // building (src/firestation.js), nearest the exit at WGS84 47.556211, 7.582375 to 47.556197,
+    // 7.582437: its back 1 m before it, square to its front.
+    name: "Fire truck",
+    places: [{ x: -180.97, z: 117.81, heading: -0.344 }],
+    make: driven(createFireTrucks),
+  },
+  V4: {
+    // At WGS84 47.562470, 7.592271 and a poison green one at 47.561632, 7.593178, facing the men
+    // on the Claraplatz.
+    name: "Motorcycle",
+    places: [
+      { x: 562.5, z: -584.6, heading: 0.88 },
+      { x: 631.0, z: -491.6, heading: 2.13, color: 0x7ee000 },
+    ],
+    make: driven(createMotorcycles),
+  },
+  V5: {
+    // At WGS84 47.561701, 7.593144, facing the men on the Claraplatz.
+    name: "Quad",
+    places: [{ x: 628.4, z: -499.3, heading: 1.85 }],
+    make: driven(createQuads),
+  },
+  V6: {
+    // Life-size, in the St. Johanns-Park at WGS84 47.567823, 7.582330, facing east to the Rhine.
+    name: "Traxxas XRT",
+    places: [{ x: -186.7, z: -1178.4, heading: Math.PI / 2 }],
+    make: driven(createXrts),
+  },
+  V7: {
+    // In the yard of the Kaserne, facing east.
+    name: "Tank",
+    places: [{ x: 383.8, z: -631.9, heading: Math.PI / 2 }],
+    make: driven(createTanks),
+  },
+  V8: {
+    // 2 m over the Münster's roof (LV95 2611577.4, 1267321.0, 301.3), facing north over the
+    // Rhine; in the museum 2 m over the ground.
+    name: "Drone",
+    places: [{ x: 577.4, y: 51.3 + 2, z: 79, heading: Math.PI }],
+    make(places, { heightAt, boost, world, camera }) {
+      const drones = createDrones(
+        places.map((p) => (p.museum ? { ...p, y: heightAt(p.x, p.z) + 2 } : p)),
+        boost,
+        world,
+        camera,
+      );
+      return { objects: drones.map(({ group }) => group), vehicles: drones };
     },
+  },
+  V9: {
+    // The Merian Gärten's, at LV95 2613556.9, 1264526.6, facing west.
+    name: "Dinosaur",
+    places: [{ ...lv95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }],
+    make: driven(createDinos),
+  },
+  V15: {
+    // Between the Mittlere Brücke and the Johanniterbrücke (LV95 2611109.0, 1267968.1).
+    name: "Fireboat",
+    places: [{ x: 109, z: -568.1, heading: 0.62 }],
+    make: afloat("fire"),
+  },
+  V16: {
+    // Below the Mittlere Brücke (LV95 2611324.4, 1267926.5), 7 m off the bank, so it can turn.
+    name: "Police boat",
+    places: [{ x: 324.4, z: -526.5, heading: -2.53 }],
+    make: afloat("police"),
   },
 };

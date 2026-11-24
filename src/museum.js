@@ -1,8 +1,8 @@
 // The museum on two empty industrial sites in Klybeck, by Novartis, and round them: every kind
 // placed in the city (INVENTORY.md), built by the same code there, each with its id on a plate on
-// the ground (createLabels): all one can drive or fly oneself (EXHIBITS, placed by src/main.js with
-// the others, so they can be) on a parking east of the people's site, the dinosaur among them; on
-// the southern site the catalog's kinds (exhibitsOf); east of it an airliner and beyond it the
+// the ground (createLabels): all one can drive or fly oneself (AT, EXHIBITS) on a parking east of
+// the people's site, the dinosaur among them; on the southern site the catalog's other kinds
+// (exhibitsOf); east of it an airliner and beyond it the
 // Rega's helicopters on their pads, the attack helicopter circling high over them; north of it
 // the jet and the UFO; on the Rhine east of it the boats, the serpent, a ferry, the ships and
 // whales passing and the swimmers' round, cyclists on its bank; on the northern site pedestrians
@@ -99,7 +99,7 @@ const PADS = [
 // The parking: bays from the first point of each pair (WGS84) towards the second, lined up (one
 // heading, their mean; their middles evenly from the first's to the last's), each with two spots
 // a quarter of BAY metres from its middle either way along it (the first ahead, west): spot(k),
-// the k-th, the bays from the south. The catalog's take theirs as in SPOTS_OF, any other the next free.
+// the k-th, the bays from the south.
 const BAY = 27;
 const SPOTS = (() => {
   const bays = [
@@ -129,20 +129,32 @@ const back = (k, metres) => {
   const { x, z, heading } = SPOTS[k];
   return { x: x - Math.sin(heading) * metres, z: z - Math.cos(heading) * metres };
 };
-const SPOTS_OF = { V1: [0, 1] };
-const next = (id, more) => {
-  const k = SPOTS_OF[id]?.find((s) => !taken.has(s)) ?? SPOTS.findIndex((_, s) => !taken.has(s));
-  return spot(k, more);
+// The catalog's (src/catalog.js), by id, a place per variant in order; any other the next free spot.
+const AT = {
+  V1: [spot(0), spot(1)],
+  V2: [spot(2)],
+  V3: [spot(3)],
+  V4: [spot(4), spot(5)],
+  V5: [spot(6)],
+  V6: [spot(7)],
+  V7: [spot(8, back(8, 2))],
+  V8: [spot(9, back(9, 2))],
+  V9: [spot(10)],
+  // On the Rhine, one behind the other, facing from the first to the second, upstream (south).
+  ...(() => {
+    const [a, b] = [
+      [47.580408, 7.583532],
+      [47.579975, 7.583432],
+    ];
+    const { heading } = between(a, b);
+    const at = ([lat, lon]) => {
+      const [x, z] = fromWGS84(lat, lon);
+      return [{ x, z, heading }];
+    };
+    return { V15: at(a), V16: at(b) };
+  })(),
 };
 const ALL = {
-  ambulance: [spot(2)],
-  fire: [spot(3)],
-  motorcycle: [spot(4), spot(5, { color: 0x7ee000 })],
-  quad: [spot(6)],
-  xrt: [spot(7)],
-  tank: [spot(8, back(8, 2))],
-  drone: [spot(9, back(9, 2))],
-  dino: [spot(10)],
   rega: ["h145", "aw109"].map((model, k) => {
     const [x, z] = PADS[k];
     return { x, z, heading: VEHICLES.heading, model };
@@ -159,19 +171,6 @@ const ALL = {
       high: HIGH,
     },
   ],
-  // On the Rhine, one behind the other, facing from the first to the second, upstream (south).
-  ...(() => {
-    const [a, b] = [
-      [47.580408, 7.583532],
-      [47.579975, 7.583432],
-    ];
-    const { heading } = between(a, b);
-    const at = ([lat, lon]) => {
-      const [x, z] = fromWGS84(lat, lon);
-      return [{ x, z, heading }];
-    };
-    return { fireboat: at(a), policeboat: at(b) };
-  })(),
 };
 export const EXHIBITS = Object.fromEntries(
   Object.entries(ALL).map(([kind, places]) => [kind, OPEN ? places : []]),
@@ -365,12 +364,6 @@ const ahead = ({ x, z, heading }, d) => [x + Math.sin(heading) * d, z + Math.cos
 // other, up to 2.5 m to its nose): 3 m beyond its nose (from the half lengths in their files).
 const AHEAD = {
   vehicle: 5,
-  ambulance: 6.5,
-  fire: 8,
-  tank: 7,
-  dino: 7.5,
-  fireboat: 12.5,
-  policeboat: 8.5,
   rega: 9,
   jet: 14,
   plane: 30,
@@ -380,21 +373,11 @@ const AHEAD = {
 // Those not yet in the catalog (EXHIBITS), labelled as its kinds are, under the ids that are to be
 // theirs there: by kind [id, name].
 const NAMES = {
-  ambulance: ["V2", "Ambulance"],
-  fire: ["V3", "Fire truck"],
-  motorcycle: ["V4", "Motorcycle"],
-  quad: ["V5", "Quad"],
-  xrt: ["V6", "Traxxas XRT"],
-  tank: ["V7", "Tank"],
-  drone: ["V8", "Drone"],
-  dino: ["V9", "Dinosaur"],
   rega: ["V10", "Rega helicopter"],
   jet: ["V11", "Fighter jet"],
   ufo: ["V12", "UFO"],
   plane: ["V13", "Airliner"],
   helicopter: ["V14", "Attack helicopter"],
-  fireboat: ["V15", "Fireboat"],
-  policeboat: ["V16", "Police boat"],
 };
 for (const [kind, places] of Object.entries(EXHIBITS))
   places.forEach((place, k) => {
@@ -421,7 +404,7 @@ export function exhibitsOf(id, name, places) {
     const text = `${number} ${named}`;
     const museum = { ...rest, museum: true };
     if (id.startsWith("V")) {
-      const at = next(id, museum);
+      const at = { ...(AT[id]?.[k] ?? spot(SPOTS.findIndex((_, s) => !taken.has(s)))), ...museum };
       label(text, ...ahead(at, AHEAD.vehicle), more);
       return at;
     }

@@ -18,17 +18,8 @@ import { pavilionShader, pavilionTime } from "./pavilion.js";
 import { PLACE as UFO, createUfo } from "./ufo.js";
 import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
-import { createAmbulances } from "./ambulance.js";
-import { createFireTrucks } from "./firetruck.js";
 import { createDriving } from "./drive.js";
-import { createMotorcycles } from "./motorcycle.js";
-import { createQuads } from "./quad.js";
-import { createXrts } from "./xrt.js";
-import { createTanks } from "./tank.js";
 import { createLawn } from "./lawn.js";
-import { createDinos } from "./dino.js";
-import { createDrones } from "./drone.js";
-import { createBoats } from "./boats.js";
 import { LANDINGS, createFerries } from "./ferries.js";
 import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
@@ -943,51 +934,13 @@ const parked = (places) =>
     fromAbove.set(new THREE.Vector3(place.x, 2000, place.z), DOWN);
     return { ...place, y: fromAbove.intersectObjects([bridges.scene, terrain])[0].point.y };
   });
-// Police vans (src/catalog.js); a motorcycle (src/motorcycle.js) at
-// WGS84 47.562470, 7.592271 and a poison green one at 47.561632, 7.593178, and a quad
-// (src/quad.js) at 47.561701, 7.593144, all facing the men on the Claraplatz; a
-// tank (src/tank.js) in the yard of the Kaserne facing east; a drone (src/drone.js) 2 m over the
-// Münster's roof (LV95 2611577.4, 1267321.0, 301.3), facing north over the Rhine. It flies down to roofs (structures.top) as well.
-// Each kind also in the museum (src/museum.js, EXHIBITS), the drone 2 m over the ground there.
+// What one drives (src/catalog.js), in the city and the museum.
 const police = build("V1", { parked, boost, world }).vehicles;
-// An ambulance (src/ambulance.js) at WGS84 47.561340, 7.585408, facing as from 47.561249, 7.585620
-// to 47.561237, 7.585649.
-const ambulances = createAmbulances(
-  parked([...inCity("ambulance", [{ x: 46.3, z: -458.0, heading: 1.02 }]), ...EXHIBITS.ambulance]),
-  boost,
-  world,
-);
-// The turntable ladder (src/firetruck.js) out of the fourth gate from the left of the fire
-// station's long building (src/firestation.js), nearest the exit at WGS84 47.556211, 7.582375 to
-// 47.556197, 7.582437: its back 1 m before it, square to its front.
-const fireTrucks = createFireTrucks(
-  parked([...inCity("fire", [{ x: -180.97, z: 117.81, heading: -0.344 }]), ...EXHIBITS.fire]),
-  boost,
-  world,
-);
-const motorcycles = createMotorcycles(
-  parked([
-    ...inCity("motorcycle", [
-      { x: 562.5, z: -584.6, heading: 0.88 },
-      { x: 631.0, z: -491.6, heading: 2.13, color: 0x7ee000 },
-    ]),
-    ...EXHIBITS.motorcycle,
-  ]),
-  boost,
-  world,
-);
-const quads = createQuads(
-  parked([...inCity("quad", [{ x: 628.4, z: -499.3, heading: 1.85 }]), ...EXHIBITS.quad]),
-  boost,
-  world,
-);
-// A life-size Traxxas XRT (src/xrt.js) in the St. Johanns-Park at WGS84 47.567823,
-// 7.582330, facing east to the Rhine.
-const xrts = createXrts(
-  parked([...inCity("xrt", [{ x: -186.7, z: -1178.4, heading: Math.PI / 2 }]), ...EXHIBITS.xrt]),
-  boost,
-  world,
-);
+const ambulances = build("V2", { parked, boost, world }).vehicles;
+const fireTrucks = build("V3", { parked, boost, world }).vehicles;
+const motorcycles = build("V4", { parked, boost, world }).vehicles;
+const quads = build("V5", { parked, boost, world }).vehicles;
+const xrts = build("V6", { parked, boost, world }).vehicles;
 const fromLV95 = ([e, n]) => ({ x: e - LV95[0], z: LV95[1] - n });
 // Metres the towels' tops are above the ground at the feet, so uneven ground does not cover them.
 const TOWEL = 0.06;
@@ -1374,71 +1327,27 @@ const lawn = createLawn(
   terrainAt,
 );
 scene.add(lawn);
-const tanks = createTanks(
-  parked([...inCity("tank", [{ x: 383.8, z: -631.9, heading: Math.PI / 2 }]), ...EXHIBITS.tank]),
+const tanks = build("V7", { parked, boost, world }).vehicles;
+const dinos = build("V9", { parked, boost, world }).vehicles;
+// The drone flies down to roofs (structures.top) as well.
+const drones = build("V8", {
+  heightAt,
   boost,
-  world,
-);
-// The dinosaur of the Merian Gärten (src/dino.js) at LV95 2613556.9, 1264526.6, facing west, and
-// one in the museum (src/museum.js).
-const dinos = createDinos(
-  parked([
-    ...inCity("dino", [{ ...fromLV95([2613556.9, 1264526.6]), heading: -Math.PI / 2 }]),
-    ...EXHIBITS.dino,
-  ]),
-  boost,
-  world,
-);
-const drones = createDrones(
-  [
-    ...inCity("drone", [{ x: 577.4, y: 51.3 + 2, z: 79, heading: Math.PI }]),
-    ...EXHIBITS.drone.map((p) => ({ ...p, y: heightAt(p.x, p.z) + 2 })),
-  ],
-  boost,
-  {
+  world: {
     ...world,
     ground: (x, z, y) => Math.max(world.ground(x, z, y), structures.top(x, z, y + STEP)),
   },
   camera,
-);
-// Boats (src/boats.js) on the Rhine, along the river: the fireboat between the Mittlere Brücke and
-// the Johanniterbrücke (LV95 2611109.0, 1267968.1), the police speedboat below the Mittlere Brücke
-// (LV95 2611324.4, 1267926.5), 7 m off the bank, so it can turn. They float on the water, where the
-// terrain lies flat at the water's surface, at most WATER; banks and bridge piers stop them.
+}).vehicles;
+// The boats float on the water, where the terrain lies flat at the water's surface, at most WATER;
+// banks and bridge piers stop them.
 const onWater = {
   ground: (x, z) => heightAt(x, z),
   blocked: (from, to) => heightAt(to.x, to.z) > WATER || structures.wall(from, to, true),
   intoArea,
 };
-const boat = (x, z, heading) => [{ x, y: heightAt(x, z), z, heading }];
-// Each also on the Rhine by the museum (src/museum.js).
-const museumBoat = ({ x, z, heading }) => boat(x, z, heading);
-const fireboats = createBoats(
-  "fire",
-  [...inCity("fireboat", boat(109, -568.1, 0.62)), ...EXHIBITS.fireboat.flatMap(museumBoat)],
-  boost,
-  onWater,
-);
-const policeBoats = createBoats(
-  "police",
-  [...inCity("policeboat", boat(324.4, -526.5, -2.53)), ...EXHIBITS.policeboat.flatMap(museumBoat)],
-  boost,
-  onWater,
-);
-scene.add(
-  ...[
-    ...ambulances,
-    ...fireTrucks,
-    ...motorcycles,
-    ...quads,
-    ...xrts,
-    ...tanks,
-    ...dinos,
-    ...drones,
-    ...fireboats,
-    ...policeBoats,
-  ].map((vehicle) => vehicle.group),
-);
+const fireboats = build("V15", { heightAt, boost, onWater }).vehicles;
+const policeBoats = build("V16", { heightAt, boost, onWater }).vehicles;
 let namesOn = false; // whether they were shown at the last update
 function updateNames() {
   const on = namesBox.checked;

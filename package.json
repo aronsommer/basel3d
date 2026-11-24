@@ -16,6 +16,7 @@
     "walks": "node tools/walks.mjs && node tools/size.mjs && node tools/data.mjs",
     "names": "node tools/names.mjs && node tools/size.mjs && node tools/data.mjs",
     "accept-data": "node tools/data.mjs accept",
+    "inventory": "node tools/inventory.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {
@@ -27,6 +28,7 @@
     "meshoptimizer": "^1.3.0",
     "prettier": "^3.10.1",
     "shapefile": "^0.6.6",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "three": "0.187.0"
   }
 }

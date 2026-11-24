@@ -10,12 +10,18 @@ A static website with no build step. three.js comes from jsDelivr via an import 
 npx serve
 ```
 
-`npm install` is only needed for the converters and Prettier.
+`npm install` is only needed for the converters, Prettier and the inventory check.
 
 Format with Prettier, line width 100 as set in `.prettierrc`:
 
 ```
 npm run format
+```
+
+Check that `INVENTORY.md` matches the museum's plates:
+
+```
+npm run inventory
 ```
 
 ## Structure

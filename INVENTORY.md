@@ -74,24 +74,24 @@ place in the museum too.
 
 ## Vehicles one drives or flies
 
-| Id  | What                               | Where                                 | File                      |
-| --- | ---------------------------------- | ------------------------------------- | ------------------------- |
-| V1  | Police vans (one unmarked)         | St. Johann, Klybeck, Claraplatz       | `police.js`, `catalog.js` |
-| V2  | Ambulance                          | WGS84 47.5613, 7.5854                 | `ambulance.js`            |
-| V3  | Turntable ladder fire truck        | fire station                          | `firetruck.js`            |
-| V4  | Motorcycles (one poison green)     | Claraplatz                            | `motorcycle.js`           |
-| V5  | A quad                             | Claraplatz                            | `quad.js`                 |
-| V6  | Traxxas XRT                        | St. Johanns-Park                      | `xrt.js`                  |
-| V7  | Tank                               | Kaserne                               | `tank.js`                 |
-| V8  | Drone                              | over the Münster's roof               | `drone.js`                |
-| V9  | Dinosaur                           | Merian Gärten                         | `dino.js`                 |
-| V10 | Rega H145 and AW109 on helipads    | Universitätsspital roof               | `rega.js`                 |
-| V11 | Fighter jet                        | BIZ tower roof                        | `jet.js`                  |
-| V12 | UFO                                | Novartis Campus                       | `ufo.js`                  |
-| V13 | Two airliners, circling            | over the city                         | `aircraft.js`             |
-| V14 | Yellow attack helicopter, circling | over the serpent and the Roche towers | `aircraft.js`             |
-| V15 | Fireboat                           | Rhine                                 | `boats.js`                |
-| V16 | Police speedboat                   | Rhine                                 | `boats.js`                |
+| Id  | What                               | Where                                 | File                          |
+| --- | ---------------------------------- | ------------------------------------- | ----------------------------- |
+| V1  | Police vans (one unmarked)         | St. Johann, Klybeck, Claraplatz       | `police.js`, `catalog.js`     |
+| V2  | Ambulance                          | WGS84 47.5613, 7.5854                 | `ambulance.js`, `catalog.js`  |
+| V3  | Turntable ladder fire truck        | fire station                          | `firetruck.js`, `catalog.js`  |
+| V4  | Motorcycles (one poison green)     | Claraplatz                            | `motorcycle.js`, `catalog.js` |
+| V5  | A quad                             | Claraplatz                            | `quad.js`, `catalog.js`       |
+| V6  | Traxxas XRT                        | St. Johanns-Park                      | `xrt.js`, `catalog.js`        |
+| V7  | Tank                               | Kaserne                               | `tank.js`, `catalog.js`       |
+| V8  | Drone                              | over the Münster's roof               | `drone.js`, `catalog.js`      |
+| V9  | Dinosaur                           | Merian Gärten                         | `dino.js`, `catalog.js`       |
+| V10 | Rega H145 and AW109 on helipads    | Universitätsspital roof               | `rega.js`                     |
+| V11 | Fighter jet                        | BIZ tower roof                        | `jet.js`                      |
+| V12 | UFO                                | Novartis Campus                       | `ufo.js`                      |
+| V13 | Two airliners, circling            | over the city                         | `aircraft.js`                 |
+| V14 | Yellow attack helicopter, circling | over the serpent and the Roche towers | `aircraft.js`                 |
+| V15 | Fireboat                           | Rhine                                 | `boats.js`, `catalog.js`      |
+| V16 | Police speedboat                   | Rhine                                 | `boats.js`, `catalog.js`      |
 
 ## Traffic one rides along
 
@@ -113,9 +113,10 @@ place in the museum too.
 
 ## Every number
 
-Each plate in the museum, so a number names one thing. The variants and groups after a dash
-follow the order of their places (`catalog.js`), spots (`museum.js`) or turns (`movers.js`,
-`ships.js`); a change there renumbers them, so this list goes with it.
+Each plate in the museum, so a number names one thing; `npm run inventory` checks this list and
+the ids above against the plates. The variants and groups after a dash follow the order of their
+places (`catalog.js`), spots (`museum.js`) or turns (`movers.js`, `ships.js`); a change there
+renumbers them, so this list goes with it.
 
 A click on a plate pins where its kind (or variant) is in the city, if it keeps to one place;
 the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
@@ -155,6 +156,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | A1-21 | Lynx                                                     |
 | A1-22 | Howling wolf                                             |
 | A1-23 | Wolf (twice in the city)                                 |
+| A1-24 | Wisents                                                  |
 | A2    | Whales (passing with the ships)                          |
 | A3    | Sea serpent                                              |
 | A4    | Birds                                                    |
