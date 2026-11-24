@@ -3,16 +3,19 @@
 import * as THREE from "three";
 import { fromWGS84 } from "./geo.js";
 
-// Every graffito, each { where, kind, from, to, text, back, roof }. To add one: in the viewer press
-// C over each end of where it goes, on the wall or roof (C copies the point: lat, lon, metres
-// above sea), and give where (words, to know it by), its kind (KINDS: a tag or piece), its text
-// (any Latin letters) and, for a slab behind it, back (two colours, 0xrrggbb, the one above the
-// other: FCB). Its text runs along the way from one point to the other, at most as wide as that;
-// before the wall there, its middle at the points' height but at least its kind's raise in metres
-// above the ground and at most up to TOP metres below the wall's top, out before every wall
-// behind it (AHEAD); or with roof on the roof there, read from down its slope (on a flat one from
-// left at from to right at to), in the slope's middle, at most up to EDGE metres from its ends.
-// One that finds no wall or roof there is left out, with a warning in the console.
+// Every graffito, each { where, kind, from, to, text, back, roof, deep, flip }. To add one: in the
+// viewer press C over each end of where it goes, on the wall or roof (C copies the point: lat, lon,
+// metres above sea), and give where (words, to know it by), its kind (KINDS: a tag or piece), its
+// text (any Latin letters) and, for a slab behind it, back (two colours, 0xrrggbb, the one above
+// the other: FCB). Its text runs along the way from one point to the other, at most as wide as
+// that; before the wall there, its middle at the points' height but at least its kind's raise in
+// metres above the ground and at most up to TOP metres below the wall's top, out before every wall
+// behind it (AHEAD); or with roof on the roof (or bridge) there, read from down its slope (on a
+// flat one from left at from to right at to), in the slope's middle, at most up to EDGE metres from
+// its ends; with deep too (metres), level and from left to right instead, in the band that wide
+// along the way, from and to the middles of its ends, OFF above its highest roof (for a rippled
+// one); with flip, turned round. One that finds no wall or roof there is left out, with a warning
+// in the console.
 const FCB = [0x1d3fbf, 0xd51f2a]; // blue over red
 const GRAFFITI = [
   {
@@ -46,6 +49,24 @@ const GRAFFITI = [
     from: [47.562975, 7.588992],
     to: [47.562439, 7.589382],
     text: "4057 FTP 4058",
+  },
+  {
+    where: "A 205 m long roof about 2.8 km north of the Marktplatz",
+    kind: "piece",
+    roof: true,
+    from: [47.583233, 7.589103],
+    to: [47.582569, 7.591653],
+    deep: 31,
+    text: "GANGSTER GANG 69",
+  },
+  {
+    where: "A 215 m long bridge's top, about 3.2 km north-north-east of the Marktplatz",
+    kind: "piece",
+    roof: true,
+    from: [47.584181, 7.60188],
+    to: [47.586023, 7.602109],
+    flip: true,
+    text: "JESTES PIEKNY I ZAWSZE MASZ RACJE",
   },
 ];
 // Per kind: metres above the ground on a wall, and px of its letters when drawn.
@@ -197,13 +218,13 @@ function material(canvas) {
 const plane = () => new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0); // its bottom's middle at 0
 
 // font: the font file's bytes; structures: src/buildings.js; ground(x, z, y): the height walked on
-// there, from near y; roofAt({ x, z }): the topmost roof there, { number, y }, if any. Resolves to
-// { meshes, marks: per graffito [its building, a function hiding it] }.
+// there, from near y; roofAt({ x, z }): the topmost roof or bridge there, { number, y }, if any.
+// Resolves to { meshes, marks: per graffito [its building or bridge, a function hiding it] }.
 export async function createGraffiti(font, structures, ground, roofAt) {
   document.fonts.add(await new FontFace("Cherry Bomb One", font).load());
   const [meshes, marks] = [[], []];
   const matrix = new THREE.Matrix4();
-  for (const { where, kind, from, to, text, roof, back } of GRAFFITI) {
+  for (const { where, kind, from, to, text, roof, deep, flip = false, back } of GRAFFITI) {
     const missing = (what) => console.warn(`Graffito "${text}" (${where}): no ${what} there`);
     const [[fx, fz], [tx, tz]] = [fromWGS84(...from), fromWGS84(...to)];
     const length = Math.hypot(tx - fx, tz - fz);
@@ -218,34 +239,44 @@ export async function createGraffiti(font, structures, ground, roofAt) {
         continue;
       }
       // Its plane at the middle: n down it, s metres up per metre that way, and a metres up per
-      // metre along from → to (u).
-      const top = (x, z) => structures.top(x, z, Infinity);
+      // metre along from → to (u), its height y there, and how far it goes down and up it; with
+      // deep, level at the highest roof in the band.
+      const top = (x, z) => structures.top(x, z, Infinity, -Infinity, true);
       const [ux, uz] = [(tx - fx) / length, (tz - fz) / length];
       let [nx, nz] = [uz, -ux];
-      let s = (top(mx - nx, mz - nz) - top(mx + nx, mz + nz)) / 2;
-      if (s < 0) [nx, nz, s] = [-nx, -nz, -s];
-      const a = (top(mx + ux, mz + uz) - top(mx - ux, mz - uz)) / 2;
-      // Metres the slope goes on from the middle seen from above, down it (k = 1) or up (-1):
-      // where the roof stays within 0.2 m of its plane, tried every 0.25 m.
-      const reach = (k) => {
-        let d = 0;
-        const off = (d) => top(mx + k * nx * d, mz + k * nz * d) - (over.y - k * s * d);
-        while (d < 50 && Math.abs(off(d + 0.25)) < 0.2) d += 0.25;
-        return d;
-      };
-      const [down, up] = [reach(1), reach(-1)];
+      let [s, a, y, down, up] = [0, 0, over.y, deep / 2, deep / 2];
+      if (deep) {
+        y = -Infinity;
+        for (let i = 0; i <= length; i += 2)
+          for (let j = -deep / 2; j <= deep / 2; j += 0.25)
+            y = Math.max(y, top(fx + ux * i + nx * j, fz + uz * i + nz * j));
+      } else {
+        s = (top(mx - nx, mz - nz) - top(mx + nx, mz + nz)) / 2;
+        if (s < 0) [nx, nz, s] = [-nx, -nz, -s];
+        a = (top(mx + ux, mz + uz) - top(mx - ux, mz - uz)) / 2;
+        // Metres the slope goes on from the middle, down it (k = 1) or up (-1): where the roof
+        // stays within 0.2 m of its plane, tried every 0.25 m.
+        const reach = (k) => {
+          let d = 0;
+          const off = (d) => top(mx + k * nx * d, mz + k * nz * d) - (over.y - k * s * d);
+          while (d < 50 && Math.abs(off(d + 0.25)) < 0.2) d += 0.25;
+          return d;
+        };
+        [down, up] = [reach(1), reach(-1)];
+      }
       // Its axes in the plane: right along u, upward up the slope; and out of the plane.
       const slope = new THREE.Vector3(nx, -s, nz); // down it per metre seen from above
       const right = new THREE.Vector3(ux, a, uz).normalize();
       const out = new THREE.Vector3().crossVectors(right, slope).normalize();
       if (out.y < 0) out.negate();
       const upward = new THREE.Vector3().crossVectors(out, right);
-      // Read from down the slope; on one flat to 1 cm per metre, from from's side.
-      if (upward.y < -0.01) [right, upward].forEach((v) => v.negate());
+      // Read from down the slope; on one flat to 1 cm per metre, from from's side; with flip from
+      // the other side.
+      if (upward.y < -0.01 !== flip) [right, upward].forEach((v) => v.negate());
       const width = Math.min(length, ((down + up) * Math.hypot(1, s) - 2 * EDGE) * aspect);
       // Its bottom's middle: half its height down the slope from the slope's middle, OFF out.
       mesh.position
-        .set(mx, over.y, mz)
+        .set(mx, y, mz)
         .addScaledVector(slope, (down - up) / 2)
         .addScaledVector(upward, -width / aspect / 2)
         .addScaledVector(out, OFF);

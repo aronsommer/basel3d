@@ -333,14 +333,14 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
           }
       return false;
     },
-    // The height of the highest roof (or other face not upright) of a building (not a bridge) at
-    // the point x, z, at most y; -Infinity if none. Hidden ones are left out, and those not
-    // reaching above `above`, unlooked at.
-    top(x, z, y, above = -Infinity) {
+    // The height of the highest roof (or other face not upright) of a building (or with bridges,
+    // of a bridge too) at the point x, z, at most y; -Infinity if none. Hidden ones are left out,
+    // and those not reaching above `above`, unlooked at.
+    top(x, z, y, above = -Infinity, bridges = false) {
       if (!boxes) measure();
       let best = -Infinity;
       for (const n of cells.get(cellKey(cellOf(x), cellOf(z))) ?? NONE) {
-        if (n >= count || !meshesOf[n].length) continue;
+        if ((n >= count && !bridges) || !meshesOf[n].length) continue;
         const b = 6 * n;
         if (x < boxes[b] || x > boxes[b + 3] || z < boxes[b + 2] || z > boxes[b + 5]) continue;
         if (boxes[b + 4] <= above) continue;

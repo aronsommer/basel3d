@@ -1084,12 +1084,14 @@ const inside = (outline, x, z) =>
   }, false);
 for (const number of structures.within((x, z) => inside(ROCHE, x, z)))
   structures.paint(number, { wall: 0xf4f4f2 });
-// The standing building a ray from above first meets at LV95 east, north, or over a scene point:
-// its number and the point hit (x, y, z); undefined if none.
+// The standing building (or with onBridges, bridge too) a ray from above first meets at LV95 east,
+// north, or over a scene point: its number and the point hit (x, y, z); undefined if none.
 const roofAt = (lv95) => roofOver(fromLV95(lv95));
-function roofOver({ x, z }) {
+function roofOver({ x, z }, onBridges = false) {
   fromAbove.set(new THREE.Vector3(x, 2000, z), DOWN);
-  const hit = fromAbove.intersectObject(buildings.scene)[0];
+  const hit = fromAbove.intersectObjects(
+    onBridges ? [buildings.scene, bridges.scene] : [buildings.scene],
+  )[0];
   return hit && { number: hit.object.geometry.attributes._building.getX(hit.face.a), ...hit.point };
 }
 // Its green roof (LV95 2612593.3, 1267509.4) grey as another's (LV95 2612855.8, 1267667.0).
@@ -1191,9 +1193,9 @@ for (const [x, z] of spires) {
   scene.add(flag);
   onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
 }
-// Graffiti on walls (src/graffiti.js).
+// Graffiti on walls, roofs and bridges (src/graffiti.js).
 load(["CherryBombOne.woff2"], () => {})
-  .then(([font]) => createGraffiti(font, structures, walkGround, roofOver))
+  .then(([font]) => createGraffiti(font, structures, walkGround, (at) => roofOver(at, true)))
   .then(({ meshes, marks }) => {
     scene.add(...meshes);
     for (const [number, hide] of marks)
