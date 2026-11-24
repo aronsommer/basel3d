@@ -154,7 +154,8 @@ function park({ x, z, turn = 0 }, { parked, towel, TOWEL }) {
   ];
 }
 
-// Black men in Kleinbasel (S3), each in other clothes, some with a cap or beanie.
+// Black men in Kleinbasel (S3), each in other clothes, some with a cap or beanie, some
+// facing a point of their own.
 const MEN = [
   [2611652.0, 1267913.7],
   [2611650.0, 1267913.0],
@@ -184,6 +185,8 @@ const MEN = [
   [2611708.8, 1267932.1],
   [2611709.9, 1267942.5],
   [2611722.2, 1267940.4],
+  [2611599.3, 1267967.0, [2611590.3, 1267962.5]], // facing the Untere Rebgasse
+  [2611623.5, 1267941.5, [2611616.0, 1267932.8]],
 ];
 const MEN_LOOKS = mix(
   {
@@ -236,17 +239,19 @@ const WOMEN_LOOKS = [
   [0xd9a27a, 0x2a1d14, 0x64ffda, 0x111111, 0x64ffda], // mint and black
   [0x8a5634, 0x111111, 0xff4081, 0x311b92, 0x311b92], // pink and indigo
 ].map(([skin, hair, top, bottom, shoes]) => ({ body: "night", skin, hair, top, bottom, shoes }));
-// People standing at LV95 points (S3, S4), with these looks in turn, each facing toward a point
-// (turned up to SPREAD radians away, each a little otherwise) or else the others within NEAR
-// metres, or alone k radians from south; in the museum, spread over too long a way, in a row
-// across its place, ROW metres apart, facing as it (its heading). A kind of the catalog, its place
-// their middle.
+// People standing at LV95 points (S3, S4), with these looks in turn, each facing its own point (a
+// third entry), else toward a point (turned up to SPREAD radians away, each a little otherwise) or
+// else the others within NEAR metres, or alone k radians from south; in the museum, spread over
+// too long a way, in a row across its place, ROW metres apart, facing as it (its heading). A kind
+// of the catalog, its place their middle.
 const [SPREAD, NEAR, ROW] = [0.5, 10, 1.2];
 function standing(points, looks, toward) {
   const city = points.map(lv95);
   const facing = (p, { x, z }) => Math.atan2(x - p.x, z - p.z);
   const target = toward && lv95(toward);
   const headed = city.map((p, k) => {
+    const own = points[k][2];
+    if (own) return { ...p, heading: facing(p, lv95(own)) };
     if (target) return { ...p, heading: facing(p, target) + SPREAD * Math.sin(k * 2.7) };
     const near = city.filter((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) < NEAR);
     return { ...p, heading: near.length ? facing(p, middleOf(near)) : k };

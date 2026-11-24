@@ -125,7 +125,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | L1    | Basiliskbrunnen                                          |
 | S1    | Old man feeding swans                                    |
 | S2    | Sunbathing, yoga and dancing                             |
-| S3    | Men in Kleinbasel (all 28)                               |
+| S3    | Men in Kleinbasel (all 30)                               |
 | S4    | Women in a lane (all 16)                                 |
 | S5-1  | Friends dancing on the western Roche tower               |
 | S5-2  | Friends dancing on the eastern Roche tower (other looks) |

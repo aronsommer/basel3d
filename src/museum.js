@@ -202,7 +202,7 @@ const LAYOUT = {
   L1: [79, -125, 4],
   S1: [65, -125, 5],
   S2: [49, -125, 6],
-  S3: [19, -125, 4], // 33 m wide, a row
+  S3: [18, -125, 4], // 35 m wide, a row
   S4: [-15, -125, 4], // 19 m
   S5: [-48, -125, 5], // and the second tower's friends 18 m east of the first's
   S6: [0, -95, 20],
