@@ -313,7 +313,7 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
   // Vehicles far from the camera look ahead only every SLOW-th frame (each on its own frame) and
   // move on their last result in between; from afar nobody sees the difference.
   const FAR = 1500; // metres
-  const SLOW = 3;
+  const SLOW = 6;
   let frame = 0;
   // Places the cars and notes their points and those of the stretches ahead; those of a vehicle
   // away are hidden.

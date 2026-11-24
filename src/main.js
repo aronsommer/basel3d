@@ -351,9 +351,12 @@ const materials = {
   }),
 };
 const buildings = glb || { scene: createCity(cityBuffer, materials) };
+// They never move: each one's matrix made once, not every frame.
 for (const { scene: model } of [buildings, bridges]) {
   model.traverse((o) => {
     if (o.isMesh) o.material = materials[o.material.name];
+    o.updateMatrix();
+    o.matrixAutoUpdate = false;
   });
   scene.add(model);
 }
