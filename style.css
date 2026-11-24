@@ -41,6 +41,7 @@ p {
 #loading,
 #off,
 #walk,
+#north,
 #menu,
 #dev,
 #points,
@@ -66,6 +67,7 @@ p {
    steering buttons on desktop. */
 #off,
 #walk,
+#north,
 #menu,
 #dev,
 #points {
@@ -80,11 +82,13 @@ p {
   -webkit-user-select: none; /* Safari */
   user-select: none;
 }
-/* Right: the closed menu and below it the button to get off (riding) or to walk (else), each
-   only an icon in a square, as the steering buttons; the open menu covers them. Left: the counter. All out of the notch and the rounded corners
-   (viewport-fit=cover in index.html). */
+/* Right: the closed menu, below it the button to get off (riding) or to walk (else), below that
+   the one to look straight down, north up; each only an icon in a square, as the steering
+   buttons; the open menu covers them. Left: the counter. All out of the notch and the rounded
+   corners (viewport-fit=cover in index.html). */
 #off,
 #walk,
+#north,
 #menu,
 #counter,
 #panels {
@@ -93,11 +97,13 @@ p {
 }
 #off,
 #walk,
+#north,
 #menu {
   width: var(--button);
 }
 #off,
-#walk {
+#walk,
+#north {
   padding-inline: 10px;
 }
 /* Three lines for the menu, a cross to get off; 20px tall with their margins, as a line of
@@ -108,6 +114,7 @@ p {
 }
 #off svg,
 #walk svg,
+#north svg,
 #menu summary svg {
   display: block;
   width: 16px;
@@ -124,6 +131,7 @@ p {
 }
 #off,
 #walk,
+#north,
 #menu {
   right: calc(env(safe-area-inset-right) + var(--edge));
 }
@@ -146,6 +154,18 @@ p {
 /* Pressed: the next click or tap sets one down. */
 #walk[aria-pressed="true"] {
   color: #0ff;
+}
+/* Below the button to walk. */
+#north {
+  top: calc(env(safe-area-inset-top) + var(--edge) + 2 * (var(--button) + var(--gap)));
+  cursor: pointer;
+}
+/* A compass needle (red north, white south, each half light and dark), turned to the north. */
+#north svg {
+  width: 9px;
+  height: 27px;
+  margin: -3.5px auto;
+  stroke: none;
 }
 /* Below the counter, the panels ticked in the menu: "Dev" (src/dev.js) above "Points"
    (src/points.js). */
@@ -620,6 +640,7 @@ body:not([data-mode="loading"]) #loading,
 body[data-mode="loading"] #menu,
 body:not([data-mode="ride"]) #off,
 body:not([data-mode="orbit"]) #walk,
+body:not([data-mode="orbit"]) #north,
 body[data-mode="loading"] #counter {
   display: none;
 }

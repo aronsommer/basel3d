@@ -2276,6 +2276,23 @@ function setPlacing(on) {
   where.hidden = !on;
 }
 walkButton.addEventListener("click", () => setPlacing(!placing));
+// Looks straight down from as far away; right above its target the orbit faces north.
+document.getElementById("north").addEventListener("click", () => {
+  camera.position.set(
+    orbit.target.x,
+    orbit.target.y + camera.position.distanceTo(orbit.target),
+    orbit.target.z,
+  );
+  fling.set(0, 0, 0);
+});
+// Its needle turned to the north on the screen (whole degrees, set only when they change).
+const needle = document.querySelector("#north svg");
+let needleTurn = 0;
+function turnNeedle() {
+  const [x, z] = [camera.position.x - orbit.target.x, camera.position.z - orbit.target.z];
+  const turn = Math.round(THREE.MathUtils.radToDeg(Math.atan2(x, z))); // minus the bearing
+  if (turn !== needleTurn) needle.style.transform = `rotate(${(needleTurn = turn)}deg)`;
+}
 // Sets one down at a screen point, if there.
 function setDown(clientX, clientY) {
   raycaster.setFromCamera(
@@ -3049,7 +3066,10 @@ renderer.setAnimationLoop((time) => {
   // The first frame's time can be before last.
   const dt = THREE.MathUtils.clamp((time - last) / 1000, 0, 0.1);
   last = time;
-  if (!riding) updateOrbit(dt);
+  if (!riding) {
+    updateOrbit(dt);
+    turnNeedle();
+  }
   writeView(time);
   updateHover();
   updateTrees();
