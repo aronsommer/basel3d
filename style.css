@@ -3,6 +3,14 @@
   font-weight: 100 900;
   src: url(fonts/Inter.woff2) format("woff2");
 }
+/* The grid of all that lies over the scene: EDGE from the screen's edges, BUTTON high (8px +
+   20px + 8px, as the menu), GAP apart; glass rounded by RADIUS. */
+:root {
+  --edge: 12px;
+  --button: 36px;
+  --gap: 8px;
+  --radius: 10px;
+}
 html,
 body {
   margin: 0;
@@ -52,7 +60,7 @@ p {
   padding: 10px 16px;
   font-size: 18px;
   white-space: nowrap; /* one line, also on phones */
-  border-radius: 10px;
+  border-radius: var(--radius);
 }
 /* The buttons and the menu look alike: 36px tall (8px + 20px + 8px) like the
    steering buttons on desktop. */
@@ -68,7 +76,7 @@ p {
   color: inherit;
   text-align: center;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius);
   -webkit-user-select: none; /* Safari */
   user-select: none;
 }
@@ -81,12 +89,12 @@ p {
 #counter,
 #panels {
   position: absolute;
-  width: 96px;
+  width: 100px;
 }
 #off,
 #walk,
 #menu {
-  width: 36px;
+  width: var(--button);
 }
 #off,
 #walk {
@@ -117,14 +125,14 @@ p {
 #off,
 #walk,
 #menu {
-  right: calc(env(safe-area-inset-right) + 12px);
+  right: calc(env(safe-area-inset-right) + var(--edge));
 }
 #counter,
 #panels {
-  left: calc(env(safe-area-inset-left) + 12px);
+  left: calc(env(safe-area-inset-left) + var(--edge));
 }
 #menu {
-  top: calc(env(safe-area-inset-top) + 12px);
+  top: calc(env(safe-area-inset-top) + var(--edge));
 }
 /* The top of the numbers (about 6px below the roof's tip) level with the menu's top. */
 #counter {
@@ -132,20 +140,20 @@ p {
 }
 #off,
 #walk {
-  top: calc(env(safe-area-inset-top) + 56px);
+  top: calc(env(safe-area-inset-top) + var(--edge) + var(--button) + var(--gap));
   cursor: pointer;
 }
 /* Pressed: the next click or tap sets one down. */
 #walk[aria-pressed="true"] {
   color: #0ff;
 }
-/* Below the counter, the panels ticked in the menu, 8px apart: "Dev"
-   (src/dev.js) above "Points" (src/points.js). */
+/* Below the counter, the panels ticked in the menu: "Dev" (src/dev.js) above "Points"
+   (src/points.js). */
 #panels {
-  top: calc(env(safe-area-inset-top) + 56px); /* as "Get off" */
+  top: calc(env(safe-area-inset-top) + var(--edge) + var(--button) + var(--gap)); /* as "Get off" */
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gap);
 }
 /* In each, one below the other: the frame times' numbers, then a box per part and the
    buttons; the points' buttons. Tighter, to fit the column's width and hide
@@ -235,7 +243,7 @@ p {
 #menu[open] summary {
   position: relative; /* over the entries beside it, so it can be tapped */
   z-index: 1;
-  width: 36px;
+  width: var(--button);
   margin-left: auto;
   margin-bottom: 0;
 }
@@ -428,7 +436,7 @@ p {
   padding: 4px 10px;
   line-height: 20px;
   text-align: center;
-  border-radius: 8px;
+  border-radius: var(--radius);
   pointer-events: none;
 }
 /* At the top in the middle, between the counter and the menu, while the button to walk waits
@@ -436,13 +444,13 @@ p {
 #where,
 #esc {
   position: absolute;
-  top: calc(env(safe-area-inset-top) + 12px);
+  top: calc(env(safe-area-inset-top) + var(--edge));
   left: 50%;
   transform: translateX(-50%);
   padding: 8px 14px;
   line-height: 20px;
   white-space: nowrap;
-  border-radius: 10px;
+  border-radius: var(--radius);
   pointer-events: none;
 }
 /* Where the helicopter's rockets would hit (shoot in src/main.js): a ring with a dot, white
@@ -492,7 +500,7 @@ p {
     ". . . Stop Space"
     "ArrowLeft ArrowRight . ArrowDown ArrowUp";
   align-items: center;
-  gap: 8px;
+  gap: var(--gap);
   pointer-events: none;
 }
 #steer [data-key="ArrowUp"] {
@@ -524,7 +532,7 @@ p {
   font-size: 18px;
   color: inherit;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius);
   cursor: pointer;
   pointer-events: auto;
   touch-action: none;
@@ -561,19 +569,18 @@ p {
   }
   /* The buttons smaller, as they only show the keys. */
   #steer button {
-    width: 36px;
-    height: 36px;
+    width: var(--button);
+    height: var(--button);
     font-size: 12px;
-    border-radius: 8px;
     pointer-events: none;
+  }
+  #steer [data-key="Space"],
+  #steer #stop {
+    border-radius: var(--radius);
   }
   #steer [data-key="Space"] {
     width: auto; /* as wide as the three above */
     padding: 0 12px;
-    border-radius: 8px;
-  }
-  #steer #stop {
-    border-radius: 8px;
   }
   #steer kbd {
     display: block;
