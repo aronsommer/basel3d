@@ -130,9 +130,9 @@ function piece(geometry, slot, [x, y, z], limb = 0, options = []) {
 }
 // The heads' hair, caps and beanies, on a head whose top is at y.
 const heads = (y) => [
-  piece(box(0.24, 0.08, 0.26), "hair", [0, y + 0.02, -0.01], 0, ["hair", "long"]),
+  piece(box(0.24, 0.08, 0.27), "hair", [0, y + 0.02, -0.01], 0, ["hair", "long"]),
   piece(box(0.22, 0.4, 0.08), "hair", [0, y - 0.17, -0.14], 0, ["long"]),
-  piece(box(0.24, 0.08, 0.26), "hat", [0, y + 0.02, -0.01], 0, ["cap", "backcap"]),
+  piece(box(0.24, 0.08, 0.27), "hat", [0, y + 0.02, -0.01], 0, ["cap", "backcap"]),
   piece(box(0.2, 0.02, 0.12), "hat", [0, y - 0.01, 0.17], 0, ["cap"]),
   piece(box(0.2, 0.02, 0.12), "hat", [0, y - 0.01, -0.19], 0, ["backcap"]),
   piece(box(0.25, 0.14, 0.27), "hat", [0, y + 0.03, -0.01], 0, ["beanie"]),
@@ -179,7 +179,7 @@ function face(y, z, w) {
 // metres out and w wide: with the option "crutches".
 const crutches = (arm, fore, leg, w) => [
   piece(box(w + 0.04, 0.42, w + 0.06), "white", [leg, 0.3, 0], 1, ["crutches"]),
-  piece(box(w, 0.1, 0.3), "white", [leg, 0.05, 0.03], 1, ["crutches"]),
+  piece(box(w + 0.01, 0.1, 0.3), "white", [leg, 0.05, 0.03], 1, ["crutches"]),
   ...[-1, 1].flatMap((s) => [
     piece(box(0.035, 1.125, 0.035), "grey", [s * arm, 0.5325, -0.08], 2 * s, ["crutches"]), // pole
     piece(box(0.03, 0.03, 0.1125), "black", [s * arm, 0.855, -0.00625], 2 * s, ["crutches"]), // grip
@@ -353,7 +353,7 @@ const BODIES = {
     piece(box(0.08, 0.07, 0.08), "skin", [0, 1.535, 0]),
     piece(box(0.2, 0.24, 0.22), "skin", [0, 1.68, 0]),
     ...face(1.71, 0.11, 0.2),
-    piece(box(0.22, 0.06, 0.24), "hair", [0, 1.8, -0.01]),
+    piece(box(0.22, 0.06, 0.25), "hair", [0, 1.8, -0.01]),
     piece(box(0.22, 0.4, 0.08), "hair", [0, 1.6, -0.1]),
     piece(box(0.06, 0.16, 0.22), "top", [0.31, 0.98, 0]),
   ]),
@@ -362,13 +362,13 @@ const BODIES = {
     ...[-1, 1].flatMap((s) => [
       piece(box(0.06, 0.34, 0.06), "skin", [s * 0.07, 0.17, 0.2], 3 * s),
       piece(box(0.06, 0.34, 0.06), "skin", [s * 0.07, 0.17, -0.2], -3 * s),
-      piece(box(0.05, 0.08, 0.04), "hair", [s * 0.06, 0.66, 0.31]),
+      piece(box(0.04, 0.08, 0.04), "hair", [s * 0.06, 0.66, 0.31]),
       piece(box(0.03, 0.03, 0.03), "hair", [s * 0.085, 0.59, 0.41]), // eyes
     ]),
     piece(box(0.2, 0.2, 0.55), "skin", [0, 0.42, 0]),
     piece(box(0.17, 0.17, 0.2), "skin", [0, 0.55, 0.34]),
     piece(box(0.09, 0.08, 0.12), "hair", [0, 0.51, 0.48]),
-    piece(box(0.19, 0.04, 0.05), "top", [0, 0.5, 0.25]),
+    piece(box(0.21, 0.05, 0.06), "top", [0, 0.5, 0.25]),
     piece(box(0.04, 0.04, 0.22), "skin", [0, 0.52, -0.36]),
   ]),
 };
