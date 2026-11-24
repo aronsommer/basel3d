@@ -30,6 +30,9 @@ export function toggle() {
   } catch {} // storage blocked: it stays as it is
   location.reload();
 }
+// All of it seen from above when it opens (src/main.js): its middle (WGS84) and the metres it
+// spans north to south and west to east, the switch and the ferry's landings too, with some room.
+export const OVERVIEW = [47.58101, 7.581005, 900, 800];
 // The switch: a big push button, red while the museum is closed and a lighter green while it is
 // open, on a low grey base on the ground, 1.5 m across and 0.375 m high, among trees west of the
 // museum (ground(x, z): the height there).

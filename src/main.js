@@ -38,6 +38,7 @@ import {
   FLOCK,
   MUSEUM,
   OPEN,
+  OVERVIEW,
   ROAD,
   SERPENT,
   SWIM,
@@ -2503,7 +2504,7 @@ renderer.domElement.addEventListener(
 renderer.domElement.addEventListener("pointerup", (e) => {
   if (e.button !== 0 || stoppedGlide || steered() || movingLabels) return;
   if (mouseLook()) {
-    if (buttonAt(innerWidth / 2, innerHeight / 2)) return toggleMuseum();
+    if (buttonAt(innerWidth / 2, innerHeight / 2)) return switchMuseum();
     // Gets on what the dot in the middle is on, freeing the mouse, if anything.
     const found = vehicleAt(innerWidth / 2, innerHeight / 2);
     if (!found) return;
@@ -2521,7 +2522,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
     if (mouse && riding?.ride === footRide) captureMouse();
     return;
   }
-  if (buttonAt(e.clientX, e.clientY, mouse ? 0 : FINGER)) return toggleMuseum();
+  if (buttonAt(e.clientX, e.clientY, mouse ? 0 : FINGER)) return switchMuseum();
   const found = vehicleAt(e.clientX, e.clientY, mouse ? 0 : FINGER);
   if (found) ride(found, e.clientX, e.clientY);
   else if (mouse && riding?.ride === footRide) captureMouse();
@@ -2879,6 +2880,20 @@ function writeView(time) {
   if (hash !== location.hash) history.replaceState(null, "", hash);
 }
 addEventListener("hashchange", readView);
+// Opens or closes the museum (src/museum.js); opening, the page comes back looking straight down
+// on all of it, north up: so in the URL, which no view written meanwhile overwrites.
+function switchMuseum() {
+  if (!OPEN) {
+    const [lat, lon, height, width] = OVERVIEW;
+    const metres = Math.max(height, (width * innerHeight) / innerWidth); // the screen's height
+    const zoom = Math.log2(
+      (EARTH * Math.cos(THREE.MathUtils.degToRad(lat)) * innerHeight) / (256 * metres),
+    );
+    history.replaceState(null, "", `#map=${zoom.toFixed(2)}/${lat}/${lon}/0/0`);
+    viewWritten = Infinity;
+  }
+  toggleMuseum();
+}
 
 // Start where the URL says, else above the city, looking at the Münster.
 if (!readView()) {
