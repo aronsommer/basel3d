@@ -2,13 +2,14 @@
 // Copy stats, which copies it all, over a second (but at once after ticking it), the frames per
 // second; the ms to draw a frame (so it shows the cost even where the screen's refresh rate caps
 // the frames), split into the CPU's part (render, handing the work to the GPU) and the wait for the
-// GPU to finish, timed every SAMPLE-th frame only, so the others run as usual; and the triangles
-// drawn. Below, a button steps through the SCALES of the resolution; a box per part hides and shows
-// it, to see what it costs; then "Aerial" shows the aerial photo as the ground, "Riders",
-// "Graffiti" (showing the graffiti editor's own panel at the bottom right while ticked), "God mode"
-// (src/main.js, godAt) and, while the museum is open, at the bottom "Move labels", none ticked at
-// first. All of it lives here, the menu entry in index.html and the styles in style.css (#dev-box,
-// #dev), so it can be taken out whole (but godAt, showRiders, moveLabels and src/sprayer.js).
+// GPU to finish, timed every SAMPLE-th frame only, so the others run as usual; the triangles
+// drawn and the draw calls. Below, a button steps through the SCALES of the resolution; a box per
+// part hides and shows it, to see what it costs; then "Aerial" shows the aerial photo as the
+// ground, "Riders", "Graffiti" (showing the graffiti editor's own panel at the bottom right while
+// ticked), "God mode" (src/main.js, godAt) and, while the museum is open, at the bottom "Move
+// labels", none ticked at first. All of it lives here, the menu entry in index.html and the
+// styles in style.css (#dev-box, #dev), so it can be taken out whole (but godAt, showRiders,
+// moveLabels and src/sprayer.js).
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -130,6 +131,7 @@ export function createDev(renderer, render, parts, aerial, god, riders, labels, 
       ["CPU", `${(cpu / timed).toFixed(1)} ms`],
       ["GPU", `${(gpu / timed).toFixed(1)} ms`],
       ["Tris", `${(renderer.info.render.triangles / 1e6).toFixed(2)} M`],
+      ["Calls", renderer.info.render.calls],
     ];
     stats.replaceChildren(...rows.flat().map((textContent) => element("span", { textContent })));
     shown = rows.map((row) => row.join(" "));
