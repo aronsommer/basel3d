@@ -723,6 +723,7 @@ tramGroup.visible = true;
 const tramLines = tramGroup.children.toSorted((a, b) =>
   a.name.localeCompare(b.name, "en", { numeric: true }),
 );
+for (const line of tramLines) line.renderOrder = 2; // over the other lines (checkLines: 1)
 const tramBox = document.getElementById("trams");
 const kindLines = {
   ...Object.fromEntries(MOVER_KINDS.map((kind, i) => [kind, movers[i].routes])),
