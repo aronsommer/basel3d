@@ -41,22 +41,53 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   const NONE = []; // an empty square's numbers
   const cellOf = (at) => Math.floor(at / GRID);
   const cellKey = (column, row) => column * 4096 + row;
+  // MathUtils.denormalize's divisor per array type (none for floats).
+  const UNITS = new Map([
+    [Uint32Array, 4294967295],
+    [Uint16Array, 65535],
+    [Uint8Array, 255],
+    [Uint8ClampedArray, 255],
+    [Int32Array, 2147483647],
+    [Int16Array, 32767],
+    [Int8Array, 127],
+  ]);
   function measure() {
     boxes = new Float32Array(meshesOf.length * 6);
     for (let i = 0; i < boxes.length; i++) boxes[i] = i % 6 < 3 ? Infinity : -Infinity;
-    const vertex = new THREE.Vector3();
+    // An attribute's values straight from its array (interleaved or not), as getX reads them, and
+    // each vertex moved as applyMatrix4 does: the same numbers, without a call per value (it runs
+    // for every vertex of the city).
+    const values = (a) =>
+      a.isInterleavedBufferAttribute
+        ? [a.data.array, a.data.stride, a.offset]
+        : [a.array, a.itemSize, 0];
     for (const model of [buildings, bridges])
       model.traverse((o) => {
         if (!o.isMesh) return;
-        const { position, _building: number } = o.geometry.attributes;
+        const { position, _building } = o.geometry.attributes;
         o.updateWorldMatrix(true, false);
-        for (let i = 0; i < number.count; i++) {
-          const n = number.getX(i);
-          vertex.fromBufferAttribute(position, i).applyMatrix4(o.matrixWorld);
-          for (let d = 0; d < 3; d++) {
-            boxes[6 * n + d] = Math.min(boxes[6 * n + d], vertex.getComponent(d));
-            boxes[6 * n + 3 + d] = Math.max(boxes[6 * n + 3 + d], vertex.getComponent(d));
-          }
+        const e = o.matrixWorld.elements;
+        const [p, step, at] = values(position);
+        const [numbers, numberStep, numberAt] = values(_building);
+        // Normalized, divided as MathUtils.denormalize does (its scale per array type).
+        const unit = position.normalized ? (UNITS.get(p.constructor) ?? 0) : 0;
+        const read = (v) => (unit ? Math.max(v / unit, -1) : v);
+        for (let i = 0; i < _building.count; i++) {
+          const n = numbers[i * numberStep + numberAt];
+          const x = read(p[i * step + at]);
+          const y = read(p[i * step + at + 1]);
+          const z = read(p[i * step + at + 2]);
+          const w = 1 / (e[3] * x + e[7] * y + e[11] * z + e[15]);
+          const b = 6 * n;
+          const sx = (e[0] * x + e[4] * y + e[8] * z + e[12]) * w;
+          const sy = (e[1] * x + e[5] * y + e[9] * z + e[13]) * w;
+          const sz = (e[2] * x + e[6] * y + e[10] * z + e[14]) * w;
+          if (sx < boxes[b]) boxes[b] = sx;
+          if (sy < boxes[b + 1]) boxes[b + 1] = sy;
+          if (sz < boxes[b + 2]) boxes[b + 2] = sz;
+          if (sx > boxes[b + 3]) boxes[b + 3] = sx;
+          if (sy > boxes[b + 4]) boxes[b + 4] = sy;
+          if (sz > boxes[b + 5]) boxes[b + 5] = sz;
         }
       });
     for (let n = 0; n < meshesOf.length; n++) {

@@ -59,9 +59,12 @@ export function createCity(buffer, materials) {
     },
     (number, pos, roof, wall, ranges, colours, c) => {
       // Adds the vertex v to a mesh, with the colour at `at` and an alpha; gives its number there.
+      // (It runs for every vertex: no subarrays.)
       const add = (m, v, at, alpha) => {
         const n = m.vertices++;
-        m.position.set(pos.subarray(v * 3, v * 3 + 3), n * 3);
+        m.position[n * 3] = pos[v * 3];
+        m.position[n * 3 + 1] = pos[v * 3 + 1];
+        m.position[n * 3 + 2] = pos[v * 3 + 2];
         m.number[n] = number;
         m.colour[n * 4] = colours[at];
         m.colour[n * 4 + 1] = colours[at + 1];
@@ -76,17 +79,21 @@ export function createCity(buffer, materials) {
         if (placed[v] < 0) placed[v] = add(top, v, c, 255);
         top.index[top.indices++] = placed[v];
       }
-      // The wall triangles with the same _wall share their vertices.
+      // The wall triangles with the same _wall share their vertices: a vertex placed for this
+      // range (in: its range's number + 1) is used again, else placed anew.
       const side = tile.wall;
       room(side, wall.length, wall.length);
       const alpha = colours[c + 6];
+      const within = new Int32Array(pos.length / 3);
       for (let r = 0, i = 0; r < ranges.length; r += 4) {
-        placed.fill(-1);
         for (const end = i + ranges[r + 3] * 3; i < end; i++) {
           const v = wall[i];
-          if (placed[v] < 0) {
+          if (within[v] !== r + 1) {
+            within[v] = r + 1;
             const n = (placed[v] = add(side, v, c + 3, alpha));
-            side.range.set(ranges.subarray(r, r + 3), n * 4);
+            side.range[n * 4] = ranges[r];
+            side.range[n * 4 + 1] = ranges[r + 1];
+            side.range[n * 4 + 2] = ranges[r + 2];
           }
           side.index[side.indices++] = placed[v];
         }
