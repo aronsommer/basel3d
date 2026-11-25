@@ -14,7 +14,7 @@ const POINTS_KEY = "basel3d.points"; // the marks' lines, as Copy points copies 
 export const TIP = 11 * Math.SQRT2; // px from a mark's middle down to its tip, on its point (style.css)
 
 // pointAt(x, y): the scene point at a screen point (px), or null; toText(point): its line;
-// fromText(line): its point, or null; onScreen(point): { x, y, front }; show(points): moves the
+// fromText(line): its point, or null; onScreen(point): { x, y, inside }; show(points): moves the
 // view to them (src/main.js).
 export function createPoints(pointAt, toText, fromText, onScreen, show) {
   const box = document.getElementById("points-box");
@@ -53,9 +53,11 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   } catch {} // storage blocked
   // After each change: the panel while ticked; its buttons: Delete last while recording, else
   // Paste points; Delete last, Copy and Clear points disabled without marks; the marks hidden while
-  // unticked (update shows them); the tick and the marks stored.
+  // unticked (update shows them), their numbers smaller from 100 marks on (style.css); the tick and
+  // the marks stored.
   const sync = () => {
     panel.hidden = !box.checked;
+    layer.classList.toggle("long", points.length >= 100);
     if (panel.hidden) for (const { mark } of points) mark.hidden = true;
     record.textContent = on ? "Stop recording" : "Record points";
     deleteLast.hidden = !on;
@@ -119,9 +121,9 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
     update() {
       if (panel.hidden) return;
       for (const { point, mark } of points) {
-        const { x, y, front } = onScreen(point);
-        mark.hidden = !front;
-        mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+        const { x, y, inside } = onScreen(point);
+        if (mark.hidden === inside) mark.hidden = !inside;
+        if (inside) mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
       }
     },
   };

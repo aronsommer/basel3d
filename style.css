@@ -541,6 +541,7 @@ p {
   text-align: center;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  will-change: transform; /* each on a layer of its own: moved each frame, painted once */
 }
 /* The points marked in the Points panel (src/points.js), numbered, each a pin: one shape behind
    the number, its square's corner turned down to a point, the other three corners round, so its
@@ -549,6 +550,10 @@ p {
 #badges .mark {
   color: #fff;
   box-shadow: none;
+}
+/* All smaller from 100 marks on (src/points.js), so three digits fit. */
+#badges.long .mark {
+  font-size: 10px;
 }
 #badges .mark::before {
   content: "";

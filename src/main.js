@@ -751,16 +751,18 @@ tramBox.addEventListener("change", () => {
 });
 for (const box of kindBoxes)
   box.addEventListener("change", () => (kindLines[box.dataset.kind].visible = box.checked));
-// Where a scene point is on the screen (px) and whether it is in front of the camera, by the view
-// of the camera's last updateMatrixWorld.
+// Where a scene point is on the screen (px), whether it is in front of the camera, and whether
+// also within EDGE px round the screen (inside: a badge or mark there may show), by the view of
+// the camera's last updateMatrixWorld.
 const projected = new THREE.Vector3();
+const EDGE = 40;
 function onScreen(point) {
   projected.copy(point).project(camera);
-  return {
-    x: ((projected.x + 1) / 2) * innerWidth,
-    y: ((1 - projected.y) / 2) * innerHeight,
-    front: projected.z < 1,
-  };
+  const x = ((projected.x + 1) / 2) * innerWidth;
+  const y = ((1 - projected.y) / 2) * innerHeight;
+  const front = projected.z < 1;
+  const inside = front && x > -EDGE && x < innerWidth + EDGE && y > -EDGE && y < innerHeight + EDGE;
+  return { x, y, front, inside };
 }
 
 // Over each tram whose line is shown, its number in a round badge of the line's colour, so one
@@ -778,8 +780,8 @@ function updateBadges() {
   badgesOn = on;
   badges.forEach((badge, v) => {
     const part = trams.roof(v, badgeAt);
-    const { x, y, front } = onScreen(badgeAt);
-    const shown = part.lines.visible && front;
+    const { x, y, inside } = onScreen(badgeAt);
+    const shown = part.lines.visible && inside;
     if (badge.hidden === shown) badge.hidden = !shown;
     if (!shown) return;
     if (badge.textContent !== part.ref) {
@@ -3157,9 +3159,9 @@ function toggle(label) {
 function updatePins() {
   for (const list of pins.values())
     for (const { point, mark } of list) {
-      const { x, y, front } = onScreen(point);
-      mark.hidden = !front;
-      mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+      const { x, y, inside } = onScreen(point);
+      if (mark.hidden === inside) mark.hidden = !inside;
+      if (inside) mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
     }
 }
 renderer.domElement.addEventListener("pointerdown", (e) => {
