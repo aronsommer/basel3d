@@ -49,7 +49,14 @@ import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
 import { dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
-import { STYLES, WHOLE_CARS, WHOLE_TRAMS, addFont, createGraffiti, wholeCar } from "./graffiti.js";
+import {
+  STYLES,
+  WHOLE_CARS,
+  WHOLE_TRAMS,
+  createGraffiti,
+  startPainter,
+  wholeCar,
+} from "./graffiti.js";
 import { createSprayer } from "./sprayer.js";
 import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
@@ -1213,13 +1220,19 @@ load(
   ["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2", "Lacquer.woff2", "CraftyGirls.woff2"],
   () => {},
 ).then(async ([cherry, rocker, honk, lacquer, crafty]) => {
-  await Promise.all([
-    addFont("Cherry Bomb One", cherry),
-    addFont("Rocker", rocker),
-    addFont("Honk", honk),
-    addFont("Lacquer", lacquer),
-    addFont("Crafty Girls", crafty),
-  ]);
+  // Graffiti painted off the page's thread, in these fonts (src/painter-worker.js).
+  startPainter(
+    new Worker(new URL("./painter-worker.js?v=__BUILD_TIMESTAMP__", import.meta.url), {
+      type: "module",
+    }),
+    [
+      ["Cherry Bomb One", cherry],
+      ["Rocker", rocker],
+      ["Honk", honk],
+      ["Lacquer", lacquer],
+      ["Crafty Girls", crafty],
+    ],
+  );
   const { meshes, marks } = await createGraffiti((at) => roofOver(at, true));
   scene.add(...meshes);
   graffitiMeshes = meshes;
@@ -1295,23 +1308,25 @@ load(
             }
             // Whole from the front on the right, from the back on the left.
             keyed.get(key).on.push(v, !whole ? cars - 1 - j : s > 0 ? k : cars - 1 - k, s);
+            if (ours) keyed.get(key).ours = true; // on the museum's round
           }
         }
       });
     }
   });
-  // Painted one after another, each in a task of its own, so the page goes on meanwhile; a part
-  // looking as one painted before shares its material.
+  // Painted one after another off the page's thread (wholeCar), those on the museum's round first
+  // (seen there at once), each on its cars once painted; a part looking as one painted before
+  // shares its material.
+  parts.sort((a, b) => (b.ours ?? false) - (a.ours ?? false)); // stable: a group's in turn
   const task = (ms) => new Promise((go) => setTimeout(go, ms));
   const most = new Map(); // group → the scale its first part was painted at
   const painted = new Map(); // paint → its material
   for (const part of parts) {
     const { look, length, height, group, paint, coat, on } = part;
     if (!painted.has(paint)) {
-      const [material, scale] = wholeCar(look, length, height, most.get(group));
+      const [material, scale] = await wholeCar(look, length, height, most.get(group));
       if (!most.has(group)) most.set(group, scale);
       painted.set(paint, material);
-      await task();
     }
     part.material = painted.get(paint);
     part.mesh = coat(part.material, on);
@@ -1346,9 +1361,14 @@ load(
         const { texts, styles } = pools[kind];
         const style = styles[(2 * j + (s > 0 ? 0 : 1)) % styles.length];
         const look = { ...style, text: texts[round % texts.length] };
+        const [material] = await wholeCar(look, part.length, part.height);
+        if (testing !== token) {
+          material.map.dispose();
+          material.dispose();
+          return;
+        }
         free(part);
-        [part.mesh.material] = wholeCar(look, part.length, part.height);
-        await task();
+        part.mesh.material = material;
       }
       await task(TEST * 1000);
     }

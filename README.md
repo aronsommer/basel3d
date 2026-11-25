@@ -54,7 +54,9 @@ basel3d/
 ├── src/rails.js       the rails and sleepers on the map's tracks, worked out by the shader
 ├── src/passage.js     the Unterer Rheinweg's passage under the Mittlere Brücke, which swissALTI3D fills up to the deck: the viewer lays its own ground in place of the terrain there: a straight, level floor and the bank beside it, falling into the Rhine
 ├── src/explosions.js  blowing up a building or bridge: flying faces, fire, smoke, bang, scorched ground
-├── src/graffiti.js    graffiti: drawing every tag and piece and laying it where src/graffiti-data.js says; whole cars and whole trams
+├── src/graffiti.js    graffiti: their styles, laying each where src/graffiti-data.js says, whole cars and whole trams; painted by src/painter.js
+├── src/painter.js     paints the graffiti onto canvases (no three.js), for src/painter-worker.js
+├── src/painter-worker.js  paints the graffiti off the page's thread
 ├── src/graffiti-data.js  every graffito placed with the graffiti editor, saved by it whole
 ├── src/sprayer.js     the graffiti editor (Dev panel): set, move, restyle and save graffiti on walls, roofs and the ground
 ├── src/splash.js      water splashing round the wheels of what drives on the Rhine
@@ -116,7 +118,7 @@ basel3d/
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
 
-**Cache.** Every script or stylesheet in `index.html` ends in `?v=__BUILD_TIMESTAMP__`; the deploy replaces it with its time and bundles `src/` into one minified `src/main.js` and the map's worker into `src/ground-worker.js` (esbuild), so a new deploy is never mixed with cached old files. Files in `public/` are loaded with the content hash from `size.json`, so after changing one by hand, run `node tools/size.mjs`.
+**Cache.** Every script or stylesheet in `index.html` ends in `?v=__BUILD_TIMESTAMP__`; the deploy replaces it with its time and bundles `src/` into one minified `src/main.js` and the map's and the graffiti's workers into `src/ground-worker.js` and `src/painter-worker.js` (esbuild), so a new deploy is never mixed with cached old files. Files in `public/` are loaded with the content hash from `size.json`, so after changing one by hand, run `node tools/size.mjs`.
 
 ## Regenerating the data
 

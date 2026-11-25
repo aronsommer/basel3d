@@ -28,11 +28,13 @@ jobs:
           echo "Injected build timestamp: $BUILD_TIMESTAMP"
 
       # src/ as one minified src/main.js, loaded with ?v=; three.js stays on the import map. The
-      # map's worker (src/ground.js starts it, with ?v=) as one file of its own.
+      # map's worker (src/ground.js starts it, with ?v=) and the graffiti's painter (src/main.js
+      # starts it, with ?v=) each as one file of its own.
       - name: Bundle scripts
         run: |
           npx --yes esbuild@0.28.2 src/main.js --bundle --minify --format=esm --external:three "--external:three/addons/*" --outfile=src/main.js --allow-overwrite
           npx --yes esbuild@0.28.2 src/ground-worker.js --bundle --minify --format=esm --outfile=src/ground-worker.js --allow-overwrite
+          npx --yes esbuild@0.28.2 src/painter-worker.js --bundle --minify --format=esm --outfile=src/painter-worker.js --allow-overwrite
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

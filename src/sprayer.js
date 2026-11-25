@@ -8,8 +8,8 @@
 // it not; let go, it stands before the highest of what is behind it (settle). Its panel sets the
 // one picked's text (a line each), its style (STYLES, as tiles; a tag's colour too) and its size (a
 // slider in the middle, up to SCALE times either way); Delete (or Del) takes it away. The arrows or
-// WASD move it along its text and across it, as it lies, as far as NUDGE px of the screen there,
-// Q/E turn it a degree to the left or right, SHIFT times as far with Shift, Escape or a click
+// WASD move it sideways and up as it lies, not turned, as far as NUDGE px of the screen there, Q/E
+// turn it a degree to the left or right, SHIFT times as far with Shift, Escape, Enter or a click
 // beside them lets it go. Save downloads src/graffiti-data.js with every graffito as it is now, to
 // put in place of the old one; Reset, asked, loads the page anew without what is unsaved. Clicks on
 // the scene do nothing else meanwhile (active).
@@ -30,7 +30,7 @@ import {
 const NUDGE = 8; // px of the screen a key moves the one picked, SHIFT times as far with Shift
 const SHIFT = 5; // times as far or round with Shift
 const SAMPLE = "STYLE"; // a new one's text, and the style tiles'
-// Keys moving the one picked: along its text and across it.
+// Keys moving the one picked: sideways and up as it lies, not turned.
 const MOVES = {
   ArrowUp: [0, 1],
   KeyW: [0, 1],
@@ -212,13 +212,17 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     if (all.at(-1) !== picked) all.push(...all.splice(all.indexOf(picked), 1));
     show();
   }
-  // Paints the one picked anew as its edit says, as wide as before.
-  function repaint() {
-    const { picked } = state;
-    const { style, text, own } = editOf(picked);
-    paintOn(picked, ...styled(style, { ...own, text }));
-    relay();
-    settle();
+  // Paints the one picked anew as its edit says (off the page's thread), as wide as before; laid
+  // again where it was, its height as its new image's, even if let go meanwhile.
+  async function repaint() {
+    const [mesh, place] = [state.picked, state.place];
+    const { style, text, own } = editOf(mesh);
+    await paintOn(mesh, ...styled(style, { ...own, text }));
+    if (state?.picked === mesh) {
+      relay();
+      return settle();
+    }
+    lay(mesh, mesh.userData.aspect, place.at, place.n, place.up, place.width, place.tilt);
   }
   // Moves the one picked out along its normal till nothing behind it (SETTLE × SETTLE points across
   // it, each looked for within REACH m along its normal on what it was dragged onto, place.on, else
@@ -260,9 +264,10 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
   // before anything nearer there (AHEAD of the way to it), facing the camera upright on the
   // screen, NEW as wide as it is far; it lies on nothing, drawn over all (floating), till it is
   // dragged (follow).
-  function spray() {
+  async function spray() {
     const edit = { style: 1, text: SAMPLE, own: {} }; // a tag
-    const mesh = graffitoMesh(...styled(edit.style, { text: edit.text }));
+    const mesh = await graffitoMesh(...styled(edit.style, { text: edit.text }));
+    if (!state) return; // unticked meanwhile
     Object.assign(mesh.userData, { edit, tilt: 0, floating: true });
     rayAt(innerWidth / 2, innerHeight / 2);
     const nearer = raycaster.intersectObjects(surfaces)[0]?.distance ?? Infinity;
@@ -323,7 +328,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
   }
 
   // The panel, always alike: New and Delete, text, the styles as tiles (each SAMPLE painted at
-  // TILE px, one a task, its number left of it), a tag's colour and size; what changes the one
+  // TILE px by the painter, its number left of it), a tag's colour and size; what changes the one
   // picked off while none is.
   const TILE = 40;
   function makePanel(box) {
@@ -344,8 +349,11 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     });
     (async () => {
       for (const [k, { kind, look }] of STYLES.entries()) {
-        tiles[k].append(artOf(kind, { ...look, text: SAMPLE }, TILE));
-        await new Promise((go) => setTimeout(go));
+        const image = await artOf(kind, { ...look, text: SAMPLE }, TILE);
+        const { width, height } = image;
+        const canvas = Object.assign(document.createElement("canvas"), { width, height });
+        canvas.getContext("bitmaprenderer").transferFromImageBitmap(image);
+        tiles[k].append(canvas);
       }
     })();
     const tag = make(box, "div", { className: "row" });
@@ -513,20 +521,19 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
   addEventListener("keydown", (e) => {
     if (!state?.picked) return;
     if (["Delete", "Backspace"].includes(e.code) && !e.repeat) return remove();
-    if (e.code === "Escape") return pick(null);
+    if (e.code === "Escape" || e.code === "Enter" || e.code === "NumpadEnter") return pick(null);
     const { place } = state;
     const [x, y] = MOVES[e.code] ?? [0, 0];
     const turn = { KeyQ: 1, KeyE: -1 }[e.code];
     const times = e.shiftKey ? SHIFT : 1;
     if (x || y) {
-      // Its own way: along its text and across it, as it lies, however it is seen; NUDGE px of the
-      // screen where it is.
-      const { quaternion } = state.picked;
+      // Its own way as it lies, not turned (tilt): on a wall sideways and straight up, elsewhere as
+      // it was set down; however it is seen; NUDGE px of the screen where it is.
       const far = camera.position.distanceTo(place.at);
       const px = (2 * far * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / innerHeight;
       const step = NUDGE * times * px;
-      place.at.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(quaternion), x * step);
-      place.at.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion), y * step);
+      place.at.addScaledVector(right.crossVectors(place.up, place.n), x * step);
+      place.at.addScaledVector(place.up, y * step);
       relay();
     } else if (turn) {
       place.tilt += turn * times;
