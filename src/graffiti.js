@@ -34,20 +34,27 @@ function distances(w, h, is) {
   for (let i = 0; i < w * h; i++) d[i] = is(i) ? 0 : 1e20;
   const n = Math.max(w, h);
   const [f, v, z] = [new Float64Array(n), new Int32Array(n), new Float64Array(n + 1)];
-  // Squared distances along one row or column: len cells from start, step apart.
+  // Squared distances along one row or column: len cells from start, step apart (its loops make
+  // no arrays: they run for every pixel).
   const pass = (start, step, len) => {
     for (let q = 0; q < len; q++) f[q] = d[start + q * step];
     let k = 0;
-    [v[0], z[0], z[1]] = [0, -Infinity, Infinity];
+    v[0] = 0;
+    z[0] = -Infinity;
+    z[1] = Infinity;
     for (let q = 1; q < len; q++) {
       let s;
       while ((s = (f[q] + q * q - f[v[k]] - v[k] * v[k]) / (2 * (q - v[k]))) <= z[k]) k--;
-      [v[++k], z[k], z[k + 1]] = [q, s, Infinity];
+      k++;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = Infinity;
     }
     k = 0;
     for (let q = 0; q < len; q++) {
       while (z[k + 1] < q) k++;
-      d[start + q * step] = (q - v[k]) ** 2 + f[v[k]];
+      const r = q - v[k];
+      d[start + q * step] = r * r + f[v[k]];
     }
   };
   for (let x = 0; x < w; x++) pass(x, w, h);
@@ -742,6 +749,9 @@ export function paintOn(mesh, kind, look) {
   mesh.material.map?.dispose();
   mesh.material.dispose();
   mesh.material = material(sheet);
+  // Graffiti hide one another by their order (renderOrder) alone, not by how far each is: two on a
+  // wall, as far off it, would else flicker.
+  mesh.material.depthWrite = false;
   mesh.userData.aspect = sheet.width / sheet.height;
 }
 // Where a graffito's mesh lies, as lay takes it: { at, n, up, width, tilt }.
@@ -771,6 +781,7 @@ export async function createGraffiti(roofAt) {
     await new Promise((go) => setTimeout(go));
     const mesh = graffitoMesh(...styled(style, own));
     mesh.userData.graffito = graffito;
+    mesh.renderOrder = meshes.length + 1; // a later one over an earlier one (paintOn)
     const [x, z] = fromWGS84(location[0], location[1]);
     const { n, up } = surface(facing, lean);
     lay(mesh, mesh.userData.aspect, new THREE.Vector3(x, location[2] - 250, z), n, up, width, tilt);

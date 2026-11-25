@@ -1,13 +1,15 @@
 // The graffiti editor, "Graffiti" in the Dev panel (src/dev.js): while ticked, a click on a
 // graffito (src/graffiti.js), not behind a building, picks it, framed in MAGENTA with a dot at each
 // corner; dragging it moves it, dragging a dot turns and sizes it round its middle. New puts a tag,
-// picked, on what is in the middle of the view, NEW as wide as it is far. Each lies on the side
-// seen of what is there, a wall, roof, bridge or the ground (lay): upright on a wall, elsewhere
-// keeping the way it pointed, when new the screen's top (surfaceAt), so moving it turns it not; let
-// go off a wall, it lies on the highest under it (settle). Its panel sets the one picked's text (a
-// line each), its style (STYLES, as tiles; a tag's colour too) and its size (a slider in the
-// middle, up to SCALE times either way); Delete (or Del) takes it away. The arrows or WASD move it
-// NUDGE metres along what it lies on, Q/E turn it a degree to the left or right, Escape or a click
+// picked, in the middle of the view, facing the camera, NEW as wide as it is far; it lies on
+// nothing till dragged. Any one moved or changed goes over all others. Dragged, each lies on the
+// side seen of what is there, a wall, roof, bridge or the ground (lay): upright on a wall,
+// elsewhere keeping the way it pointed, at first the screen's top (surfaceAt), so moving it turns
+// it not; let go, it stands before the highest of what is behind it (settle). Its panel sets the
+// one picked's text (a line each), its style (STYLES, as tiles; a tag's colour too) and its size (a
+// slider in the middle, up to SCALE times either way); Delete (or Del) takes it away. The arrows or
+// WASD move it along its text and across it, as it lies, as far as NUDGE px of the screen there,
+// Q/E turn it a degree to the left or right, SHIFT times as far with Shift, Escape or a click
 // beside them lets it go. Save downloads src/graffiti-data.js with every graffito as it is now, to
 // put in place of the old one; Reset, asked, loads the page anew without what is unsaved. Clicks on
 // the scene do nothing else meanwhile (active).
@@ -25,9 +27,10 @@ import {
   styled,
 } from "./graffiti.js";
 
-const NUDGE = 0.1; // metres
+const NUDGE = 8; // px of the screen a key moves the one picked, SHIFT times as far with Shift
+const SHIFT = 5; // times as far or round with Shift
 const SAMPLE = "STYLE"; // a new one's text, and the style tiles'
-// Keys moving the one picked: right and up along what it lies on.
+// Keys moving the one picked: along its text and across it.
 const MOVES = {
   ArrowUp: [0, 1],
   KeyW: [0, 1],
@@ -44,6 +47,7 @@ const GRAB = 14; // px from a corner's dot, pressing turns the one picked
 // Its plane's corners (lay), where the dots are.
 const CORNERS = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
 const NEW = 0.15; // a new one's width per metre from the camera
+const AHEAD = 0.9; // of the way to what is in the middle of the view, a new one floats
 const SCALE = 10; // the size slider's ends: so many times smaller or bigger than at its middle
 // The fields of a graffito's entry (src/graffiti-data.js) that are not its look.
 const OTHER = new Set(["text", "style", "location", "facing", "lean", "width", "tilt"]);
@@ -130,7 +134,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0)),
     new THREE.LineBasicMaterial({ color: MAGENTA, depthTest: false }),
   );
-  frame.renderOrder = 1; // over it
+  frame.renderOrder = 1e9; // over every graffito (their renderOrder)
   // A dot at each corner, to turn it by.
   const dots = new THREE.Points(
     new THREE.BufferGeometry().setAttribute(
@@ -144,7 +148,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
       depthTest: false,
     }),
   );
-  dots.renderOrder = 1;
+  dots.renderOrder = 1e9;
   frame.add(dots);
 
   const rayAt = (x, y) =>
@@ -169,7 +173,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     const top = onto(new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion));
     if (n.y >= WALL && was && onto(was.clone()).length() > WALL) up = onto(was.clone());
     else if (n.y >= WALL && top.length() > WALL) up = top;
-    return { point: hit.point, n, up: up.normalize() };
+    return { point: hit.point, n, up: up.normalize(), on: hit.object };
   }
 
   // What a graffito is, to change: { style, text, own } (own: its fields over its style's look),
@@ -181,17 +185,31 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     const { style, text } = entry;
     return (mesh.userData.edit = { style, text, own: look });
   }
+  // Picks a graffito, or none; its place with what it lies on (on: what is just behind its middle,
+  // if anything), so settling looks there alone.
   function pick(mesh) {
     if (mesh) mesh.add(frame);
     else frame.removeFromParent();
     state.picked = mesh;
     state.place = mesh && placeOf(mesh);
+    if (mesh) {
+      const { at, n } = state.place;
+      probe.set(at.clone().addScaledVector(n, REACH), n.clone().negate());
+      probe.far = 2 * REACH;
+      state.place.on = probe.intersectObjects(surfaces)[0]?.object;
+    }
     show();
   }
-  // Lays the one picked at its place again.
+  // Lays the one picked at its place again, over all others: drawn last (renderOrder) and last in
+  // meshes(), so saved last too.
   function relay() {
     const { picked, place } = state;
     lay(picked, picked.userData.aspect, place.at, place.n, place.up, place.width, place.tilt);
+    picked.material.depthTest = !picked.userData.floating; // over all while on nothing
+    const all = meshes();
+    const top = Math.max(0, ...all.filter((m) => m !== picked).map((m) => m.renderOrder));
+    if (picked.renderOrder <= top) picked.renderOrder = top + 1;
+    if (all.at(-1) !== picked) all.push(...all.splice(all.indexOf(picked), 1));
     show();
   }
   // Paints the one picked anew as its edit says, as wide as before.
@@ -202,9 +220,10 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     relay();
     settle();
   }
-  // Lifts the one picked, if not on a wall, out along its normal till nothing under it (SETTLE ×
-  // SETTLE points across it, each looked for within REACH m along its normal) stands above it, or
-  // lowers it onto the highest; it does not tilt.
+  // Moves the one picked out along its normal till nothing behind it (SETTLE × SETTLE points across
+  // it, each looked for within REACH m along its normal on what it was dragged onto, place.on, else
+  // on all surfaces) stands out through it, as a bay of a wall or a bump of a roof, or back onto the
+  // highest; it does not tilt.
   const [SETTLE, REACH] = [4, 2];
   const [probe, side, top, back] = [
     new THREE.Raycaster(),
@@ -214,7 +233,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
   ];
   function settle() {
     const { picked, place } = state;
-    if (!picked || place.n.y < WALL) return;
+    if (!picked) return;
     const { at, n, up, width, tilt } = place;
     const turn = THREE.MathUtils.degToRad(tilt);
     side.crossVectors(up, n).applyAxisAngle(n, turn);
@@ -230,34 +249,40 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
           back,
         );
         probe.far = 2 * REACH;
-        const hit = probe.intersectObjects(surfaces)[0];
+        const hit = probe.intersectObjects(place.on ? [place.on] : surfaces)[0];
         if (hit) out = Math.max(out, REACH - hit.distance);
       }
     if (out === -Infinity) return;
     at.addScaledVector(n, out);
     relay();
   }
-  // A new tag, picked, on what is in the middle of the view, NEW as wide as it is far; none if
-  // nothing is there.
+  // A new tag, picked, in the middle of the view, as far as the view's centre (orbit.target) but
+  // before anything nearer there (AHEAD of the way to it), facing the camera upright on the
+  // screen, NEW as wide as it is far; it lies on nothing, drawn over all (floating), till it is
+  // dragged (follow).
   function spray() {
-    const under = surfaceAt(innerWidth / 2, innerHeight / 2);
-    if (!under) return;
     const edit = { style: 1, text: SAMPLE, own: {} }; // a tag
     const mesh = graffitoMesh(...styled(edit.style, { text: edit.text }));
-    Object.assign(mesh.userData, { edit, tilt: 0 });
-    const width = NEW * camera.position.distanceTo(under.point);
-    lay(mesh, mesh.userData.aspect, under.point, under.n, under.up, width);
+    Object.assign(mesh.userData, { edit, tilt: 0, floating: true });
+    rayAt(innerWidth / 2, innerHeight / 2);
+    const nearer = raycaster.intersectObjects(surfaces)[0]?.distance ?? Infinity;
+    const far = Math.min(camera.position.distanceTo(orbit.target), AHEAD * nearer);
+    const n = camera.getWorldDirection(new THREE.Vector3()).negate();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const at = camera.position.clone().addScaledVector(n, -far);
+    lay(mesh, mesh.userData.aspect, at, n, up, NEW * far);
     scene.add(mesh);
     meshes().push(mesh);
     pick(mesh);
-    settle();
+    relay(); // over all others
   }
   // Lays the one picked on what is at a screen point, if anything.
   function follow(x, y) {
     const { place } = state;
     const under = surfaceAt(x, y, place.up);
     if (!under) return;
-    [place.at, place.n, place.up] = [under.point, under.n, under.up];
+    [place.at, place.n, place.up, place.on] = [under.point, under.n, under.up, under.on];
+    state.picked.userData.floating = false;
     relay();
   }
   // Takes the one picked away.
@@ -450,11 +475,11 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     state.drag = { orbit: orbit.enabled, x: e.clientX, y: e.clientY };
     orbit.enabled = false;
   });
-  // The one dragged follows the pointer, once a frame.
+  // The one dragged follows the pointer, once a frame; only once CLICK px from where the button
+  // went down.
   let slid = null; // the last pointermove since
   canvas.addEventListener("pointermove", (e) => {
     const drag = state?.drag;
-    // Dragging only once CLICK px from where the button went down.
     if (!drag || (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < CLICK))
       return;
     const waiting = slid;
@@ -492,13 +517,22 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     const { place } = state;
     const [x, y] = MOVES[e.code] ?? [0, 0];
     const turn = { KeyQ: 1, KeyE: -1 }[e.code];
+    const times = e.shiftKey ? SHIFT : 1;
     if (x || y) {
-      place.at.addScaledVector(place.up, y * NUDGE);
-      place.at.addScaledVector(right.crossVectors(place.up, place.n), x * NUDGE);
-    } else if (turn) place.tilt += turn;
-    else return;
+      // Its own way: along its text and across it, as it lies, however it is seen; NUDGE px of the
+      // screen where it is.
+      const { quaternion } = state.picked;
+      const far = camera.position.distanceTo(place.at);
+      const px = (2 * far * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / innerHeight;
+      const step = NUDGE * times * px;
+      place.at.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(quaternion), x * step);
+      place.at.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion), y * step);
+      relay();
+    } else if (turn) {
+      place.tilt += turn * times;
+      relay();
+    } else return;
     e.preventDefault();
-    relay();
     settle();
   });
 
