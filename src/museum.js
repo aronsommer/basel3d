@@ -297,8 +297,9 @@ const LABEL_AT = {
   A2: [47.580053, 7.583755],
   A3: [47.579126, 7.582883],
   A4: [47.584733, 7.580797],
-  Museum: [47.581634, 7.580101],
-  Pins: [47.581229, 7.580101],
+  Museum: [47.581814, 7.580094],
+  Pins: [47.581558, 7.580453],
+  Graffiti: [47.581567, 7.579763],
   L1: [47.579814, 7.578884],
   S8: [47.578568, 7.580543],
   "V1-1": [47.581149, 7.581207],
@@ -329,6 +330,7 @@ const LABEL_AT = {
   "A1-21": [47.577542, 7.579933],
   "A1-22": [47.577526, 7.580064],
   "A1-23": [47.577516, 7.580196],
+  "A1-24": [47.577194, 7.57948],
   S1: [47.579779, 7.579085],
   "S5-1": [47.57965, 7.580572],
   "S5-2": [47.579629, 7.580858],
@@ -540,10 +542,11 @@ export const SWIM = [
 // landing first), without a name, so not among the city's names.
 export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
 
-// The plates to its overview (src/main.js) and for all labels' pins.
+// The plates to its overview (src/main.js), for all labels' pins and for the graffiti test.
 if (OPEN) {
   label("Museum", 0, 0, { size: 9, home: true });
   label("Pins All on / off", 0, 0, { all: true, size: 6 });
+  label("Graffiti Test", 0, 0, { graffiti: true, size: 6 });
 }
 
 // The labels (LABELS) as plates flat over the ground (ground(x, z): the height there; settle),
@@ -576,7 +579,7 @@ export function settle(mesh, ground) {
 const [BIG, SMALL, PAD] = [96, 48, 32]; // canvas px: the id's letters, the name's, the margin
 export function createLabels(ground, anisotropy) {
   const group = new THREE.Group();
-  for (const { text, x, z, city, all, home, size = 1 } of LABELS) {
+  for (const { text, x, z, city, all, home, graffiti, size = 1 } of LABELS) {
     const [id, name = ""] = text.split(/ (.*)/); // the rest, if any
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -616,7 +619,7 @@ export function createLabels(ground, anisotropy) {
     );
     mesh.position.set(x, 0, z);
     settle(mesh, ground);
-    mesh.userData = { text, city, all, home };
+    mesh.userData = { text, city, all, home, graffiti };
     group.add(mesh);
   }
   return group;

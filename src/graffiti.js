@@ -1,7 +1,7 @@
 // Graffiti (pieceOf) in Cherry Bomb One (public/CherryBombOne.woff2, its Latin letters) or Rocker
 // (public/Rocker.woff2), black and white (paint), or in Honk (public/Honk.woff2): on walls, roofs
-// and bridges in GRAFFITI, small tags and big pieces, each where it says; and whole cars (wholeCar,
-// WHOLE_CARS).
+// and bridges in GRAFFITI, small tags and big pieces, each where it says; and whole cars and whole
+// trams (wholeCar, WHOLE_CARS, WHOLE_TRAMS).
 import * as THREE from "three";
 import { fromWGS84 } from "./geo.js";
 
@@ -251,16 +251,15 @@ function slab(canvas, size, [top, bottom]) {
   return cut;
 }
 // Whole cars on trams and trains (which: src/main.js), per kind: on each side (right and left of
-// its way) a piece over a car's body, each vehicle wearing of its kind's: one with all (in turn) if
-// there is any, over all its cars' (its text a word a car if it has as many, else its letters
-// shared out among them; read from the front on the right), else all the others, one per car from
-// its last, its own (in turn) first; each in Honk's palette honk (HONK, with face its letters' face
-// all that colour, with ink their shadow and lines) or, without, as the graffiti in font (a family,
-// Cherry Bomb One if none) with face as sheetOf's (or faces, one per word, or letters, one per
-// letter in turn); with rim framed inside (framed); with cut false without the white cut line; with
-// outline round it (a colour or a list of them, outlined; with splash false not splashed out, with
-// splash a text splashed as that, with short its splashes that share as long) and back on it (two
-// colours). With fill it is as big as it fits (wholeCar). A side may be left bare.
+// its way) a piece over a car's body, each vehicle wearing all of its kind's, one per car from its
+// last, its own (in turn) first; or a tram a whole tram (WHOLE_TRAMS) instead. Each in Honk's
+// palette honk (HONK, with face its letters' face all that colour, with ink their shadow and
+// lines) or, without, as the graffiti in font (a family, Cherry Bomb One if none) with face as
+// sheetOf's (or faces, one per word, or letters, one per letter in turn); with rim framed inside
+// (framed); with cut false without the white cut line; with outline round it (a colour or a list
+// of them, outlined; with splash false not splashed out, with splash a text splashed as that, with
+// short its splashes that share as long) and back on it (two colours). With fill it is as big as
+// it fits (wholeCar). A side may be left bare.
 export const WHOLE_CARS = {
   // From the last car on, fonts so that no two next to each other (round again too) and no car's
   // two sides are in the same: right Honk, Cherry, Honk, Rocker, Cherry; left Cherry, Honk,
@@ -324,14 +323,8 @@ export const WHOLE_CARS = {
     },
   ],
   tram: [
-    // Both sides: the FCB's song, a line a side, a word a car, in the FCB's colours.
-    {
-      all: true,
-      right: { text: "ROT ISCH UNSERI LIEBI", back: FCB },
-      left: { text: "BLAU DIE EWIGI TREUI", back: FCB },
-    },
-    // Else a car each, from the last car on fonts as on the trains: right Honk, Cherry,
-    // Rocker, Cherry; left Cherry, Rocker, Honk, Rocker.
+    // From the last car on fonts as on the trains: right Honk, Cherry, Rocker, Cherry; left
+    // Cherry, Rocker, Honk, Rocker.
     {
       // As GANGSTER on the trains.
       right: { text: "HÖSCH", honk: 0, rim: "upLeft", outline: 0x00e640 },
@@ -375,6 +368,15 @@ export const WHOLE_CARS = {
     },
   ],
 };
+// Whole trams: per side a piece over all of a tram's cars, as WHOLE_CARS's, its text a word a car
+// if it has as many, else its letters shared out among them; read from the front on the right.
+export const WHOLE_TRAMS = [
+  // The FCB's song, a line a side, in the FCB's colours.
+  {
+    right: { text: "ROT ISCH UNSERI LIEBI", back: FCB },
+    left: { text: "BLAU DIE EWIGI TREUI", back: FCB },
+  },
+];
 // Honk's palettes (its CPAL), each: its shadow's and lines' colours (from the baseline up to half a
 // size above it), then its face's (from the top down to the baseline).
 const HONK = [

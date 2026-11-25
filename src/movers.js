@@ -406,7 +406,9 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
         blockers[first + v] = occupied(line, d + s, first + v);
     });
   };
-  // Moves each vehicle that waits for none; one over a gap, even a waiting one, vanishes.
+  // Moves each vehicle that waits for none, but those on the museum's round while held; one over a
+  // gap, even a waiting one, vanishes.
+  let held = false;
   const move = (dt) => {
     vehicles.forEach((vehicle, v) => {
       if (vehicle.away !== undefined) {
@@ -415,7 +417,8 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
         vehicle.away = undefined;
         vehicle.d = vehicle.start;
       } else if (overGap(vehicle, vehicle.d)) vehicle.away = BACK;
-      else if (blockers[first + v] < 0) vehicle.d = (vehicle.d + SPEED * dt) % vehicle.line.length;
+      else if (blockers[first + v] < 0 && !(held && vehicle.line.ref === "Museum"))
+        vehicle.d = (vehicle.d + SPEED * dt) % vehicle.line.length;
     });
   };
   // Marks the points of the loops that lie on deck (from deckOf) as a gap, but only where they
@@ -447,7 +450,7 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
   // Whole cars: a plane with material over a car's body (BODY, of its height; tramCar, trainCar)
   // just off its side, its texture read from outside, on each car of on (per car its vehicle, its
   // number in it, 0 the first, and its side, 1 right of its way, -1 left); one mesh, its instances
-  // these, in painted.
+  // these, in painted; returns that mesh.
   const BODY = [0.17, 1.03];
   const OUT = 0.04; // metres off its side, beyond its windows
   const sides = [1, -1].map((side) =>
@@ -463,6 +466,7 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     mesh.frustumCulled = false; // the vehicles move all over the city
     coats.push({ mesh, on });
     painted.add(mesh);
+    return mesh;
   };
   const vehicleOf = (hit) => fleets[meshes.indexOf(hit.object)][Math.floor(hit.instanceId / CARS)];
   // Shows vehicle v in HIGHLIGHT; -1: none.
@@ -485,6 +489,7 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     vehicleOf,
     highlight,
     cut,
+    hold: (on) => (held = on), // the museum's round's vehicles standing or going
     away: (v) => vehicles[v].away !== undefined, // vanished at a gap, for a while
     cars: CARS,
     // The vehicles on the museum's round (src/main.js).
