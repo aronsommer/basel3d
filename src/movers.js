@@ -263,28 +263,50 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
   const rail = kind === "car" ? 0 : 1;
   const stretches = Math.ceil((SPEED * WARN) / STRETCH);
   const stretch = (SPEED * WARN) / stretches; // metres
-  // Room for the points of its cars and stretches ahead among the traffic's.
-  const room = 3 * (CARS + stretches) * vehicles.length;
-  traffic.xz = new Float64Array(traffic.xz.length + 2 * room);
-  traffic.y = new Float32Array(traffic.y.length + room);
-  traffic.of = new Int32Array(traffic.of.length + 3 * room);
-  // Into the cars' grid (head, tail), or the stretches' (rail -1: ways, waysTail), so vehicles
-  // looking ahead go through cars alone.
-  const note = (p, v, r = rail) => {
-    const { xz, y, of } = traffic;
-    const head = r < 0 ? traffic.ways : traffic.head;
-    const tail = r < 0 ? traffic.waysTail : traffic.tail;
-    const n = traffic.noted++;
+  // Each vehicle's points among the traffic's, POINTS from base + v * POINTS on: its stretches'
+  // ahead, then its cars'.
+  const POINTS = 3 * (CARS + stretches);
+  const base = traffic.points;
+  traffic.points += POINTS * vehicles.length;
+  const grow = (array, more) => {
+    const grown = new array.constructor(array.length + more);
+    grown.set(array);
+    return grown;
+  };
+  traffic.xz = grow(traffic.xz, 2 * POINTS * vehicles.length);
+  traffic.y = grow(traffic.y, POINTS * vehicles.length);
+  traffic.of = grow(traffic.of, 3 * POINTS * vehicles.length);
+  traffic.prev = grow(traffic.prev, POINTS * vehicles.length);
+  traffic.cell = grow(traffic.cell, POINTS * vehicles.length);
+  // Takes point q out of its cell's list in head.
+  const unlink = (q, head) => {
+    const { of, prev, cell } = traffic;
+    const [before, after] = [prev[q], of[3 * q + 2]];
+    if (before < 0) head[cell[q] - 1] = after;
+    else of[3 * before + 2] = after;
+    if (after >= 0) prev[after] = before;
+    cell[q] = 0;
+  };
+  // Sets point q of vehicle v at p, in the cars' grid (head), or the stretches' (rail -1: ways),
+  // so vehicles looking ahead go through cars alone; into the list of another cell only if moved
+  // into one.
+  const note = (q, p, v, r) => {
+    const { xz, y, of, prev, cell } = traffic;
+    xz[2 * q] = p.x;
+    xz[2 * q + 1] = p.z;
+    y[q] = p.y;
     const c = carCell(p.x, p.z);
-    xz[2 * n] = p.x;
-    xz[2 * n + 1] = p.z;
-    y[n] = p.y;
-    of[3 * n] = first + v;
-    of[3 * n + 1] = r;
-    of[3 * n + 2] = -1;
-    if (head[c] < 0) head[c] = n;
-    else of[3 * tail[c] + 2] = n;
-    tail[c] = n;
+    if (cell[q] === c + 1) return;
+    const head = r < 0 ? traffic.ways : traffic.head;
+    if (cell[q]) unlink(q, head);
+    const after = head[c];
+    of[3 * q] = first + v;
+    of[3 * q + 1] = r;
+    of[3 * q + 2] = after;
+    prev[q] = -1;
+    if (after >= 0) prev[after] = q;
+    head[c] = q;
+    cell[q] = c + 1;
   };
   // The vehicle other than self with a car at the point d metres along line that this kind waits
   // for, or -1.
@@ -315,29 +337,23 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
   const FAR = 1500; // metres
   const SLOW = 6;
   let frame = 0;
-  // Notes a point of the vehicle being placed (marking), and keeps it in its marks.
-  let [marks, marking] = [[], -1];
-  const last = new THREE.Vector3();
-  const mark = (p, r = rail) => {
-    note(p, marking, r);
-    marks.push(p.x, p.y, p.z, r);
-  };
+  // Notes the next point (n) of the vehicle being placed (marking).
+  let [marking, n] = [-1, 0];
+  const mark = (p, r = rail) => note(n++, p, marking, r);
   // Places the cars and notes their points and those of the stretches ahead; those of a vehicle
   // away are hidden.
   const place = () => {
     vehicles.forEach((vehicle, v) => {
       const { line, d, length, height, away, model, slot } = vehicle;
       // Far away, placed only every other frame (half of them in turn): in between, its points
-      // noted where they were last, so the others still wait for it.
-      if (vehicle.far && away === undefined && vehicle.marks && (v + frame) % 2) {
-        const kept = vehicle.marks;
-        for (let k = 0; k < kept.length; k += 4)
-          note(last.set(kept[k], kept[k + 1], kept[k + 2]), v, kept[k + 3]);
-        return;
-      }
-      marks = vehicle.marks ??= [];
-      marks.length = 0;
-      marking = v;
+      // stay where they were, so the others still wait for it.
+      if (vehicle.far && away === undefined && vehicle.placed && (v + frame) % 2) return;
+      vehicle.placed = true;
+      [marking, n] = [v, base + v * POINTS];
+      // Away, none of its points noted.
+      if (away !== undefined)
+        for (let k = n; k < n + POINTS; k++)
+          if (traffic.cell[k]) unlink(k, k - n < 3 * stretches ? traffic.ways : traffic.head);
       const matrices = meshes[model].instanceMatrix.array;
       for (let s = 0; s < stretches && away === undefined; s++) {
         at(line, d + (s + 1) * stretch, front);

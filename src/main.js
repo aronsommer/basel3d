@@ -564,20 +564,20 @@ const overlay = new THREE.Scene();
 
 // Trams, trains and cars on their loops (tools/paths.mjs, src/movers.js), sharing the traffic.
 const traffic = {
-  // Each car's front, back and centre, noted anew each frame in that order, and so of each
-  // stretch of a vehicle's way within WARN seconds ahead: x, z per point (xz); its height (y); its
-  // vehicle, rail (-1 on a stretch ahead) and the next point in its cell, -1 if none (of); per cell
-  // its first and last point, in the order noted (head: -1 if none, tail). Each kind makes room
-  // for its own.
-  noted: 0,
+  // Each car's front, back and centre in that order, and so of each stretch of a vehicle's way
+  // within WARN seconds ahead, each vehicle's at points of its own (src/movers.js, note): x, z per
+  // point (xz); its height (y); its vehicle, rail (-1 on a stretch ahead) and the next point in its
+  // cell, -1 if none (of); the one before, -1 if none (prev); its cell + 1, 0 if in none (cell);
+  // per cell its first point (head: -1 if none). Each kind makes room for its own (points: all).
+  points: 0,
   xz: new Float64Array(0),
   y: new Float32Array(0),
   of: new Int32Array(0),
+  prev: new Int32Array(0),
+  cell: new Int32Array(0),
   head: new Int32Array(CELLS * CELLS).fill(-1),
-  tail: new Int32Array(CELLS * CELLS),
-  // The same of the stretches ahead, in a grid of their own (src/movers.js, note).
+  // The same of the stretches ahead, in a grid of their own.
   ways: new Int32Array(CELLS * CELLS).fill(-1),
-  waysTail: new Int32Array(CELLS * CELLS),
   taken: new Map(), // cell -> flat [x, z, …] of the starting vehicles and the space ahead
   blockers: [], // per vehicle (of all kinds): the vehicle it waits for, or -1
   halves: [], // per vehicle: metres, half its width
@@ -633,9 +633,6 @@ for (const { routes } of movers)
 // Moves all vehicles dt seconds on: each notes its cars, looks ahead, then goes if its way is
 // clear. In a ring of vehicles waiting for each other, the first one goes.
 function drive(dt) {
-  traffic.head.fill(-1);
-  traffic.ways.fill(-1);
-  traffic.noted = 0;
   for (const mover of movers) mover.place();
   for (const mover of movers) mover.look();
   const { blockers } = traffic;
