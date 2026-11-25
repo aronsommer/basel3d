@@ -576,7 +576,9 @@ export function settle(mesh, ground) {
   mesh.position.y = middle + above + LIFT;
   mesh.rotation.set(-Math.atan(along), mesh.rotation.y, Math.atan(across), "YXZ");
 }
-const [BIG, SMALL, PAD] = [96, 48, 32]; // canvas px: the id's letters, the name's, the margin
+// Canvas px of the id's letters, the name's and the margin: two thirds of 96, 48, 32, so less than
+// half the memory (all labels about 13 MB, not 29), their size in metres the same (LETTER).
+const [BIG, SMALL, PAD] = [64, 32, 21];
 export function createLabels(ground, anisotropy) {
   const group = new THREE.Group();
   for (const { text, x, z, city, all, home, graffiti, size = 1 } of LABELS) {
