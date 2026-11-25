@@ -68,7 +68,7 @@ const GRAFFITI = [
     from: [47.584181, 7.60188],
     to: [47.586023, 7.602109],
     flip: true,
-    text: "JESTES PIEKNY I ZAWSZE MASZ RACJE",
+    text: "JESTES PIEKNA I ZAWSZE MASZ RACJE",
   },
 ];
 // Per kind: metres above the ground on a wall, and px of its letters when drawn.
