@@ -63,6 +63,10 @@ import { CELL, CELLS, WARN, carCell, createMovers } from "./movers.js";
 import { createFlight } from "./aircraft.js";
 import { createTrees } from "./trees.js";
 
+// The UI's font (style.css, fonts/Inter.woff2) asked for now, while the city loads, so it is there
+// when the UI shows after the loading bar (no text before needs it).
+document.fonts.load('12px "Inter"');
+
 const FLING_FRICTION = 3; // per second: how fast the view stops gliding after a drag
 const CENTRE = 2; // metres the view's centre (turned round, zoomed to) is above the terrain
 const FOLLOW = 4; // per second: how fast the view's centre follows the terrain's height

@@ -1,7 +1,7 @@
 // "Points" in the menu: while ticked, a panel at the left (below the Dev panel,
 // src/dev.js, when both show) marks points on the scene with numbers. Record points: while
 // recording, each click on the scene marks what is there, after the marks so far; Delete last
-// removes the last; Done ends it. Clear points removes all marks.
+// removes the last; Stop recording ends it. Clear points removes all marks.
 // Paste points reads "latitude, longitude, altitude" lines from the clipboard (only over https or
 // on localhost), marks them instead, numbered in their order, and moves the view to show them;
 // other lines are skipped, and a clipboard without any keeps the marks. Copy points copies the
@@ -57,7 +57,7 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   const sync = () => {
     panel.hidden = !box.checked;
     if (panel.hidden) for (const { mark } of points) mark.hidden = true;
-    record.textContent = on ? "Done" : "Record points";
+    record.textContent = on ? "Stop recording" : "Record points";
     deleteLast.hidden = !on;
     paste.hidden = on;
     deleteLast.disabled = copyAll.disabled = clearAll.disabled = !points.length;

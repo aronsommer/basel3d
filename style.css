@@ -2,6 +2,7 @@
   font-family: "Inter";
   font-weight: 100 900;
   src: url(fonts/Inter.woff2) format("woff2");
+  font-display: swap; /* text at once, in Inter as soon as it is loaded (src/main.js asks for it) */
 }
 /* The grid of all that lies over the scene: EDGE from the screen's edges, BUTTON high (8px +
    20px + 8px, as the menu), GAP apart; glass rounded by RADIUS. MAGENTA as src/lines.js's. */
@@ -328,6 +329,21 @@ p {
   border: 0;
   border-radius: 6px;
   cursor: pointer;
+}
+/* In the panels, a button's or label's text on one line, never wrapped; a button's too long for
+   it ends in "…". */
+#dev button,
+#points button,
+#spray button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#dev button,
+#points button,
+#spray button,
+#dev label,
+#spray .row {
+  white-space: nowrap;
 }
 #points button:disabled,
 #reset:disabled {
