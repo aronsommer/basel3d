@@ -19,6 +19,7 @@ const RADIUS = 250; // metres
 const SHOWN = 700; // metres
 const BUSY = 3;
 const APART = 4; // metres
+const RETRY = 0.5; // seconds a party that found no place waits before looking again
 const PACE = [1.1, 1.6]; // metres per second, slowest and fastest
 const RIGHT = [0.45, 0.9]; // metres right of the loop, least and most, of a party's leftmost
 // Within GAP[1] metres ahead of a party's front, in its width and WIDE beside it, another party
@@ -520,9 +521,11 @@ export function createWalkers(
         if (!w.party.length) return; // spare
         const away = Math.hypot(w.x - centre.x, w.z - centre.z);
         if (!w.loop || away > radius) {
+          if (!w.loop && clock < w.retry) return; // found no place a moment ago
           const from = w.loop && away < 2 * radius ? 0.8 : 0; // near the edge, unless it jumped
           if (!appear(w, centre.x, centre.z, from)) {
             w.loop = null;
+            w.retry = clock + RETRY;
             for (const one of w.party) hide(one);
             return;
           }
