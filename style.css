@@ -480,9 +480,9 @@ p {
 #menu .pairs label:nth-child(even) {
   grid-column: 2 / -1;
 }
-/* The names (updateNames in src/main.js), below the badges, the buttons and the menu; each
-   with its bottom middle on its point, in a white halo: quarters and towns in spaced grey
-   capitals, landmarks dark above a dot. */
+/* The names (updateNames in src/main.js), below the badges, the buttons and the menu; each a
+   dark plate as the badges and marks, in white, its bottom middle on its point: quarters and
+   towns in spaced capitals, landmarks just above a dot on their point. */
 #names {
   position: absolute;
   inset: 0;
@@ -493,27 +493,32 @@ p {
   position: absolute;
   top: 0;
   left: 0;
+  padding: 3px 7px 1px; /* the letters 1px lower: in the middle, as most have no descenders */
+  border-radius: 11px;
+  background: #1d242b;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  color: #fff;
   white-space: nowrap;
   font-weight: 600;
-  text-shadow:
-    -1px -1px 0 #fff,
-    1px -1px 0 #fff,
-    -1px 1px 0 #fff,
-    1px 1px 0 #fff;
+  opacity: 0;
+  transition: opacity 0.2s;
+  will-change: transform, opacity; /* each on a layer of its own: moved and faded, painted once */
+}
+/* Faded in while shown (src/main.js, updateNames). */
+#names div.shown {
+  opacity: 1;
 }
 #names .place {
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #56616b;
 }
 #names .landmark {
-  padding-bottom: 9px;
-  color: #1d242b;
+  top: -9px; /* its plate above its dot */
 }
 #names .landmark::after {
   content: "";
   position: absolute;
-  bottom: 0;
+  bottom: -9px;
   left: 50%;
   width: 6px;
   height: 6px;
@@ -549,6 +554,7 @@ p {
    on the point. */
 #badges .mark {
   color: #fff;
+  line-height: 24px; /* the digits 1px lower, as they have no descenders: in the middle */
   box-shadow: none;
 }
 /* All smaller from 100 marks on (src/points.js), so three digits fit. */

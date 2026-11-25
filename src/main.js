@@ -755,7 +755,7 @@ for (const box of kindBoxes)
 // also within EDGE px round the screen (inside: a badge or mark there may show), by the view of
 // the camera's last updateMatrixWorld.
 const projected = new THREE.Vector3();
-const EDGE = 40;
+const EDGE = 100; // half the widest name (updateNames), so none is hidden while partly seen
 function onScreen(point) {
   projected.copy(point).project(camera);
   const x = ((projected.x + 1) / 2) * innerWidth;
@@ -792,13 +792,15 @@ function updateBadges() {
       badge.style.color = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? "#000" : "#fff";
     }
     badge.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+    badge.at = [x, y]; // for the names to keep clear of (updateNames)
   });
 }
 
 // While "Names" is ticked: the quarters and towns on the ground and the landmarks just above their
 // top, the first roof, bridge deck or ground hit from above (tools/names.mjs). Landmarks further
 // than LANDMARK_RANGE from the camera are hidden, so the centre stays readable from afar; the many
-// Basiliskbrunnen further than BASILISK_RANGE, so they do not drown the others.
+// Basiliskbrunnen further than BASILISK_RANGE, so they do not drown the others; and any that would
+// come within APART px of one shown before it (updateNames).
 const [LANDMARK_RANGE, BASILISK_RANGE] = [3000, 1000]; // metres
 // Shown as last chosen in this browser, else not.
 const NAMES_KEY = "basel3d.names"; // "1" (on) or "0"
@@ -865,7 +867,10 @@ const labels = [
     className: kind,
     hidden: true,
   });
-  return { at, range, element: nameLayer.appendChild(element) };
+  // Its rank (quarters and towns first), whether shown, and, once first shown, its size in px.
+  const rank = kind === "place" ? 0 : 1;
+  const label = { at, range, rank, shown: false, width: 0, height: 0 };
+  return Object.assign(label, { element: nameLayer.appendChild(element) });
 });
 // The UFO (src/catalog.js) hovers over the highest roof there, or the ground.
 const ufos = build("V12", {
@@ -1444,16 +1449,48 @@ const onWater = {
 const fireboats = build("V15", { heightAt, boost, onWater }).vehicles;
 const policeBoats = build("V16", { heightAt, boost, onWater }).vehicles;
 let namesOn = false; // whether they were shown at the last update
+const APART = 4; // px at least between two names
+const placed = []; // the boxes of those shown so far this update: left, top, right, bottom
+// Shows those in view and in range, in turn by rank, then those shown before first (so none
+// flickers), then the nearest first; each only clear of those shown before it and of the badges
+// and marks shown (#badges: the trams' numbers, the Points panel's marks and the museum's pins),
+// which never give way. They fade in and out (style.css, .shown); one in view keeps following its
+// point while it fades.
 function updateNames() {
   const on = namesBox.checked;
   if (!on && !namesOn) return; // all hidden already
   namesOn = on;
-  for (const { at, range, element } of labels) {
-    const { x, y, front } = onScreen(at);
-    const near = camera.position.distanceTo(at) < range;
-    const shown = on && front && near;
-    if (element.hidden === shown) element.hidden = !shown;
-    if (shown) element.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  for (const label of labels) {
+    const { x, y, inside } = onScreen(label.at);
+    const far = camera.position.distanceTo(label.at);
+    Object.assign(label, { x, y, far, wanted: on && inside && far < label.range });
+  }
+  labels.sort((a, b) => a.rank - b.rank || b.shown - a.shown || a.far - b.far);
+  placed.length = 0;
+  for (const element of badgeLayer.children) {
+    if (element.hidden || !element.at) continue;
+    const [x, y] = element.at; // a badge's bottom middle, a mark's tip (style.css)
+    const top = element.classList.contains("mark") ? y - TIP - 11 : y - 22;
+    placed.push([x - 11, top, x + 11, y]);
+  }
+  for (const label of labels) {
+    const { x, y, wanted, element } = label;
+    let shown = wanted;
+    if (shown) {
+      if (!label.width) {
+        element.hidden = false; // to be measured, once; from then on only faded out
+        const dot = label.rank ? 9 : 0; // a landmark's below it (style.css)
+        [label.width, label.height] = [element.offsetWidth, element.offsetHeight + dot];
+      }
+      const box = [x - label.width / 2, y - label.height, x + label.width / 2, y];
+      shown = !placed.some(
+        ([l, t, r, b]) =>
+          box[0] < r + APART && box[2] > l - APART && box[1] < b + APART && box[3] > t - APART,
+      );
+      if (shown) placed.push(box);
+      element.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+    }
+    if (label.shown !== shown) element.classList.toggle("shown", (label.shown = shown));
   }
 }
 
@@ -3161,7 +3198,9 @@ function updatePins() {
     for (const { point, mark } of list) {
       const { x, y, inside } = onScreen(point);
       if (mark.hidden === inside) mark.hidden = !inside;
-      if (inside) mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+      if (!inside) continue;
+      mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+      mark.at = [x, y]; // for the names to keep clear of (updateNames)
     }
 }
 renderer.domElement.addEventListener("pointerdown", (e) => {

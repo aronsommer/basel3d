@@ -123,7 +123,9 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       for (const { point, mark } of points) {
         const { x, y, inside } = onScreen(point);
         if (mark.hidden === inside) mark.hidden = !inside;
-        if (inside) mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+        if (!inside) continue;
+        mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+        mark.at = [x, y]; // for the names to keep clear of (src/main.js, updateNames)
       }
     },
   };
