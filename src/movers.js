@@ -291,21 +291,16 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
     const fx = (ahead.x - behind.x) / length;
     const fz = (ahead.z - behind.z) / length;
     const { xz, of, head } = traffic;
+    // The cell there and those round it: CELLS apart across (x), 1 along (z); first whether a
+    // point counts at all (its rail, not self: most do not), then where it is.
+    const centre = carCell(ahead.x, ahead.z);
     for (let i = -1; i <= 1; i++)
       for (let j = -1; j <= 1; j++)
-        for (
-          let q = head[carCell(ahead.x + i * CELL, ahead.z + j * CELL)];
-          q >= 0;
-          q = of[3 * q + 2]
-        ) {
+        for (let q = head[centre + i * CELLS + j]; q >= 0; q = of[3 * q + 2]) {
+          if (of[3 * q + 1] < rail || of[3 * q] === self) continue;
           const dx = xz[2 * q] - ahead.x;
           const dz = xz[2 * q + 1] - ahead.z;
-          if (
-            of[3 * q] !== self &&
-            of[3 * q + 1] >= rail &&
-            Math.abs(dx * fx + dz * fz) < ALONG &&
-            Math.abs(dx * fz - dz * fx) < SIDE
-          )
+          if (Math.abs(dx * fx + dz * fz) < ALONG && Math.abs(dx * fz - dz * fx) < SIDE)
             return of[3 * q];
         }
     return -1;
