@@ -720,7 +720,8 @@ const GROUPS = {
 
 // The groups at their places ({ group, x, z, heading }); ground(x, z): the height there; clear(x,
 // z, r): whether no tree reaches within r metres. Each animal stands at the nearest spot clear of
-// trees (a ring's middle so the whole ring is); returns { meshes, update(seconds) }.
+// trees (a ring's middle so the whole ring is); returns { meshes, update(seconds) }: per body and
+// per neck geometry one mesh, its instances the animals with it, in one draw call.
 export function createZoo(places, ground, clear) {
   const free = (x, z, r) => {
     for (let d = 0; d <= 40; d += 2)
@@ -734,7 +735,7 @@ export function createZoo(places, ground, clear) {
   const animals = places.flatMap(({ group, x, z, heading }) =>
     GROUPS[group].map(([name, dx, dz, turn, size], k) => {
       const kind = KINDS[name];
-      const mesh = new THREE.Mesh(kind.body, material);
+      const mesh = new THREE.Object3D(); // placed here, drawn as an instance of its body's mesh
       mesh.scale.setScalar(BIG * size);
       const [sin, cos] = [BIG * Math.sin(heading), BIG * Math.cos(heading)];
       const reach = BIG * size * REACH[name];
@@ -746,7 +747,7 @@ export function createZoo(places, ground, clear) {
       mesh.rotation.y = heading + turn;
       let neck = null;
       if (kind.swing) {
-        neck = new THREE.Mesh(kind.swing.geometry, material);
+        neck = new THREE.Object3D();
         neck.position.fromArray(kind.swing.pivot);
         mesh.add(neck);
       }
@@ -754,8 +755,30 @@ export function createZoo(places, ground, clear) {
       return { mesh, neck, kind, turn, k, lift, scale: BIG * size, center };
     }),
   );
+  // Per geometry its mesh and the bodies or necks it shows.
+  const shown = new Map();
+  const show = (geometry, object) =>
+    (shown.get(geometry) ?? shown.set(geometry, []).get(geometry)).push(object);
+  for (const { mesh, neck, kind } of animals) {
+    show(kind.body, mesh);
+    if (neck) show(kind.swing.geometry, neck);
+  }
+  const meshes = [...shown].map(([geometry, objects]) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, objects.length);
+    mesh.frustumCulled = false; // spread over the city
+    return [mesh, objects];
+  });
+  // Their instances where the animals are now.
+  const write = () => {
+    for (const { mesh } of animals) mesh.updateMatrixWorld(true);
+    for (const [mesh, objects] of meshes) {
+      objects.forEach((object, i) => mesh.setMatrixAt(i, object.matrixWorld));
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  };
+  write();
   return {
-    meshes: animals.map(({ mesh }) => mesh),
+    meshes: meshes.map(([mesh]) => mesh),
     update(seconds) {
       for (const { mesh, neck, kind, turn, k, lift, scale, center } of animals) {
         const { swing, pace, swims } = kind;
@@ -776,6 +799,7 @@ export function createZoo(places, ground, clear) {
           mesh.rotation.z = 0.2 * Math.sin(6 * seconds + k);
         }
       }
+      write();
     },
   };
 }
