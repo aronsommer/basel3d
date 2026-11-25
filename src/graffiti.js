@@ -196,10 +196,10 @@ function slab(canvas, size, [top, bottom]) {
 // with splash a text splashed as that, with short its splashes that share as long) and back behind
 // it (two colours: on a car's side all over it, elsewhere a slab); with fill on a car as big as it
 // fits (wholeCar). New ones go at the end, and none is moved or taken out, so a number always
-// means the same style; a graffito placed keeps its whole look (src/graffiti-data.js).
+// means the same style, on the cars and in src/graffiti-data.js alike.
 export const STYLES = [
   // 1, 2: tags.
-  { kind: "tag", look: { font: "Crafty Girls", plain: 0x151515 } },
+  { kind: "tag", look: { font: "Crafty Girls", plain: 0x151515, thick: 0.03 } },
   { kind: "tag", look: { font: "Lacquer", plain: 0x151515 } },
   // 3: a plain piece.
   { kind: "piece", look: {} },

@@ -75,6 +75,14 @@ export default [
     lean: 0,
     width: 4.73,
     tilt: 3,
-    thick: 0.03,
+  },
+  {
+    text: "HELLO MY FRIEND",
+    style: 1,
+    location: [47.5653936, 7.5913899, 257.15],
+    facing: 258.73,
+    lean: 0,
+    width: 6.14,
+    tilt: 2.3,
   },
 ];
