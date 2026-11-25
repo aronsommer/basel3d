@@ -1,105 +1,17 @@
 // Graffiti (pieceOf) in Cherry Bomb One (public/CherryBombOne.woff2, its Latin letters) or Rocker
 // (public/Rocker.woff2), black and white (paint), or in Honk (public/Honk.woff2), or all in one
 // colour (plainOf), in Lacquer (public/Lacquer.woff2) or Crafty Girls (public/CraftyGirls.woff2)
-// too: on walls, roofs and bridges in GRAFFITI, small tags and big pieces, each where it says; and
-// whole cars and whole trams (wholeCar, WHOLE_CARS, WHOLE_TRAMS).
+// too: small tags and big pieces on walls, roofs, bridges and the ground, each where
+// src/graffiti-data.js says (createGraffiti); and whole cars and whole trams (wholeCar, WHOLE_CARS,
+// WHOLE_TRAMS).
 import * as THREE from "three";
 import { fromWGS84 } from "./geo.js";
+import PLACED from "./graffiti-data.js";
 
-// Every graffito, each { where, kind, from, to, text, back, roof, deep, flip, tilt } and any of a
-// whole car piece's look (pieceOf). To add one: in the viewer press C over each end of where it
-// goes, on the wall or roof (C copies the point: lat, lon, metres above sea), and give where
-// (words, to know it by), its kind (KINDS: a tag or piece), its text (any Latin letters; in Lacquer
-// and Crafty Girls capitals, digits and signs; with plain, \n starts a line below), any of font,
-// plain and thick (pieceOf) and, for a slab behind it, back (two colours, 0xrrggbb, the one above
-// the other: FCB). Its text runs along the way from one point to the other, at most as wide as
-// that; before the wall there, its middle at the points' height but at least its kind's raise in
-// metres above the ground and at most up to TOP metres below the wall's top, out before every wall
-// behind it (AHEAD); or with roof on the roof (or bridge) there, read from down its slope (on a
-// flat one from left at from to right at to), in the slope's middle, at most up to EDGE metres from
-// its ends; with deep too (metres), level and from left to right instead, in the band that wide
-// along the way, from and to the middles of its ends, OFF above its highest roof (for a rippled
-// one); on either, with flip, turned round (on a wall, before its other side); on a wall with tilt,
-// turned that many degrees to the left about its bottom's middle. One that finds no wall or roof
-// there is left out, with a warning in the console.
 const FCB = [0xd51f2a, 0x1d3fbf]; // red over blue: Rotblau, red first
-const GRAFFITI = [
-  {
-    where: "An 82 m tower's side, south-west of Basel SBB's station building",
-    kind: "piece",
-    from: [47.546187, 7.58733, 298.2],
-    to: [47.546345, 7.586954, 298.1],
-    text: "FCB",
-    back: FCB,
-  },
-  {
-    where: "A row of 14 m high houses, about 650 m south-east of Basel SBB's station building",
-    kind: "piece",
-    from: [47.544213, 7.596809, 286.5],
-    to: [47.544376, 7.59629, 287.2],
-    text: "FCB 1893",
-    back: FCB,
-  },
-  {
-    where: "A 23 m long house wall about 140 m north-east of the Marktplatz",
-    kind: "piece",
-    from: [47.558755, 7.589476, 262.2],
-    to: [47.558865, 7.589347, 263.2],
-    text: "FCB",
-    back: FCB,
-  },
-  {
-    where: "The Kaserne's roof to the Rhine, in postcode 4058, about 50 m from 4057's border",
-    kind: "piece",
-    roof: true,
-    from: [47.562975, 7.588992],
-    to: [47.562439, 7.589382],
-    text: "4057 FTP 4058",
-  },
-  {
-    where: "A 205 m long roof about 2.8 km north of the Marktplatz",
-    kind: "piece",
-    roof: true,
-    from: [47.583233, 7.589103],
-    to: [47.582569, 7.591653],
-    deep: 31,
-    text: "GANGSTERZZZ",
-  },
-  {
-    where: "A 215 m long bridge's top, about 3.2 km north-north-east of the Marktplatz",
-    kind: "piece",
-    roof: true,
-    from: [47.584181, 7.60188],
-    to: [47.586023, 7.602109],
-    flip: true,
-    text: "JESTES PIEKNA I ZAWSZE MASZ RACJE",
-  },
-  {
-    where: "A wall about 600 m north-east of the Marktplatz",
-    kind: "tag",
-    from: [47.562354, 7.592715, 257.6],
-    to: [47.562285, 7.592816, 258.2],
-    text: "HOW ARE YOU?",
-    font: "Lacquer",
-    plain: 0x151515, // BLACK
-  },
-  {
-    where: "A wall about 70 m south-east of HOW ARE YOU?",
-    kind: "tag",
-    from: [47.561898, 7.593406, 257.2],
-    to: [47.561861, 7.593437, 257.5],
-    flip: true,
-    tilt: 3,
-    text: "NEED\nSOMETHIN?",
-    font: "Crafty Girls",
-    plain: 0x151515, // BLACK
-    thick: 0.03,
-  },
-];
-// Per kind: metres above the ground on a wall, and px of its letters when drawn.
-const KINDS = { tag: { raise: 0.3, size: 96 }, piece: { raise: 0.8, size: 200 } };
-// Metres: TOP, EDGE and AHEAD as said, OFF off the wall or roof.
-const [TOP, EDGE, AHEAD, OFF] = [2, 0.5, 3, 0.02];
+// Per kind: px of its letters when drawn.
+const KINDS = { tag: 96, piece: 200 };
+const OFF = 0.02; // metres a graffito stands off what it lies on
 // Per px of the letters: the black outline's width (it joins them, fills their holes), the white
 // cut line's around it, how far the white face sits up left of its black shade, and how wide a
 // gap or bay of the black may be at most to be filled black too (closing it); and the gap between
@@ -275,122 +187,138 @@ function slab(canvas, size, [top, bottom]) {
   cut.getContext("2d").drawImage(out, -margin, -margin);
   return cut;
 }
+// Every graffito's style, numbered from 1 in this order (its style), each { kind (KINDS), look }: a
+// look in Honk's palette honk (HONK, with face its letters' face all that colour, with ink their
+// shadow and lines) or, without, in font (a family, Cherry Bomb One if none) with face as sheetOf's
+// (or faces, one per word, or letters, one per letter in turn), or with plain all in that colour
+// (plainOf, thick); with rim framed inside (framed); with cut false without the white cut line;
+// with outline round it (a colour or a list of them, outlined; with splash false not splashed out,
+// with splash a text splashed as that, with short its splashes that share as long) and back behind
+// it (two colours: on a car's side all over it, elsewhere a slab); with fill on a car as big as it
+// fits (wholeCar). New ones go at the end, and none is moved or taken out, so a number always
+// means the same style; a graffito placed keeps its whole look (src/graffiti-data.js).
+export const STYLES = [
+  // 1, 2: tags.
+  { kind: "tag", look: { font: "Crafty Girls", plain: 0x151515 } },
+  { kind: "tag", look: { font: "Lacquer", plain: 0x151515 } },
+  // 3: a plain piece.
+  { kind: "piece", look: {} },
+  // 4 to 13: the trains' first.
+  { kind: "piece", look: { honk: 0, rim: "upLeft", outline: 0x00e640 } },
+  // Poison green in magenta, its complement.
+  {
+    kind: "piece",
+    look: {
+      faces: [
+        [0xffd23a, 0xffa800, 0xe07000],
+        [0xb6f22e, 0x6fd62a, 0x1e9e3a],
+      ],
+      rim: "upLeft",
+      outline: 0xff00ff,
+      splash: "BASEL", // its splashes shaped as for this text, whatever it says
+    },
+  },
+  { kind: "piece", look: { back: FCB } }, // on the FCB's colours
+  // FCB blue in FCB red.
+  { kind: "piece", look: { honk: 7, face: 0x1d3fbf, rim: true, outline: 0xd51f2a } },
+  { kind: "piece", look: { honk: 7, face: 0x3cc84e, rim: "upLeft", outline: 0xff8c00 } },
+  // Confetti: each letter the next colour round.
+  {
+    kind: "piece",
+    look: {
+      letters: [
+        0xffd400, 0xff9f1a, 0xff5a3c, 0xff3da8, 0xc04bff, 0x6a6bff, 0x2fa8ff, 0x18d4c0, 0x5be36a,
+      ],
+      rim: true,
+      outline: 0xff00ff,
+    },
+  },
+  // Chrome (silver above a sharp dark horizon, lighter below, so its white rim shows) in blood,
+  // splashed as 5 but shorter.
+  {
+    kind: "piece",
+    look: {
+      font: "Rocker",
+      face: [0xc4c9cf, 0xb2b8bf, 0x9aa1a9, 0x2b3036, 0x484e56, 0x8a919a, 0xd0d4d9],
+      rim: "upLeft",
+      outline: 0xb0000f,
+      splash: "BASEL",
+      short: 0.6,
+    },
+  },
+  { kind: "piece", look: { honk: 7, outline: 0xe01020 } },
+  {
+    kind: "piece",
+    look: { fill: true, cut: false, outline: [0xffd000, 0xe01020], splash: false },
+  },
+  { kind: "piece", look: { font: "Rocker", outline: 0x8a2be2 } },
+  // 14 to 21: the trams' first.
+  { kind: "piece", look: { honk: 0, rim: "upLeft", outline: 0x00e640 } }, // as 4
+  // Striped as the pride flag.
+  {
+    kind: "piece",
+    look: {
+      face: { stripes: [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982] },
+      rim: true,
+      outline: 0xe01020,
+    },
+  },
+  { kind: "piece", look: { outline: 0xff00ff } },
+  {
+    kind: "piece",
+    look: {
+      font: "Rocker",
+      face: [0xc4c9cf, 0x9aa1a9, 0x2b3036, 0x8a919a, 0xd0d4d9],
+      rim: "upLeft",
+      outline: 0x1a5cff,
+    },
+  },
+  {
+    kind: "piece",
+    look: {
+      font: "Rocker",
+      face: [0xb6f22e, 0x6fd62a, 0x1e9e3a], // poison green, as in 5
+      rim: "upLeft",
+      outline: 0xe01020,
+    },
+  },
+  { kind: "piece", look: { honk: 1, ink: 0x000000, rim: "upLeft", outline: 0xff2d95 } },
+  // Lipstick: cherry red to pink, in indigo (not cyan, the colour of what is picked).
+  {
+    kind: "piece",
+    look: { face: [0xd0002a, 0xff2d6f, 0xff7ab8], rim: "upLeft", outline: 0x3a1fd1 },
+  },
+  { kind: "piece", look: { font: "Rocker", outline: 0xc000ff } },
+];
+// A graffito's [kind, look]: its style's (STYLES), with its own fields (own) over the look's.
+export function styled(style, own) {
+  const { kind, look } = STYLES[style - 1];
+  return [kind, { ...look, ...own }];
+}
 // Whole cars on trams and trains (which: src/main.js), per kind: on each side (right and left of
-// its way) a piece over a car's body, each vehicle wearing all of its kind's, one per car from its
-// last, its own (in turn) first; or a tram a whole tram (WHOLE_TRAMS) instead. Each in Honk's
-// palette honk (HONK, with face its letters' face all that colour, with ink their shadow and
-// lines) or, without, as the graffiti in font (a family, Cherry Bomb One if none) with face as
-// sheetOf's (or faces, one per word, or letters, one per letter in turn); with rim framed inside
-// (framed); with cut false without the white cut line; with outline round it (a colour or a list
-// of them, outlined; with splash false not splashed out, with splash a text splashed as that, with
-// short its splashes that share as long) and back on it (two colours). With fill it is as big as
-// it fits (wholeCar). A side may be left bare.
+// its way) a piece over a car's body, { style (its number in STYLES), text }, each vehicle wearing
+// all of its kind's, one per car from its last, its own (in turn) first; or a tram a whole tram
+// (WHOLE_TRAMS) instead. A side may be left bare.
 export const WHOLE_CARS = {
   // From the last car on, fonts so that no two next to each other (round again too) and no car's
   // two sides are in the same: right Honk, Cherry, Honk, Rocker, Cherry; left Cherry, Honk,
   // Cherry, Honk, Rocker.
   train: [
-    {
-      right: { text: "GANGSTER", honk: 0, rim: "upLeft", outline: 0x00e640 },
-      // Poison green in magenta, its complement.
-      left: {
-        text: "SEXY BASEL",
-        faces: [
-          [0xffd23a, 0xffa800, 0xe07000],
-          [0xb6f22e, 0x6fd62a, 0x1e9e3a],
-        ],
-        rim: "upLeft",
-        outline: 0xff00ff,
-        splash: "BASEL", // as it had when it said only that
-      },
-    },
-    {
-      right: { text: "FC BASEL 1893", back: FCB }, // as on the trams
-      // FCB blue in FCB red.
-      left: { text: "SCHEISS ZÜRI", honk: 7, face: 0x1d3fbf, rim: true, outline: 0xd51f2a },
-    },
-    {
-      right: { text: "BASILISK", honk: 7, face: 0x3cc84e, rim: "upLeft", outline: 0xff8c00 },
-      // Confetti: each letter the next colour round.
-      left: {
-        text: "HUERESOHN",
-        letters: [
-          0xffd400, 0xff9f1a, 0xff5a3c, 0xff3da8, 0xc04bff, 0x6a6bff, 0x2fa8ff, 0x18d4c0, 0x5be36a,
-        ],
-        rim: true,
-        outline: 0xff00ff,
-      },
-    },
-    {
-      // Chrome (silver above a sharp dark horizon, lighter below, so its white rim shows) in blood,
-      // splashed as BASEL but shorter.
-      right: {
-        text: "KILLER BEBBI",
-        font: "Rocker",
-        face: [0xc4c9cf, 0xb2b8bf, 0x9aa1a9, 0x2b3036, 0x484e56, 0x8a919a, 0xd0d4d9],
-        rim: "upLeft",
-        outline: 0xb0000f,
-        splash: "BASEL",
-        short: 0.6,
-      },
-      left: { text: "CRAZY CREW", honk: 7, outline: 0xe01020 },
-    },
-    {
-      // Basel in Polish.
-      right: {
-        text: "BAZYLEA ONE",
-        fill: true,
-        cut: false,
-        outline: [0xffd000, 0xe01020],
-        splash: false,
-      },
-      left: { text: "YO DIGGE", font: "Rocker", outline: 0x8a2be2 },
-    },
+    { right: { style: 4, text: "GANGSTER" }, left: { style: 5, text: "SEXY BASEL" } },
+    { right: { style: 6, text: "FC BASEL 1893" }, left: { style: 7, text: "SCHEISS ZÜRI" } },
+    { right: { style: 8, text: "BASILISK" }, left: { style: 9, text: "HUERESOHN" } },
+    { right: { style: 10, text: "KILLER BEBBI" }, left: { style: 11, text: "CRAZY CREW" } },
+    // Basel in Polish.
+    { right: { style: 12, text: "BAZYLEA ONE" }, left: { style: 13, text: "YO DIGGE" } },
   ],
   tram: [
     // From the last car on fonts as on the trains: right Honk, Cherry, Rocker, Cherry; left
     // Cherry, Rocker, Honk, Rocker.
-    {
-      // As GANGSTER on the trains.
-      right: { text: "HÖSCH", honk: 0, rim: "upLeft", outline: 0x00e640 },
-      // Striped as the pride flag.
-      left: {
-        text: "LOVE",
-        face: { stripes: [0xe40303, 0xff8c00, 0xffed00, 0x008026, 0x24408e, 0x732982] },
-        rim: true,
-        outline: 0xe01020,
-      },
-    },
-    {
-      right: { text: "4057", outline: 0xff00ff }, // Kleinbasel's postcodes, this and 4058
-      left: {
-        text: "RHY",
-        font: "Rocker",
-        face: [0xc4c9cf, 0x9aa1a9, 0x2b3036, 0x8a919a, 0xd0d4d9],
-        rim: "upLeft",
-        outline: 0x1a5cff,
-      },
-    },
-    {
-      right: {
-        text: "ZOLLI",
-        font: "Rocker",
-        face: [0xb6f22e, 0x6fd62a, 0x1e9e3a], // poison green, as in SEXY BASEL
-        rim: "upLeft",
-        outline: 0xe01020,
-      },
-      left: { text: "4058", honk: 1, ink: 0x000000, rim: "upLeft", outline: 0xff2d95 },
-    },
-    {
-      // Lipstick: cherry red to pink, in indigo (not cyan, the colour of what is picked).
-      right: {
-        text: "SEXY",
-        face: [0xd0002a, 0xff2d6f, 0xff7ab8],
-        rim: "upLeft",
-        outline: 0x3a1fd1,
-      },
-      left: { text: "ACAB", font: "Rocker", outline: 0xc000ff },
-    },
+    { right: { style: 14, text: "HÖSCH" }, left: { style: 15, text: "LOVE" } },
+    // Kleinbasel's postcodes, 4057 and 4058.
+    { right: { style: 16, text: "4057" }, left: { style: 17, text: "RHY" } },
+    { right: { style: 18, text: "ZOLLI" }, left: { style: 19, text: "4058" } },
+    { right: { style: 20, text: "SEXY" }, left: { style: 21, text: "ACAB" } },
   ],
 };
 // Whole trams: per side a piece over all of a tram's cars, as WHOLE_CARS's, its text a word a car
@@ -398,8 +326,8 @@ export const WHOLE_CARS = {
 export const WHOLE_TRAMS = [
   // The FCB's song, a line a side, in the FCB's colours.
   {
-    right: { text: "ROT ISCH UNSERI LIEBI", back: FCB },
-    left: { text: "BLAU DIE EWIGI TREUI", back: FCB },
+    right: { style: 6, text: "ROT ISCH UNSERI LIEBI" },
+    left: { style: 6, text: "BLAU DIE EWIGI TREUI" },
   },
 ];
 // Honk's palettes (its CPAL), each: its shadow's and lines' colours (from the baseline up to half a
@@ -758,164 +686,101 @@ function material(canvas) {
 }
 const plane = () => new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0); // its bottom's middle at 0
 
+// A surface's facing (compass degrees towards where its reader stands, 0 north) and lean (degrees
+// its face looks up: 0 a wall, 90 flat) as unit vectors: out of it (n) and up along it (up), so
+// on a wall straight up, on a slope up it, on a flat one away from its reader. x east, z south.
+export function surface(facing, lean) {
+  const [h, l] = [facing, lean].map(THREE.MathUtils.degToRad);
+  const [dx, dz] = [Math.sin(h), -Math.cos(h)];
+  return {
+    n: new THREE.Vector3(Math.cos(l) * dx, Math.sin(l), Math.cos(l) * dz),
+    up: new THREE.Vector3(-Math.sin(l) * dx, Math.cos(l), -Math.sin(l) * dz),
+  };
+}
+// The other way round, for one lying facing n, its top towards up turned tilt degrees to the left:
+// facing and lean of its surface (as above), and tilt from that surface's up to its top.
+export function orientationOf(n, up, tilt) {
+  const deg = THREE.MathUtils.radToDeg;
+  const flat = Math.hypot(n.x, n.z) < 1e-6;
+  const [dx, dz] = flat ? [-up.x, -up.z] : [n.x, n.z];
+  const facing = (deg(Math.atan2(dx, -dz)) + 360) % 360;
+  const lean = deg(Math.atan2(n.y, Math.hypot(n.x, n.z)));
+  const base = surface(facing, lean).up;
+  const turn = Math.atan2(new THREE.Vector3().crossVectors(base, up).dot(n), base.dot(up));
+  return { facing, lean, tilt: tilt + deg(turn) };
+}
+// Lays a graffito's mesh (aspect: its sheet's width to height) on a surface, OFF out of it: its
+// middle at at, facing n, its top towards up (unit vectors square to each other), width metres wide,
+// turned tilt degrees to the left (kept in its userData).
+const [basis, turn, top] = [new THREE.Matrix4(), new THREE.Quaternion(), new THREE.Vector3()];
+const Z = new THREE.Vector3(0, 0, 1);
+export function lay(mesh, aspect, at, n, up, width, tilt = 0) {
+  mesh.userData.tilt = tilt;
+  basis.makeBasis(top.crossVectors(up, n), up, n);
+  mesh.quaternion.setFromRotationMatrix(basis);
+  mesh.quaternion.multiply(turn.setFromAxisAngle(Z, THREE.MathUtils.degToRad(tilt)));
+  mesh.scale.set(width, width / aspect, 1);
+  top.set(0, 1, 0).applyQuaternion(mesh.quaternion);
+  mesh.position
+    .copy(at)
+    .addScaledVector(n, OFF)
+    .addScaledVector(top, -width / aspect / 2);
+}
+// A graffito's mesh: a plane with look painted on it (paintOn).
+export function graffitoMesh(kind, look) {
+  const mesh = new THREE.Mesh(plane());
+  paintOn(mesh, kind, look);
+  return mesh;
+}
+// A canvas with a graffito's look (pieceOf; with back, a slab behind it) of kind (KINDS), its
+// letters size px (as its kind's if none).
+export const artOf = (kind, { back, ...look }, size = KINDS[kind]) => pieceOf(look, size, back).art;
+// Paints a graffito's look of kind on its mesh anew (artOf), freeing what was there, and keeps its
+// sheet's width to height in its userData (aspect).
+export function paintOn(mesh, kind, look) {
+  const sheet = artOf(kind, look);
+  mesh.material.map?.dispose();
+  mesh.material.dispose();
+  mesh.material = material(sheet);
+  mesh.userData.aspect = sheet.width / sheet.height;
+}
+// Where a graffito's mesh lies, as lay takes it: { at, n, up, width, tilt }.
+export function placeOf(mesh) {
+  const { aspect, tilt } = mesh.userData;
+  const n = new THREE.Vector3(0, 0, 1).applyQuaternion(mesh.quaternion);
+  const tilted = new THREE.Vector3(0, 1, 0).applyQuaternion(mesh.quaternion);
+  const width = mesh.scale.x;
+  const at = mesh.position.clone().addScaledVector(tilted, width / aspect / 2);
+  at.addScaledVector(n, -OFF);
+  const up = tilted.applyAxisAngle(n, -THREE.MathUtils.degToRad(tilt));
+  return { at, n, up, width, tilt };
+}
+
 // Adds the font with this name from its file's bytes, for drawing.
 export const addFont = async (name, bytes) =>
   document.fonts.add(await new FontFace(name, bytes).load());
 
-// structures: src/buildings.js; ground(x, z, y): the height walked on there, from near y; roofAt({
-// x, z }): the topmost roof or bridge there, { number, y }, if any. Resolves to { meshes, marks:
-// per graffito [its building or bridge, a function hiding it] }, each painted in a task of its own.
-export async function createGraffiti(structures, ground, roofAt) {
+// roofAt({ x, z }): the topmost roof or bridge there, { number, y }, if any. Resolves to { meshes,
+// marks: per graffito on a building or bridge [its number, a function hiding it] }, each painted in
+// a task of its own, each mesh's userData { graffito: its entry in src/graffiti-data.js, aspect,
+// tilt } (lay).
+export async function createGraffiti(roofAt) {
   const [meshes, marks] = [[], []];
-  const matrix = new THREE.Matrix4();
-  for (const {
-    where,
-    kind,
-    from,
-    to,
-    roof,
-    deep,
-    flip = false,
-    tilt = 0,
-    back,
-    ...look
-  } of GRAFFITI) {
-    const missing = (what) => console.warn(`Graffito "${look.text}" (${where}): no ${what} there`);
-    const [[fx, fz], [tx, tz]] = [fromWGS84(...from), fromWGS84(...to)];
-    const length = Math.hypot(tx - fx, tz - fz);
-    const [mx, mz] = [(fx + tx) / 2, (fz + tz) / 2];
+  for (const graffito of PLACED) {
+    const { style, location, facing, lean, width, tilt, ...own } = graffito;
     await new Promise((go) => setTimeout(go));
-    const sheet = pieceOf(look, KINDS[kind].size, back).art;
-    const aspect = sheet.width / sheet.height;
-    const mesh = new THREE.Mesh(plane(), material(sheet));
-    if (roof) {
-      const over = roofAt({ x: mx, z: mz });
-      if (!over) {
-        missing("roof");
-        continue;
-      }
-      // Its plane at the middle: n down it, s metres up per metre that way, and a metres up per
-      // metre along from → to (u), its height y there, and how far it goes down and up it; with
-      // deep, level at the highest roof in the band.
-      const top = (x, z) => structures.top(x, z, Infinity, -Infinity, true);
-      const [ux, uz] = [(tx - fx) / length, (tz - fz) / length];
-      let [nx, nz] = [uz, -ux];
-      let [s, a, y, down, up] = [0, 0, over.y, deep / 2, deep / 2];
-      if (deep) {
-        y = -Infinity;
-        for (let i = 0; i <= length; i += 2)
-          for (let j = -deep / 2; j <= deep / 2; j += 0.25)
-            y = Math.max(y, top(fx + ux * i + nx * j, fz + uz * i + nz * j));
-      } else {
-        s = (top(mx - nx, mz - nz) - top(mx + nx, mz + nz)) / 2;
-        if (s < 0) [nx, nz, s] = [-nx, -nz, -s];
-        a = (top(mx + ux, mz + uz) - top(mx - ux, mz - uz)) / 2;
-        // Metres the slope goes on from the middle, down it (k = 1) or up (-1): where the roof
-        // stays within 0.2 m of its plane, tried every 0.25 m.
-        const reach = (k) => {
-          let d = 0;
-          const off = (d) => top(mx + k * nx * d, mz + k * nz * d) - (over.y - k * s * d);
-          while (d < 50 && Math.abs(off(d + 0.25)) < 0.2) d += 0.25;
-          return d;
-        };
-        [down, up] = [reach(1), reach(-1)];
-      }
-      // Its axes in the plane: right along u, upward up the slope; and out of the plane.
-      const slope = new THREE.Vector3(nx, -s, nz); // down it per metre seen from above
-      const right = new THREE.Vector3(ux, a, uz).normalize();
-      const out = new THREE.Vector3().crossVectors(right, slope).normalize();
-      if (out.y < 0) out.negate();
-      const upward = new THREE.Vector3().crossVectors(out, right);
-      // Read from down the slope; on one flat to 1 cm per metre, from from's side; with flip from
-      // the other side.
-      if (upward.y < -0.01 !== flip) [right, upward].forEach((v) => v.negate());
-      const width = Math.min(length, ((down + up) * Math.hypot(1, s) - 2 * EDGE) * aspect);
-      // Its bottom's middle: half its height down the slope from the slope's middle, OFF out.
-      mesh.position
-        .set(mx, y, mz)
-        .addScaledVector(slope, (down - up) / 2)
-        .addScaledVector(upward, -width / aspect / 2)
-        .addScaledVector(out, OFF);
-      mesh.quaternion.setFromRotationMatrix(matrix.makeBasis(right, upward, out));
-      mesh.scale.set(width, width / aspect, 1);
-      meshes.push(mesh);
-      marks.push([over.number, () => (mesh.visible = false)]);
-      continue;
-    }
-    // The wall: the longest within 2 m of the middle along the way from → to.
-    let wall = null;
-    for (const [number, walls] of structures.walls(mx, mz, 2))
-      for (let i = 0; i < walls.length; i += 6) {
-        const [ax, az, bx, bz, , top] = walls.slice(i, i + 6);
-        const l = Math.hypot(bx - ax, bz - az);
-        const [ux, uz] = [(bx - ax) / l, (bz - az) / l];
-        if (Math.abs(ux * (tx - fx) + uz * (tz - fz)) < 0.98 * length) continue;
-        if (Math.abs((mx - ax) * uz - (mz - az) * ux) > 2 || l <= (wall?.l ?? 0)) continue;
-        const along = (mx - ax) * ux + (mz - az) * uz;
-        wall = { number, l, top, ux, uz, x: ax + ux * along, z: az + uz * along };
-      }
-    if (!wall) {
-      missing("wall");
-      continue;
-    }
-    // Out of it: the side with no roof over it 1 m out (with flip the other).
-    let [nx, nz] = [wall.uz, -wall.ux];
-    if (structures.top(wall.x + nx, wall.z + nz, Infinity) > -Infinity !== flip)
-      [nx, nz] = [-nx, -nz];
-    // The ground at the wall and 1 m before it (the terrain may rise to the wall), the highest
-    // along the whole way from → to, every metre.
-    const steps = Math.ceil(length);
-    let y = -Infinity;
-    for (let k = 0; k <= steps; k++)
-      for (const out of [0, 1]) {
-        const t = (k / steps - 0.5) * length;
-        const [x, z] = [wall.x + wall.ux * t + nx * out, wall.z + wall.uz * t + nz * out];
-        y = Math.max(y, ground(x, z, Infinity));
-      }
-    // As high as fits between the ground and the top, its middle at the points' height if it may
-    // (metres above sea less 250 m: the scene's y, src/geo.js), else as low as it may.
-    const [low, high] = [y + KINDS[kind].raise, wall.top - TOP];
-    const tall = Math.min(length / aspect, high - low);
-    if (tall <= 0) {
-      missing("room on the wall");
-      continue;
-    }
-    const middle = from.length > 2 ? (from[2] + to[2]) / 2 - 250 : -Infinity;
-    const bottom = Math.min(Math.max(middle - tall / 2, low), high - tall);
-    // Before every wall reaching into its area from behind it up to AHEAD metres out, corners
-    // too, so none hides any of it: as far out as the furthest.
-    const half = (tall * aspect) / 2;
-    let front = 0;
-    for (const [, walls] of structures.walls(wall.x, wall.z, half + AHEAD))
-      for (let i = 0; i < walls.length; i += 6) {
-        const [ax, az, bx, bz, lo, hi] = walls.slice(i, i + 6);
-        if (hi <= bottom || lo >= bottom + tall) continue;
-        // Its ends: how far along the wall from the middle, and how far out.
-        const [a, b] = [
-          [ax, az],
-          [bx, bz],
-        ].map(([x, z]) => [
-          (x - wall.x) * wall.ux + (z - wall.z) * wall.uz,
-          (x - wall.x) * nx + (z - wall.z) * nz,
-        ]);
-        const [t0, t1] = [
-          Math.max(Math.min(a[0], b[0]), -half),
-          Math.min(Math.max(a[0], b[0]), half),
-        ];
-        if (t0 > t1) continue;
-        // How far out it is at t along, as straight between its ends.
-        const at = (t) =>
-          a[0] === b[0]
-            ? Math.max(a[1], b[1])
-            : a[1] + ((b[1] - a[1]) * (t - a[0])) / (b[0] - a[0]);
-        const out = Math.max(at(t0), at(t1));
-        if (out <= AHEAD) front = Math.max(front, out);
-      }
-    mesh.scale.set(tall * aspect, tall, 1);
-    mesh.rotation.set(0, Math.atan2(nx, nz), THREE.MathUtils.degToRad(tilt));
-    mesh.position.set(wall.x + nx * (front + OFF), bottom, wall.z + nz * (front + OFF));
+    const mesh = graffitoMesh(...styled(style, own));
+    mesh.userData.graffito = graffito;
+    const [x, z] = fromWGS84(location[0], location[1]);
+    const { n, up } = surface(facing, lean);
+    lay(mesh, mesh.userData.aspect, new THREE.Vector3(x, location[2] - 250, z), n, up, width, tilt);
     meshes.push(mesh);
-    marks.push([wall.number, () => (mesh.visible = false)]);
+    // Its building or bridge: the roof behind its middle, looked for up to 4 m back (it may stand
+    // before a bay of its wall).
+    let behind = null;
+    for (let d = 0.3; !behind && d < 4; d += 0.5)
+      behind = roofAt({ x: x - n.x * d, z: z - n.z * d });
+    if (behind) marks.push([behind.number, () => (mesh.visible = false)]);
   }
   return { meshes, marks };
 }

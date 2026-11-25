@@ -49,7 +49,8 @@ import { createSky } from "./sky.js";
 import { createDaylight } from "./daylight.js";
 import { dodge, mix, peopleTime } from "./people.js";
 import { createWalkers } from "./walkers.js";
-import { WHOLE_CARS, WHOLE_TRAMS, addFont, createGraffiti, wholeCar } from "./graffiti.js";
+import { STYLES, WHOLE_CARS, WHOLE_TRAMS, addFont, createGraffiti, wholeCar } from "./graffiti.js";
+import { createSprayer } from "./sprayer.js";
 import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
 import { TIP, createPoints } from "./points.js";
@@ -1203,6 +1204,7 @@ const chance = (v, salt) => (Math.abs(Math.sin(v * 12.9898 + salt)) * 43758.5453
 // the left its left one; off, they go on in their own. The whole tram keeps its own.
 const TEST = 3; // seconds
 let testGraffiti = () => {};
+let graffitiMeshes = []; // every graffito's but the whole cars' (createGraffiti), for src/sprayer.js
 load(
   ["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2", "Lacquer.woff2", "CraftyGirls.woff2"],
   () => {},
@@ -1214,10 +1216,9 @@ load(
     addFont("Lacquer", lacquer),
     addFont("Crafty Girls", crafty),
   ]);
-  const { meshes, marks } = await createGraffiti(structures, walkGround, (at) =>
-    roofOver(at, true),
-  );
+  const { meshes, marks } = await createGraffiti((at) => roofOver(at, true));
   scene.add(...meshes);
+  graffitiMeshes = meshes;
   for (const [number, hide] of marks)
     grounding.set(number, [...(grounding.get(number) ?? []), hide]);
   // Each part of a design once per text and size of car, with the cars it is on (on) and its
@@ -1252,7 +1253,8 @@ load(
           [-1, left],
         ]) {
           if (!piece) continue;
-          const { text: own, ...look } = piece;
+          const { text: own, style } = piece;
+          const { look } = STYLES[style - 1];
           const shifted = pieces[(2 * index + (s > 0 ? 0 : 1) + u) % pieces.length];
           const text = whole ? own : (shifted?.text ?? own);
           // Whole, a word a car if it has as many, else its letters shared out among them.
@@ -1317,7 +1319,7 @@ load(
       const texts = [...new Set(pieces.map(({ text }) => text))].sort((a, b) =>
         a.localeCompare(b, "de"),
       );
-      return [kind, { texts, styles: pieces.map(({ text, ...style }) => style) }];
+      return [kind, { texts, styles: pieces.map(({ style }) => STYLES[style - 1].look) }];
     }),
   );
   // A test's side back in its own material, the one painted for the test freed.
@@ -2501,7 +2503,7 @@ renderer.domElement.addEventListener(
   (e) => (down = { x: e.clientX, y: e.clientY, time: e.timeStamp }),
 );
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0 || stoppedGlide || steered() || movingLabels) return;
+  if (e.button !== 0 || stoppedGlide || steered() || movingLabels || sprayer.active()) return;
   if (mouseLook()) {
     if (buttonAt(innerWidth / 2, innerHeight / 2)) return switchMuseum();
     // Gets on what the dot in the middle is on, freeing the mouse, if anything.
@@ -2984,6 +2986,15 @@ for (const object of culled) object.frustumCulled = true;
 
 // "Riders" in the Dev panel: the riders on all vehicles that have one, not only on the one ridden.
 let showRiders = false;
+// The graffiti editor, "Graffiti" in the Dev panel (src/sprayer.js).
+const sprayer = createSprayer({
+  renderer,
+  camera,
+  orbit,
+  scene,
+  surfaces: [buildings.scene, bridges.scene, terrain],
+  meshes: () => graffitiMeshes,
+});
 // Draws a frame, with the Dev panel (src/dev.js) while it is ticked.
 const drawFrame = createDev(
   renderer,
@@ -2997,6 +3008,7 @@ const drawFrame = createDev(
   (on) => (god = on),
   (on) => (showRiders = on),
   OPEN && moveLabels,
+  sprayer.move,
 );
 // Moves the view over the middle of scene points, looking the same way, out as far as shows them
 // all with FIT around them (as seen from above), but not nearer.

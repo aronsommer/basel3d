@@ -1,14 +1,14 @@
-// "Dev" in the menu, remembered in this browser: while ticked, a panel at the
-// left shows, below Copy stats, which copies it all, over a second (but at once after ticking it),
-// the frames per second; the ms to draw a frame (so it shows the cost even where the screen's
-// refresh rate caps the frames), split into the CPU's part (render, handing the work to the GPU)
-// and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the others run as usual;
-// and the triangles drawn. Below, a button steps through the SCALES of the resolution; a box per
-// part hides and shows it, to see what it costs; then "Aerial" shows the aerial photo as the
-// ground, "God mode" (src/main.js, godAt), "Riders" and, while the museum is open, at the bottom
-// "Move labels", none ticked at first. All of it lives here, the menu entry in index.html and the
-// styles in style.css (#dev-box, #dev), so it can be taken out whole (but godAt, showRiders and
-// moveLabels).
+// "Dev" in the menu, remembered in this browser: while ticked, a panel at the left shows, below
+// Copy stats, which copies it all, over a second (but at once after ticking it), the frames per
+// second; the ms to draw a frame (so it shows the cost even where the screen's refresh rate caps
+// the frames), split into the CPU's part (render, handing the work to the GPU) and the wait for the
+// GPU to finish, timed every SAMPLE-th frame only, so the others run as usual; and the triangles
+// drawn. Below, a button steps through the SCALES of the resolution; a box per part hides and shows
+// it, to see what it costs; then "Aerial" shows the aerial photo as the ground, "Riders",
+// "Graffiti" (showing the graffiti editor's own panel at the bottom right while ticked), "God mode"
+// (src/main.js, godAt) and, while the museum is open, at the bottom "Move labels", none ticked at
+// first. All of it lives here, the menu entry in index.html and the styles in style.css (#dev-box,
+// #dev), so it can be taken out whole (but godAt, showRiders, moveLabels and src/sprayer.js).
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -18,8 +18,9 @@ const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 // A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
 // aerial(on): shows the aerial photo or the map again, its promise done when it does; god(on):
 // turns God mode on or off; riders(on): shows the riders on all vehicles or only on the one ridden;
-// labels(on), if given: lets the museum's labels be moved or not.
-export function createDev(renderer, render, parts, aerial, god, riders, labels) {
+// labels(on), if given: lets the museum's labels be moved or not; graffiti(on, box): turns the
+// graffiti editor on or off, its panel in box (an element).
+export function createDev(renderer, render, parts, aerial, god, riders, labels, graffiti) {
   const box = document.getElementById("dev-box");
   try {
     box.checked = localStorage.getItem(KEY) === "1";
@@ -63,10 +64,17 @@ export function createDev(renderer, render, parts, aerial, god, riders, labels) 
     await aerial(on);
     photo.disabled = false;
   });
-  // Unticked again with the Dev panel.
+  const editor = element("div", { id: "spray", hidden: true });
+  document.getElementById("panels").after(editor); // bottom right (style.css)
+  const spraying = (on) => {
+    editor.hidden = !on;
+    graffiti(on, editor);
+  };
+  // Unticked again with the Dev panel: what shows (Riders), then the tools.
   const modes = [
-    [toggle("God mode", god), god],
     [toggle("Riders", riders), riders],
+    [toggle("Graffiti", spraying), spraying],
+    [toggle("God mode", god), god],
     ...(labels ? [[toggle("Move labels", labels), labels]] : []),
   ];
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the

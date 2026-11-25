@@ -45,6 +45,7 @@ p {
 #menu,
 #dev,
 #points,
+#spray,
 #copied,
 #where,
 #esc,
@@ -77,7 +78,8 @@ p {
 #north,
 #menu,
 #dev,
-#points {
+#points,
+#spray {
   box-sizing: border-box;
   padding: 8px 14px;
   font: inherit;
@@ -186,7 +188,8 @@ p {
    buttons; the points' buttons. Tighter, to fit the column's width and hide
    little of the scene. */
 #dev,
-#points {
+#points,
+#spray {
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -196,7 +199,8 @@ p {
   text-align: left;
 }
 #dev[hidden],
-#points[hidden] {
+#points[hidden],
+#spray[hidden] {
   display: none;
 }
 /* Names left, values right, so the units and decimal points line up. */
@@ -220,6 +224,90 @@ p {
   min-height: 20px;
   cursor: pointer;
 }
+/* The graffiti editor (src/sprayer.js), ticked in the Dev panel: at the bottom right, out of the
+   menu's and the panels' way; its fields as wide as it, the rows' side by side. */
+#spray {
+  position: absolute;
+  right: calc(env(safe-area-inset-right) + var(--edge));
+  bottom: calc(env(safe-area-inset-bottom) + var(--edge));
+  width: 268px; /* room for the styles' numbers */
+  max-height: calc(100dvh - 2 * var(--edge));
+  overflow-y: auto;
+  gap: 4px;
+}
+#spray .row {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#spray .row button {
+  flex: 1;
+}
+#spray :disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#spray textarea {
+  box-sizing: border-box;
+  padding: 2px 4px;
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  align-self: stretch;
+  resize: vertical;
+  text-transform: uppercase; /* as drawn */
+}
+/* The styles: three tiles a row, each showing it, the one of the graffito picked framed. */
+#spray .styles {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+/* Its number left of its tile, in its middle. */
+#spray .styles div {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+#spray .styles span {
+  flex: none;
+  width: 14px;
+  font-size: 10px;
+  line-height: 10px;
+  text-align: right;
+  opacity: 0.6;
+}
+#spray .styles button {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+#spray .styles button.on {
+  border-color: #fff;
+}
+#spray .styles canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+#spray input[type="color"] {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+}
+#spray input[type="range"] {
+  flex: 1;
+}
 #dev input {
   width: 14px;
   height: 14px;
@@ -229,6 +317,7 @@ p {
 }
 #dev button,
 #points button,
+#spray button,
 #reset {
   align-self: stretch;
   min-height: 22px;
