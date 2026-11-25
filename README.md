@@ -88,6 +88,8 @@ basel3d/
 │   ├── CherryBombOne.woff2  the graffiti's font (Cherry Bomb One), its Latin letters
 │   ├── Rocker.woff2   a graffiti font (New Rocker, renamed as its licence asks): its ASCII and Ä, Ö, Ü, ä, ö, ü, ß
 │   ├── Honk.woff2     a graffiti font (Honk): its capitals, digits, signs and Ä, Ö, Ü, its colour layers as plain letters
+│   ├── Lacquer.woff2  a tag font (Lacquer): its capitals, digits, signs and Ä, Ö, Ü
+│   ├── CraftyGirls.woff2  a tag font (Crafty Girls): its capitals, digits, signs and Ä, Ö, Ü
 │   └── size.json      size and hash of each file, for the loading percentage and cache
 ├── tools/             converters that generate public/
 │   ├── area.mjs       shared area and coordinates
@@ -200,6 +202,8 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js) 
 - Font: Inter by The Inter Project Authors, SIL Open Font License 1.1.
 - Font: Cherry Bomb One by Satsuyako, SIL Open Font License 1.1.
 - Font: Honk by The Honk Project Authors, SIL Open Font License 1.1.
+- Font: Lacquer by The Lacquer Project Authors (Niki Polyocan, Eli Block), SIL Open Font License 1.1.
+- Font: Crafty Girls by Tart Workshop (Font Diner, Inc), Apache License 2.0.
 - Font: New Rocker by Pablo Impallari, Brenda Gallo and Rodrigo Fuenzalida, SIL Open Font License 1.1 (Reserved Font Name "New Rocker"; subset here as Rocker).
 
 ---

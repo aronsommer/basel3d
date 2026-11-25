@@ -1,23 +1,27 @@
 // Graffiti (pieceOf) in Cherry Bomb One (public/CherryBombOne.woff2, its Latin letters) or Rocker
-// (public/Rocker.woff2), black and white (paint), or in Honk (public/Honk.woff2): on walls, roofs
-// and bridges in GRAFFITI, small tags and big pieces, each where it says; and whole cars and whole
-// trams (wholeCar, WHOLE_CARS, WHOLE_TRAMS).
+// (public/Rocker.woff2), black and white (paint), or in Honk (public/Honk.woff2), or all in one
+// colour (plainOf), in Lacquer (public/Lacquer.woff2) or Crafty Girls (public/CraftyGirls.woff2)
+// too: on walls, roofs and bridges in GRAFFITI, small tags and big pieces, each where it says; and
+// whole cars and whole trams (wholeCar, WHOLE_CARS, WHOLE_TRAMS).
 import * as THREE from "three";
 import { fromWGS84 } from "./geo.js";
 
-// Every graffito, each { where, kind, from, to, text, back, roof, deep, flip } and any of a whole
-// car piece's look (pieceOf). To add one: in the viewer press C over each end of where it goes, on
-// the wall or roof (C copies the point: lat, lon, metres above sea), and give where (words, to know
-// it by), its kind (KINDS: a tag or piece), its text (any Latin letters) and, for a slab behind it,
-// back (two colours, 0xrrggbb, the one above the other: FCB). Its text runs along the way from one
-// point to the other, at most as wide as that; before the wall there, its middle at the points'
-// height but at least its kind's raise in metres above the ground and at most up to TOP metres
-// below the wall's top, out before every wall behind it (AHEAD); or with roof on the roof (or
-// bridge) there, read from down its slope (on a flat one from left at from to right at to), in the
-// slope's middle, at most up to EDGE metres from its ends; with deep too (metres), level and from
-// left to right instead, in the band that wide along the way, from and to the middles of its ends,
-// OFF above its highest roof (for a rippled one); with flip, turned round. One that finds no wall
-// or roof there is left out, with a warning in the console.
+// Every graffito, each { where, kind, from, to, text, back, roof, deep, flip, tilt } and any of a
+// whole car piece's look (pieceOf). To add one: in the viewer press C over each end of where it
+// goes, on the wall or roof (C copies the point: lat, lon, metres above sea), and give where
+// (words, to know it by), its kind (KINDS: a tag or piece), its text (any Latin letters; in Lacquer
+// and Crafty Girls capitals, digits and signs; with plain, \n starts a line below), any of font,
+// plain and thick (pieceOf) and, for a slab behind it, back (two colours, 0xrrggbb, the one above
+// the other: FCB). Its text runs along the way from one point to the other, at most as wide as
+// that; before the wall there, its middle at the points' height but at least its kind's raise in
+// metres above the ground and at most up to TOP metres below the wall's top, out before every wall
+// behind it (AHEAD); or with roof on the roof (or bridge) there, read from down its slope (on a
+// flat one from left at from to right at to), in the slope's middle, at most up to EDGE metres from
+// its ends; with deep too (metres), level and from left to right instead, in the band that wide
+// along the way, from and to the middles of its ends, OFF above its highest roof (for a rippled
+// one); on either, with flip, turned round (on a wall, before its other side); on a wall with tilt,
+// turned that many degrees to the left about its bottom's middle. One that finds no wall or roof
+// there is left out, with a warning in the console.
 const FCB = [0xd51f2a, 0x1d3fbf]; // red over blue: Rotblau, red first
 const GRAFFITI = [
   {
@@ -69,6 +73,27 @@ const GRAFFITI = [
     to: [47.586023, 7.602109],
     flip: true,
     text: "JESTES PIEKNA I ZAWSZE MASZ RACJE",
+  },
+  {
+    where: "A wall about 600 m north-east of the Marktplatz",
+    kind: "tag",
+    from: [47.562354, 7.592715, 257.6],
+    to: [47.562285, 7.592816, 258.2],
+    text: "HOW ARE YOU?",
+    font: "Lacquer",
+    plain: 0x151515, // BLACK
+  },
+  {
+    where: "A wall about 70 m south-east of HOW ARE YOU?",
+    kind: "tag",
+    from: [47.561898, 7.593406, 257.2],
+    to: [47.561861, 7.593437, 257.5],
+    flip: true,
+    tilt: 3,
+    text: "NEED\nSOMETHIN?",
+    font: "Crafty Girls",
+    plain: 0x151515, // BLACK
+    thick: 0.03,
   },
 ];
 // Per kind: metres above the ground on a wall, and px of its letters when drawn.
@@ -619,17 +644,20 @@ const PAINT = 120; // px of a whole car's letters when painted: about as big as 
 const END = 0.028;
 // A canvas with a piece in look at size px (with slab, back as a slab behind it: slab), in Honk's
 // palette honk or else as the graffiti in font (Cherry Bomb One if none), with face, faces,
-// letters, ink, rim and cut as WHOLE_CARS says, outlined (outline, splash, short); and in px how
-// far the dots of its umlauts stand above its letters (over), and those of its font's (lift).
+// letters, ink, rim and cut as WHOLE_CARS says, or with plain all that colour (plainOf, thick),
+// outlined (outline, splash, short); and in px how far the dots of its umlauts stand above its
+// letters (over), and those of its font's (lift).
 function pieceOf(
-  { text, font, honk, face, faces, letters, ink, rim, cut, outline, splash, short },
+  { text, font, honk, plain, thick, face, faces, letters, ink, rim, cut, outline, splash, short },
   size,
   slab,
 ) {
   let art =
-    honk === undefined
-      ? paint(text, size, slab, font, face, rim, cut, faces, letters)
-      : honkArt(text, size, honk, face, ink, rim);
+    plain !== undefined
+      ? plainOf(text, size, font, plain, thick)
+      : honk === undefined
+        ? paint(text, size, slab, font, face, rim, cut, faces, letters)
+        : honkArt(text, size, honk, face, ink, rim);
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = `${size}px "${honk === undefined ? (font ?? "Cherry Bomb One") : "Honk"}"`;
   const ascent = (text) =>
@@ -653,6 +681,35 @@ function pieceOf(
       short,
     );
   return { art, over, lift };
+}
+// A canvas with text at size px in font (a family, Cherry Bomb One if none), its letters all in
+// colour (0xrrggbb), with thick thickened by that much of size all round, nothing round them; each
+// line of it (\n) size px below the one before, all in the middle.
+function plainOf(text, size, font = "Cherry Bomb One", colour, thick = 0) {
+  const canvas = document.createElement("canvas");
+  const c = canvas.getContext("2d");
+  const lines = text.split("\n");
+  c.font = `${size}px "${font}"`;
+  const m = lines.map((line) => c.measureText(line));
+  const widths = m.map((l) => l.actualBoundingBoxLeft + l.actualBoundingBoxRight);
+  const [grown, wide] = [thick * size, Math.max(...widths)];
+  const pad = Math.ceil(grown) + 1;
+  const top = m[0].actualBoundingBoxAscent;
+  canvas.width = Math.ceil(wide) + 2 * pad;
+  canvas.height =
+    Math.ceil(top + (lines.length - 1) * size + m.at(-1).actualBoundingBoxDescent) + 2 * pad;
+  c.font = `${size}px "${font}"`;
+  const ink = hex(colour);
+  Object.assign(c, { fillStyle: ink, strokeStyle: ink, lineWidth: 2 * grown, lineJoin: "round" });
+  lines.forEach((line, k) => {
+    const [x, y] = [
+      pad + (wide - widths[k]) / 2 + m[k].actualBoundingBoxLeft,
+      pad + top + k * size,
+    ];
+    c.fillText(line, x, y);
+    if (thick) c.strokeText(line, x, y);
+  });
+  return canvas;
 }
 // A whole car's side (WHOLE_CARS), width by height metres: with back, its top colour above a
 // border falling to the right through the middle, its bottom one below; over it its piece
@@ -711,7 +768,18 @@ export const addFont = async (name, bytes) =>
 export async function createGraffiti(structures, ground, roofAt) {
   const [meshes, marks] = [[], []];
   const matrix = new THREE.Matrix4();
-  for (const { where, kind, from, to, roof, deep, flip = false, back, ...look } of GRAFFITI) {
+  for (const {
+    where,
+    kind,
+    from,
+    to,
+    roof,
+    deep,
+    flip = false,
+    tilt = 0,
+    back,
+    ...look
+  } of GRAFFITI) {
     const missing = (what) => console.warn(`Graffito "${look.text}" (${where}): no ${what} there`);
     const [[fx, fz], [tx, tz]] = [fromWGS84(...from), fromWGS84(...to)];
     const length = Math.hypot(tx - fx, tz - fz);
@@ -790,9 +858,10 @@ export async function createGraffiti(structures, ground, roofAt) {
       missing("wall");
       continue;
     }
-    // Out of it: the side with no roof over it.
+    // Out of it: the side with no roof over it 1 m out (with flip the other).
     let [nx, nz] = [wall.uz, -wall.ux];
-    if (structures.top(wall.x + nx, wall.z + nz, Infinity) > -Infinity) [nx, nz] = [-nx, -nz];
+    if (structures.top(wall.x + nx, wall.z + nz, Infinity) > -Infinity !== flip)
+      [nx, nz] = [-nx, -nz];
     // The ground at the wall and 1 m before it (the terrain may rise to the wall), the highest
     // along the whole way from → to, every metre.
     const steps = Math.ceil(length);
@@ -843,7 +912,7 @@ export async function createGraffiti(structures, ground, roofAt) {
         if (out <= AHEAD) front = Math.max(front, out);
       }
     mesh.scale.set(tall * aspect, tall, 1);
-    mesh.rotation.y = Math.atan2(nx, nz);
+    mesh.rotation.set(0, Math.atan2(nx, nz), THREE.MathUtils.degToRad(tilt));
     mesh.position.set(wall.x + nx * (front + OFF), bottom, wall.z + nz * (front + OFF));
     meshes.push(mesh);
     marks.push([wall.number, () => (mesh.visible = false)]);

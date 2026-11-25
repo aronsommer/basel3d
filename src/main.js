@@ -1203,148 +1203,151 @@ const chance = (v, salt) => (Math.abs(Math.sin(v * 12.9898 + salt)) * 43758.5453
 // the left its left one; off, they go on in their own. The whole tram keeps its own.
 const TEST = 3; // seconds
 let testGraffiti = () => {};
-load(["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2"], () => {}).then(
-  async ([cherry, rocker, honk]) => {
-    await Promise.all([
-      addFont("Cherry Bomb One", cherry),
-      addFont("Rocker", rocker),
-      addFont("Honk", honk),
-    ]);
-    const { meshes, marks } = await createGraffiti(structures, walkGround, (at) =>
-      roofOver(at, true),
-    );
-    scene.add(...meshes);
-    for (const [number, hide] of marks)
-      grounding.set(number, [...(grounding.get(number) ?? []), hide]);
-    // Each part of a design once per text and size of car, with the cars it is on (on) and its
-    // group, the parts of one design's side, the longest first: the others' letters no bigger than
-    // its.
-    const parts = [];
-    MOVER_KINDS.forEach((kind, i) => {
-      const designs = WHOLE_CARS[kind];
-      if (!designs) return;
-      const { count, museum, cars, side, coat } = movers[i];
-      const pieces = designs.flatMap(({ right, left }) => [right, left]);
-      const keyed = new Map(); // design, side, size, text, part → its part
-      for (let v = 0, n = 0; v < count; v++) {
-        const ours = museum.includes(v);
-        if (!ours && chance(v, 1) >= SHARE[kind]) continue;
-        const [length, height] = side(v);
-        const u = ours ? 0 : Math.floor(chance(v, 3) * VARIANTS[kind]);
-        // Perhaps a whole tram (in turn), else all its designs, one per car from the last, from the
-        // n-th on; so no two vehicles in turn are the same.
-        const wholes = kind === "tram" ? WHOLE_TRAMS : [];
-        const worn =
-          wholes.length && (ours ? museum.indexOf(v) % 2 === 1 : chance(v, 2) < SONG)
-            ? [wholes[n % wholes.length]]
-            : designs.map((_, j) => designs[(n + j) % designs.length]);
-        n++;
-        worn.forEach((design, j) => {
-          const { right, left } = design;
-          const whole = wholes.includes(design);
-          const index = whole ? `whole ${wholes.indexOf(design)}` : designs.indexOf(design);
-          for (const [s, piece] of [
-            [1, right],
-            [-1, left],
-          ]) {
-            if (!piece) continue;
-            const { text: own, ...look } = piece;
-            const shifted = pieces[(2 * index + (s > 0 ? 0 : 1) + u) % pieces.length];
-            const text = whole ? own : (shifted?.text ?? own);
-            // Whole, a word a car if it has as many, else its letters shared out among them.
-            const words = text.split(" ");
-            const texts = !whole
-              ? [text]
-              : words.length === cars
-                ? words
-                : Array.from({ length: cars }, (_, k) =>
-                    text.slice(
-                      Math.round((k * text.length) / cars),
-                      Math.round(((k + 1) * text.length) / cars),
-                    ),
-                  );
-            const group = `${index} ${s} ${length} ${height} ${text}`;
-            const order = texts.map((_, k) => k).sort((a, b) => texts[b].length - texts[a].length);
-            for (const k of order) {
-              // On the museum's round each whole car's side on its own, for the test.
-              const test = ours && !whole && { kind, v, j, s };
-              const key = test ? JSON.stringify(test) : `${group} ${k}`;
-              if (!keyed.has(key)) {
-                const part = {
-                  look: { text: texts[k], ...look },
-                  length,
-                  height,
-                  group,
-                  paint: `${group} ${k}`,
-                  test,
-                  coat,
-                  on: [],
-                };
-                keyed.set(key, part);
-                parts.push(part);
-              }
-              // Whole from the front on the right, from the back on the left.
-              keyed.get(key).on.push(v, !whole ? cars - 1 - j : s > 0 ? k : cars - 1 - k, s);
+load(
+  ["CherryBombOne.woff2", "Rocker.woff2", "Honk.woff2", "Lacquer.woff2", "CraftyGirls.woff2"],
+  () => {},
+).then(async ([cherry, rocker, honk, lacquer, crafty]) => {
+  await Promise.all([
+    addFont("Cherry Bomb One", cherry),
+    addFont("Rocker", rocker),
+    addFont("Honk", honk),
+    addFont("Lacquer", lacquer),
+    addFont("Crafty Girls", crafty),
+  ]);
+  const { meshes, marks } = await createGraffiti(structures, walkGround, (at) =>
+    roofOver(at, true),
+  );
+  scene.add(...meshes);
+  for (const [number, hide] of marks)
+    grounding.set(number, [...(grounding.get(number) ?? []), hide]);
+  // Each part of a design once per text and size of car, with the cars it is on (on) and its
+  // group, the parts of one design's side, the longest first: the others' letters no bigger than
+  // its.
+  const parts = [];
+  MOVER_KINDS.forEach((kind, i) => {
+    const designs = WHOLE_CARS[kind];
+    if (!designs) return;
+    const { count, museum, cars, side, coat } = movers[i];
+    const pieces = designs.flatMap(({ right, left }) => [right, left]);
+    const keyed = new Map(); // design, side, size, text, part → its part
+    for (let v = 0, n = 0; v < count; v++) {
+      const ours = museum.includes(v);
+      if (!ours && chance(v, 1) >= SHARE[kind]) continue;
+      const [length, height] = side(v);
+      const u = ours ? 0 : Math.floor(chance(v, 3) * VARIANTS[kind]);
+      // Perhaps a whole tram (in turn), else all its designs, one per car from the last, from the
+      // n-th on; so no two vehicles in turn are the same.
+      const wholes = kind === "tram" ? WHOLE_TRAMS : [];
+      const worn =
+        wholes.length && (ours ? museum.indexOf(v) % 2 === 1 : chance(v, 2) < SONG)
+          ? [wholes[n % wholes.length]]
+          : designs.map((_, j) => designs[(n + j) % designs.length]);
+      n++;
+      worn.forEach((design, j) => {
+        const { right, left } = design;
+        const whole = wholes.includes(design);
+        const index = whole ? `whole ${wholes.indexOf(design)}` : designs.indexOf(design);
+        for (const [s, piece] of [
+          [1, right],
+          [-1, left],
+        ]) {
+          if (!piece) continue;
+          const { text: own, ...look } = piece;
+          const shifted = pieces[(2 * index + (s > 0 ? 0 : 1) + u) % pieces.length];
+          const text = whole ? own : (shifted?.text ?? own);
+          // Whole, a word a car if it has as many, else its letters shared out among them.
+          const words = text.split(" ");
+          const texts = !whole
+            ? [text]
+            : words.length === cars
+              ? words
+              : Array.from({ length: cars }, (_, k) =>
+                  text.slice(
+                    Math.round((k * text.length) / cars),
+                    Math.round(((k + 1) * text.length) / cars),
+                  ),
+                );
+          const group = `${index} ${s} ${length} ${height} ${text}`;
+          const order = texts.map((_, k) => k).sort((a, b) => texts[b].length - texts[a].length);
+          for (const k of order) {
+            // On the museum's round each whole car's side on its own, for the test.
+            const test = ours && !whole && { kind, v, j, s };
+            const key = test ? JSON.stringify(test) : `${group} ${k}`;
+            if (!keyed.has(key)) {
+              const part = {
+                look: { text: texts[k], ...look },
+                length,
+                height,
+                group,
+                paint: `${group} ${k}`,
+                test,
+                coat,
+                on: [],
+              };
+              keyed.set(key, part);
+              parts.push(part);
             }
+            // Whole from the front on the right, from the back on the left.
+            keyed.get(key).on.push(v, !whole ? cars - 1 - j : s > 0 ? k : cars - 1 - k, s);
           }
-        });
-      }
-    });
-    // Painted one after another, each in a task of its own, so the page goes on meanwhile; a part
-    // looking as one painted before shares its material.
-    const task = (ms) => new Promise((go) => setTimeout(go, ms));
-    const most = new Map(); // group → the scale its first part was painted at
-    const painted = new Map(); // paint → its material
-    for (const part of parts) {
-      const { look, length, height, group, paint, coat, on } = part;
-      if (!painted.has(paint)) {
-        const [material, scale] = wholeCar(look, length, height, most.get(group));
-        if (!most.has(group)) most.set(group, scale);
-        painted.set(paint, material);
+        }
+      });
+    }
+  });
+  // Painted one after another, each in a task of its own, so the page goes on meanwhile; a part
+  // looking as one painted before shares its material.
+  const task = (ms) => new Promise((go) => setTimeout(go, ms));
+  const most = new Map(); // group → the scale its first part was painted at
+  const painted = new Map(); // paint → its material
+  for (const part of parts) {
+    const { look, length, height, group, paint, coat, on } = part;
+    if (!painted.has(paint)) {
+      const [material, scale] = wholeCar(look, length, height, most.get(group));
+      if (!most.has(group)) most.set(group, scale);
+      painted.set(paint, material);
+      await task();
+    }
+    part.material = painted.get(paint);
+    part.mesh = coat(part.material, on);
+  }
+  const tests = parts.filter(({ test }) => test);
+  const pools = Object.fromEntries(
+    Object.entries(WHOLE_CARS).map(([kind, designs]) => {
+      const pieces = designs.flatMap(({ right, left }) => [right, left]).filter(Boolean);
+      const texts = [...new Set(pieces.map(({ text }) => text))].sort((a, b) =>
+        a.localeCompare(b, "de"),
+      );
+      return [kind, { texts, styles: pieces.map(({ text, ...style }) => style) }];
+    }),
+  );
+  // A test's side back in its own material, the one painted for the test freed.
+  const free = ({ mesh, material }) => {
+    if (mesh.material === material) return;
+    mesh.material.map.dispose();
+    mesh.material.dispose();
+    mesh.material = material;
+  };
+  let testing = null; // while on, a token of its own, so an earlier round stops
+  testGraffiti = async (label) => {
+    const token = (testing = testing ? null : {});
+    label.material.color.set(token ? MAGENTA : 0xffffff);
+    MOVER_KINDS.forEach((kind, i) => WHOLE_CARS[kind] && movers[i].hold(!!token));
+    if (!token) return tests.forEach(free);
+    for (let round = 0; testing === token; round++) {
+      for (const part of tests) {
+        if (testing !== token) return;
+        const { kind, j, s } = part.test;
+        const { texts, styles } = pools[kind];
+        const style = styles[(2 * j + (s > 0 ? 0 : 1)) % styles.length];
+        const look = { ...style, text: texts[round % texts.length] };
+        free(part);
+        [part.mesh.material] = wholeCar(look, part.length, part.height);
         await task();
       }
-      part.material = painted.get(paint);
-      part.mesh = coat(part.material, on);
+      await task(TEST * 1000);
     }
-    const tests = parts.filter(({ test }) => test);
-    const pools = Object.fromEntries(
-      Object.entries(WHOLE_CARS).map(([kind, designs]) => {
-        const pieces = designs.flatMap(({ right, left }) => [right, left]).filter(Boolean);
-        const texts = [...new Set(pieces.map(({ text }) => text))].sort((a, b) =>
-          a.localeCompare(b, "de"),
-        );
-        return [kind, { texts, styles: pieces.map(({ text, ...style }) => style) }];
-      }),
-    );
-    // A test's side back in its own material, the one painted for the test freed.
-    const free = ({ mesh, material }) => {
-      if (mesh.material === material) return;
-      mesh.material.map.dispose();
-      mesh.material.dispose();
-      mesh.material = material;
-    };
-    let testing = null; // while on, a token of its own, so an earlier round stops
-    testGraffiti = async (label) => {
-      const token = (testing = testing ? null : {});
-      label.material.color.set(token ? MAGENTA : 0xffffff);
-      MOVER_KINDS.forEach((kind, i) => WHOLE_CARS[kind] && movers[i].hold(!!token));
-      if (!token) return tests.forEach(free);
-      for (let round = 0; testing === token; round++) {
-        for (const part of tests) {
-          if (testing !== token) return;
-          const { kind, j, s } = part.test;
-          const { texts, styles } = pools[kind];
-          const style = styles[(2 * j + (s > 0 ? 0 : 1)) % styles.length];
-          const look = { ...style, text: texts[round % texts.length] };
-          free(part);
-          [part.mesh.material] = wholeCar(look, part.length, part.height);
-          await task();
-        }
-        await task(TEST * 1000);
-      }
-    };
-  },
-);
+  };
+});
 // The Elisabethenkirche, under its nave's roof at WGS84 47.552741, 7.590989, dressed in the
 // rainbow's stripes from its foot to its spire's tip.
 const elisabethen = roofOver({ x: 468.2, z: 497.3 }); // none if it is destroyed
