@@ -310,23 +310,42 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
         }
     return -1;
   };
-  // Vehicles far from the camera look ahead only every SLOW-th frame (each on its own frame) and
-  // move on their last result in between; from afar nobody sees the difference.
+  // Vehicles further than FAR from the camera (their first car's middle) look ahead only every
+  // SLOW-th frame and move on their last result in between, and are placed only every other frame
+  // (place), each on its own frame; from afar nobody sees the difference.
   const FAR = 1500; // metres
   const SLOW = 6;
   let frame = 0;
+  // Notes a point of the vehicle being placed (marking), and keeps it in its marks.
+  let [marks, marking] = [[], -1];
+  const last = new THREE.Vector3();
+  const mark = (p, r = rail) => {
+    note(p, marking, r);
+    marks.push(p.x, p.y, p.z, r);
+  };
   // Places the cars and notes their points and those of the stretches ahead; those of a vehicle
   // away are hidden.
   const place = () => {
     vehicles.forEach((vehicle, v) => {
       const { line, d, length, height, away, model, slot } = vehicle;
+      // Far away, placed only every other frame (half of them in turn): in between, its points
+      // noted where they were last, so the others still wait for it.
+      if (vehicle.far && away === undefined && vehicle.marks && (v + frame) % 2) {
+        const kept = vehicle.marks;
+        for (let k = 0; k < kept.length; k += 4)
+          note(last.set(kept[k], kept[k + 1], kept[k + 2]), v, kept[k + 3]);
+        return;
+      }
+      marks = vehicle.marks ??= [];
+      marks.length = 0;
+      marking = v;
       const matrices = meshes[model].instanceMatrix.array;
       for (let s = 0; s < stretches && away === undefined; s++) {
         at(line, d + (s + 1) * stretch, front);
         at(line, d + s * stretch, back);
-        note(front, v, -1);
-        note(back, v, -1);
-        note(front.add(back).multiplyScalar(0.5), v, -1);
+        mark(front, -1);
+        mark(back, -1);
+        mark(front.add(back).multiplyScalar(0.5), -1);
       }
       for (let c = 0; c < CARS; c++) {
         const m = 16 * (slot * CARS + c);
@@ -340,10 +359,10 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
         forward.subVectors(front, back).normalize();
         right.crossVectors(yAxis, forward).normalize();
         up.crossVectors(forward, right);
-        note(front, v);
-        note(back, v);
+        mark(front);
+        mark(back);
         const centre = front.add(back).multiplyScalar(0.5);
-        note(centre, v);
+        mark(centre);
         if (c === 0) vehicle.far = camera.position.distanceTo(centre) > FAR;
         const b = boost(centre);
         right.multiplyScalar(Math.min(b, MAX_WIDER));
