@@ -319,9 +319,21 @@ export function createRunners(routes, ground, danger, space, counts = {}) {
     new THREE.Vector3(),
   ];
   const quaternion = new THREE.Quaternion();
+  // People by cells NEAR wide (the gone left out, as near does), so each rider looks only at those
+  // in the nine cells round it (around).
+  const cells = new Map();
+  const key = (x, z) => Math.floor(x / NEAR) * 65536 + Math.floor(z / NEAR);
+  const around = [];
   return {
     meshes,
     update(dt, people) {
+      for (const cell of cells.values()) cell.length = 0;
+      for (const list of people)
+        for (const p of list) {
+          if (p.gone || !Number.isFinite(p.x)) continue;
+          const k = key(p.x, p.z);
+          (cells.get(k) ?? cells.set(k, []).get(k)).push(p);
+        }
       for (const { ride, riders, frames, wheels } of kinds) {
         const { size, base, seat: at, rider, lean } = ride;
         scale.setScalar(size);
@@ -338,7 +350,11 @@ export function createRunners(routes, ground, danger, space, counts = {}) {
           const [ax, az] = [r.x + Math.sin(r.heading) * look, r.z + Math.cos(r.heading) * look];
           const wanted = out || danger(ax, r.y, az, 0) ? 0 : r.top;
           // Held behind someone (among) PATIENCE seconds on end, it goes on anyway.
-          const may = among(r, all, people, wanted);
+          around.length = 0;
+          const c = key(r.x, r.z);
+          for (let i = -1; i <= 1; i++)
+            for (let j = -1; j <= 1; j++) around.push(cells.get(c + i * 65536 + j) ?? []);
+          const may = among(r, all, around, wanted);
           r.waited = wanted && may < HELD ? r.waited + dt : 0;
           move(r, r.waited > PATIENCE ? wanted : may, dt, ground, space, base * size);
           // Pitched as the ground under its rear and front wheels.
