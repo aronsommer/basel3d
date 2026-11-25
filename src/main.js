@@ -102,10 +102,12 @@ renderer.setSize(innerWidth, innerHeight);
 // the browser would otherwise do alongside (about 2 s when loading). A broken one shows no message.
 renderer.debug.checkShaderErrors = false;
 // Neutral tone mapping keeps the aerial photo's colours; on top, a little more saturation,
-// warmth and contrast for a crisp, sunny look. In every material's shader, so no extra pass.
+// warmth and contrast for a crisp, sunny look. In every material's shader, so no extra pass. A
+// negative exposure turns it grey (render), as NeutralToneMapping multiplies by it.
 THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
   "vec3 CustomToneMapping( vec3 color ) { return color; }",
   /* glsl */ `vec3 CustomToneMapping( vec3 color ) {
+    if ( toneMappingExposure < 0.0 ) color = -vec3( dot( color, vec3( 0.2126, 0.7152, 0.0722 ) ) );
     color = NeutralToneMapping( color );
     float l = dot( color, vec3( 0.2126, 0.7152, 0.0722 ) );
     color = clamp( mix( vec3( l ), color, 1.04 ) * vec3( 1.015, 1.0, 0.98 ), 0.0, 1.0 );
@@ -2986,65 +2988,41 @@ await map.ready;
 document.body.dataset.mode = "orbit";
 
 // While a tram line is shown, the scene but the trams is drawn in light grey under the check
-// lines, so the lines' colours stand out: into greyTarget first, then onto the screen by its
-// brightness. The trams mark their pixels there with alpha 0 (all else is opaque, alpha 1); on
-// the screen they stay opaque, as the canvas has alpha.
-const greyTarget = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
-const tramAlpha = { value: 1 };
+// lines, so the lines' colours stand out: grey by a negative exposure (CustomToneMapping), what
+// glows (not tone mapped) aside, then lightened by white over it; the trams after, in colour (on
+// layer TRAMS, with the lights).
+const EXPOSURE = renderer.toneMappingExposure;
+const TRAMS = 1;
 const [tramMesh] = trams.meshes; // trams have one model
-const highlightTrams = tramMesh.material.onBeforeCompile; // as all vehicles on tracks
-tramMesh.material.onBeforeCompile = (shader) => {
-  highlightTrams(shader);
-  shader.uniforms.tramAlpha = tramAlpha;
-  shader.fragmentShader = `uniform float tramAlpha;\n${shader.fragmentShader.replace(
-    "#include <dithering_fragment>",
-    "#include <dithering_fragment>\ngl_FragColor.a = tramAlpha;",
-  )}`;
-};
-const greySize = new THREE.Vector2();
-const greyQuad = new FullScreenQuad(
-  new THREE.ShaderMaterial({
-    uniforms: { map: { value: greyTarget.texture } },
-    vertexShader: /* glsl */ `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = vec4(position.xy, 0.0, 1.0);
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform sampler2D map;
-      varying vec2 vUv;
-      void main() {
-        vec4 texel = texture2D(map, vUv);
-        float amount = min(texel.a, 1.0); // additive blending raises the alpha past 1
-        float grey = dot(texel.rgb, vec3(0.2126, 0.7152, 0.0722));
-        gl_FragColor = vec4(mix(texel.rgb, vec3(grey), amount), 1.0);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), 0.4 * amount); // lighter
-      }`,
+for (const object of [tramMesh, hemisphere, sun]) object.layers.enable(TRAMS);
+const lighten = new FullScreenQuad(
+  new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0.4,
+    depthTest: false,
+    toneMapped: false,
   }),
 );
 function render(grey = tramLinesShown()) {
-  if (grey) {
-    renderer.getDrawingBufferSize(greySize);
-    greyTarget.setSize(greySize.x, greySize.y); // only reallocates when resized
-    renderer.setRenderTarget(greyTarget);
-  }
-  tramAlpha.value = grey ? 0 : 1;
+  if (grey) [renderer.toneMappingExposure, tramMesh.visible] = [-EXPOSURE, false];
   renderer.render(scene, camera);
-  if (grey) {
-    renderer.setRenderTarget(null);
-    greyQuad.render(renderer);
-  }
   renderer.autoClear = false; // over the scene
+  if (grey) {
+    [renderer.toneMappingExposure, tramMesh.visible] = [EXPOSURE, true];
+    lighten.render(renderer);
+    camera.layers.set(TRAMS);
+    scene.matrixWorldAutoUpdate = false; // updated by the pass before
+    renderer.render(scene, camera);
+    scene.matrixWorldAutoUpdate = true;
+    camera.layers.set(0);
+  }
   renderer.render(overlay, camera);
   renderer.autoClear = true;
 }
-// Once before the first frame, so the first switch to grey does not stutter: allocates greyTarget
-// and compiles the shaders the scene needs to be drawn into it, and the grey one. Then the normal
-// view over it, so the grey one is never seen. Both with all in the scene drawn, also what is out
-// of view, so its geometry and textures are on the GPU before it first comes into view.
+// Once before the first frame, so the first switch to grey does not stutter: compiles the white's
+// shader. Then the normal view over it, so the grey one is never seen. Both with all in the scene
+// drawn, also what is out of view, so its geometry and textures are on the GPU before it first
+// comes into view.
 const culled = [];
 scene.traverse((object) => {
   if (object.frustumCulled) culled.push(object);
