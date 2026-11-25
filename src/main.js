@@ -575,6 +575,9 @@ const traffic = {
   of: new Int32Array(0),
   head: new Int32Array(CELLS * CELLS).fill(-1),
   tail: new Int32Array(CELLS * CELLS),
+  // The same of the stretches ahead, in a grid of their own (src/movers.js, note).
+  ways: new Int32Array(CELLS * CELLS).fill(-1),
+  waysTail: new Int32Array(CELLS * CELLS),
   taken: new Map(), // cell -> flat [x, z, …] of the starting vehicles and the space ahead
   blockers: [], // per vehicle (of all kinds): the vehicle it waits for, or -1
   halves: [], // per vehicle: metres, half its width
@@ -631,6 +634,7 @@ for (const { routes } of movers)
 // clear. In a ring of vehicles waiting for each other, the first one goes.
 function drive(dt) {
   traffic.head.fill(-1);
+  traffic.ways.fill(-1);
   traffic.noted = 0;
   for (const mover of movers) mover.place();
   for (const mover of movers) mover.look();
@@ -2115,22 +2119,24 @@ const way = [0, 0];
 // to either side, turn radians off straight across, CLEAR and clear more metres beyond it and on
 // until out of all, rather not across another (CROSS); only if there is none, as far out of one
 // on its own side as it may; [0, 0] if not even that.
+const grids = [traffic.head, traffic.ways]; // the cars' and the stretches' (src/movers.js, note)
 function danger(x, y, z, reach, march, clear = 0, turn = 0) {
   if (y < WATER - 0.1) return null; // swimming
   zoneCount = 0;
   [asked[0], asked[1]] = [x, z];
-  const { xz, y: ys, of, head, blockers, halves } = traffic;
-  for (let i = -1; i <= 1; i++)
-    for (let j = -1; j <= 1; j++)
-      for (let q = head[carCell(x + i * CELL, z + j * CELL)]; q >= 0; q = of[3 * q + 2]) {
-        const v = of[3 * q];
-        if (blockers[v] >= 0 || Math.abs(ys[q] - y) > DANGER.level) continue;
-        const p = q - (q % 3);
-        const [fx, fz, bx, bz] = xz.subarray(2 * p, 2 * p + 4); // its front, then back (traffic)
-        const length = Math.hypot(fx - bx, fz - bz) || 1;
-        const [ux, uz] = [(fx - bx) / length, (fz - bz) / length];
-        zone(p, bx, bz, ux, uz, length, halves[v] + DANGER.margin);
-      }
+  const { xz, y: ys, of, blockers, halves } = traffic;
+  for (const head of grids)
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++)
+        for (let q = head[carCell(x + i * CELL, z + j * CELL)]; q >= 0; q = of[3 * q + 2]) {
+          const v = of[3 * q];
+          if (blockers[v] >= 0 || Math.abs(ys[q] - y) > DANGER.level) continue;
+          const p = q - (q % 3);
+          const [fx, fz, bx, bz] = xz.subarray(2 * p, 2 * p + 4); // its front, then back (traffic)
+          const length = Math.hypot(fx - bx, fz - bz) || 1;
+          const [ux, uz] = [(fx - bx) / length, (fz - bz) / length];
+          zone(p, bx, bz, ux, uz, length, halves[v] + DANGER.margin);
+        }
   driven.forEach(({ vehicle, speed }, d) => {
     const { position, rotation, scale } = vehicle.group;
     if (Math.abs(speed) < DANGER.slow || Math.abs(position.y - y) > DANGER.level) return;

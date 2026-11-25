@@ -268,8 +268,12 @@ export function createMovers({ routes }, points, kind, traffic, { boost, camera,
   traffic.xz = new Float64Array(traffic.xz.length + 2 * room);
   traffic.y = new Float32Array(traffic.y.length + room);
   traffic.of = new Int32Array(traffic.of.length + 3 * room);
+  // Into the cars' grid (head, tail), or the stretches' (rail -1: ways, waysTail), so vehicles
+  // looking ahead go through cars alone.
   const note = (p, v, r = rail) => {
-    const { xz, y, of, head, tail } = traffic;
+    const { xz, y, of } = traffic;
+    const head = r < 0 ? traffic.ways : traffic.head;
+    const tail = r < 0 ? traffic.waysTail : traffic.tail;
     const n = traffic.noted++;
     const c = carCell(p.x, p.z);
     xz[2 * n] = p.x;
