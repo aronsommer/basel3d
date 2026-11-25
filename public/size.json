@@ -20,16 +20,16 @@
   "hash": "11f5b534"
  },
  "basel.bin": {
-  "size": 15001083,
-  "hash": "69e8d01e"
+  "size": 15001341,
+  "hash": "c91e400b"
  },
  "basel.glb": {
-  "size": 19315064,
-  "hash": "ce57ff62"
+  "size": 19315464,
+  "hash": "d070b76a"
  },
  "bridges.glb": {
-  "size": 304100,
-  "hash": "0d9c3b41"
+  "size": 301404,
+  "hash": "3e381d2e"
  },
  "canopy.bin": {
   "size": 149172,
@@ -44,8 +44,8 @@
   "hash": "a1716bc0"
  },
  "ground/map.bin": {
-  "size": 884992,
-  "hash": "69b205d3"
+  "size": 884723,
+  "hash": "6b84933d"
  },
  "ground/photo/0_0.ktx2": {
   "size": 254930,
@@ -304,8 +304,8 @@
   "hash": "302c67f6"
  },
  "ground/rails.bin": {
-  "size": 80148,
-  "hash": "0faff5c7"
+  "size": 80002,
+  "hash": "e84457c9"
  },
  "ground/soft.bin": {
   "size": 3475646,

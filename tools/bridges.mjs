@@ -134,12 +134,43 @@ const simple = crossings.filter(({ points }) =>
 );
 const replaced = (x, z) =>
   simple.some(({ points, width }) => distanceToLine({ x, z }, points) < width / 2 + MODEL_MARGIN);
+
+// Canton bridges left out: the Badischer Bahnhof's tracks over the Maulbeerstrasse and the
+// Riehenstrasse, flush with the terrain. Each is the canton's bridges whose middle (of their
+// triangles' middles) lies within 15 m of its line (LV95).
+const HIDDEN = [
+  [
+    [2612610, 1268675],
+    [2612771, 1268760],
+  ],
+  [
+    [2612768, 1268385],
+    [2612927, 1268465],
+  ],
+].map((line) => line.map(([e, n]) => ({ x: toX(e), z: toZ(n) })));
+const middles = new Map(); // bridge number -> [sum x, sum z, triangles]
+for (let t = 0; t < inside.length; t += 9) {
+  const m = middles.get(insideBridges[t / 9]) ?? [0, 0, 0];
+  m[0] += (inside[t] + inside[t + 3] + inside[t + 6]) / 3;
+  m[1] += (inside[t + 2] + inside[t + 5] + inside[t + 8]) / 3;
+  m[2]++;
+  middles.set(insideBridges[t / 9], m);
+}
+const hidden = new Set(
+  [...middles]
+    .filter(([, [x, z, k]]) =>
+      HIDDEN.some((line) => distanceToLine({ x: x / k, z: z / k }, line) < 15),
+    )
+    .map(([number]) => number),
+);
+console.log(`${hidden.size} bridges hidden: ${[...hidden].sort((a, b) => a - b).join(", ")}`);
+
 const triangles = [];
 const bridges = []; // per triangle, the number of its bridge
 for (let t = 0; t < inside.length; t += 9) {
   const x = (inside[t] + inside[t + 3] + inside[t + 6]) / 3;
   const z = (inside[t + 2] + inside[t + 5] + inside[t + 8]) / 3;
-  if (replaced(x, z)) continue;
+  if (hidden.has(insideBridges[t / 9]) || replaced(x, z)) continue;
   triangles.push(...inside.slice(t, t + 9));
   bridges.push(insideBridges[t / 9]);
 }

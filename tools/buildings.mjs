@@ -180,6 +180,7 @@ const FIX = new Set([
   "ID_38F556E0-5CBD-4896-9CC9-1FC4A9742FD4", // LV95 2609570, 1267229
   "ID_79CF438C-1481-4C35-986F-D2AAF92D8486", // LV95 2611615, 1267835
   "ID_B3DBA783-9330-460A-9076-3305402D17C7", // LV95 2611490, 1266810
+  "ID_111FA989-E913-44F9-967C-22C7E265FA65", // LV95 2610500, 1266790
 ]);
 
 // The upward triangles of the building b's solid (LV95) with their middle above its lowest roof,
@@ -207,9 +208,17 @@ function missingRoofs(b) {
     const middle = [0, 1, 2].map((k) => (v[k] + v[k + 3] + v[k + 6]) / 3);
     const scene = ([e, n, h]) => [toX(e), h - Y0, toZ(n)];
     if (middle[2] - Y0 <= low) return false;
-    // The corners moved a tenth towards the middle, off the edges they share.
-    const corners = [0, 3, 6].map((i) => middle.map((m, k) => v[i + k] + (m - v[i + k]) / 10));
-    return ![middle, ...corners].every((p) => covered(scene(p)));
+    // Points about 1 m apart over it, moved a tenth towards the middle, off the edges it shares.
+    const steps = Math.ceil(Math.max(Math.hypot(ux, uy), Math.hypot(wx, wy)));
+    for (let i = 0; i <= steps; i++)
+      for (let j = 0; i + j <= steps; j++) {
+        const p = [0, 1, 2].map((k) => {
+          const c = v[k] + ((v[k + 3] - v[k]) * i + (v[k + 6] - v[k]) * j) / steps;
+          return c + (middle[k] - c) / 10;
+        });
+        if (!covered(scene(p))) return true;
+      }
+    return false;
   });
 }
 
