@@ -344,7 +344,7 @@ export const WHOLE_CARS = {
         outline: [0xffd000, 0xe01020],
         splash: false,
       },
-      left: { text: "GANGSTER", font: "Rocker", outline: 0x8a2be2 },
+      left: { text: "YO DIGGE", font: "Rocker", outline: 0x8a2be2 },
     },
   ],
   tram: [
