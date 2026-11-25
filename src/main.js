@@ -98,6 +98,9 @@ const boost = (p) =>
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
+// Shaders not checked for errors after compiling: the check waits for each to be compiled, which
+// the browser would otherwise do alongside (about 2 s when loading). A broken one shows no message.
+renderer.debug.checkShaderErrors = false;
 // Neutral tone mapping keeps the aerial photo's colours; on top, a little more saturation,
 // warmth and contrast for a crisp, sunny look. In every material's shader, so no extra pass.
 THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
