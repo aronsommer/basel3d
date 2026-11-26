@@ -15,22 +15,14 @@ const SIDE = [
   [0, SLANT],
 ];
 const [THIRD, SIXTH] = [SLANT / 3, EDGE / 6];
-// The Swiss cross: CROSS metres high and wide, its arms 6 of its 20 parts wide, round the side's
-// middle, LIFT metres out from it.
-const [CROSS, LIFT] = [0.45 * EDGE, 0.15];
-const ARM = (CROSS * 6) / 20;
-const box = (u0, v0, u1, v1) => [
-  [u0, v0],
-  [u1, v0],
-  [u1, v1],
-  [u0, v1],
-];
-// The side cut to across (k 0) or up (k 1) from lo to hi.
-function band(k, lo, hi) {
+// The side cut to across from u0 to u1 and up from v0 to v1.
+function cut(u0, u1, v0 = 0, v1 = SLANT) {
   let points = SIDE;
-  for (const [limit, sign] of [
-    [lo, 1],
-    [hi, -1],
+  for (const [k, limit, sign] of [
+    [0, u0, 1],
+    [0, u1, -1],
+    [1, v0, 1],
+    [1, v1, -1],
   ]) {
     const kept = [];
     points.forEach((p, i) => {
@@ -43,30 +35,36 @@ function band(k, lo, hi) {
   }
   return points;
 }
-// Each side's compass bearing and its flag: [points, colour, metres out].
+// The Swiss cross: CROSS metres high and wide, its arms 6 of its 20 parts wide, round the side's
+// middle; the side cut on the cross's lines into 5 × 5 cells, white in the cross, red outside, so
+// nothing overlaps.
+const CROSS = 0.45 * EDGE;
+const ARM = (CROSS * 6) / 20;
+const U = [-EDGE / 2, -CROSS / 2, -ARM / 2, ARM / 2, CROSS / 2, EDGE / 2];
+const V = [0, THIRD - CROSS / 2, THIRD - ARM / 2, THIRD + ARM / 2, THIRD + CROSS / 2, SLANT];
+const SWISS = [];
+for (let i = 0; i < 5; i++)
+  for (let j = 0; j < 5; j++) {
+    const white = (i === 2 && j > 0 && j < 4) || (j === 2 && i > 0 && i < 4);
+    SWISS.push([cut(U[i], U[i + 1], V[j], V[j + 1]), white ? 0xffffff : 0xff0000]);
+  }
+// Each side's compass bearing and its flag: [points, colour].
 const SIDES = [
   [
     50,
     [
-      [band(1, 0, THIRD), 0xffcc00],
-      [band(1, THIRD, 2 * THIRD), 0xff0000],
-      [band(1, 2 * THIRD, SLANT), 0x000000],
+      [cut(-EDGE / 2, EDGE / 2, 0, THIRD), 0xffcc00],
+      [cut(-EDGE / 2, EDGE / 2, THIRD, 2 * THIRD), 0xff0000],
+      [cut(-EDGE / 2, EDGE / 2, 2 * THIRD), 0x000000],
     ],
   ],
-  [
-    170,
-    [
-      [SIDE, 0xff0000],
-      [box(-CROSS / 2, THIRD - ARM / 2, CROSS / 2, THIRD + ARM / 2), 0xffffff, LIFT],
-      [box(-ARM / 2, THIRD - CROSS / 2, ARM / 2, THIRD + CROSS / 2), 0xffffff, LIFT],
-    ],
-  ],
+  [170, SWISS],
   [
     290,
     [
-      [band(0, -EDGE / 2, -SIXTH), 0x000091],
-      [band(0, -SIXTH, SIXTH), 0xffffff],
-      [band(0, SIXTH, EDGE / 2), 0xe1000f],
+      [cut(-EDGE / 2, -SIXTH), 0x000091],
+      [cut(-SIXTH, SIXTH), 0xffffff],
+      [cut(SIXTH, EDGE / 2), 0xe1000f],
     ],
   ],
 ];
@@ -78,17 +76,15 @@ export function createTripoint(x, y, z) {
   const c = new THREE.Color();
   for (const [bearing, flag] of SIDES) {
     const [s, k] = [Math.sin((bearing * Math.PI) / 180), Math.cos((bearing * Math.PI) / 180)];
-    // Its base's middle, the right as seen from outside, towards the top, outwards.
+    // Its base's middle, the right as seen from outside, towards the top.
     const base = new THREE.Vector3(x + INNER * s, y, z - INNER * k);
     const right = new THREE.Vector3(-k, 0, -s);
     const up = new THREE.Vector3(-INNER * s, HIGH, INNER * k).divideScalar(SLANT);
-    const out = new THREE.Vector3(HIGH * s, INNER, -HIGH * k).divideScalar(SLANT);
-    const at = ([u, v], lift) =>
-      base.clone().addScaledVector(right, u).addScaledVector(up, v).addScaledVector(out, lift);
-    for (const [points, colour, lift = 0] of flag)
+    const at = ([u, v]) => base.clone().addScaledVector(right, u).addScaledVector(up, v);
+    for (const [points, colour] of flag)
       for (let i = 1; i < points.length - 1; i++)
         for (const p of [points[0], points[i], points[i + 1]]) {
-          positions.push(...at(p, lift).toArray());
+          positions.push(...at(p).toArray());
           colors.push(...c.set(colour).toArray());
         }
   }
