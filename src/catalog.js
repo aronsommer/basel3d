@@ -19,8 +19,9 @@ import { createFireTrucks } from "./firetruck.js";
 import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
 import { createJet } from "./jet.js";
+import { createM41s } from "./m41.js";
 import { createMotorcycles } from "./motorcycle.js";
-import { TOSS, createCrowd, createPeople, mix } from "./people.js";
+import { TOSS, TOSS_HAND, createCrowd, createPeople, mix } from "./people.js";
 import { createPolice } from "./police.js";
 import { createQuads } from "./quad.js";
 import { createRega } from "./rega.js";
@@ -80,7 +81,7 @@ function feeder({ x, z, turn = 0 }, { heightAt, towel, TOWEL, danger }) {
   const man = { x, y, z, heading: facing, tilt };
   // The bread leaves his right hand (as src/people.js has it sitting, leaning back, the arm ahead)
   // each time his arm is furthest ahead (phase 0).
-  const hand = new THREE.Vector3(-0.28, 0.83, 0.31)
+  const hand = new THREE.Vector3(...TOSS_HAND)
     .applyEuler(new THREE.Euler(tilt, facing, 0, "YXZ"))
     .add(new THREE.Vector3(x, y + TOWEL, z));
   // He tosses bread only while sitting, not fleeing.
@@ -120,6 +121,22 @@ const BIKINI = {
   bottom: 0xe8175d,
   head: "long",
 };
+// On the M41 (V17), all in shades: at its wheel the sunbather's look; on its rear deck one raising
+// champagne, two dancing (DECK).
+const SKIPPER = { ...BIKINI, face: "shades" };
+const DECK = [
+  [0xd9a27a, 0x111111, 0x9be22d, "long"],
+  [0xf6d5b8, 0xe2c46e, 0xf4f4f4, "long"],
+  [0x8a5634, 0x2a1d14, 0x7b1fa2, "hair"],
+].map(([skin, hair, bikini, head]) => ({
+  body: "swim",
+  skin,
+  hair,
+  top: bikini,
+  bottom: bikini,
+  head,
+  face: "shades",
+}));
 const ANGEL = { ...BIKINI, skin: 0xf1c7a5, hair: 0xe2c46e, top: 0x111111, bottom: 0x111111 };
 const FRIENDS = mix(
   {
@@ -303,10 +320,10 @@ function standing(points, looks, toward) {
 }
 
 // Four women dressed as the park's friends (FRIENDS) dancing 2 m round the middle of each Roche
-// tower's roof (S5), each looking out another way (north-east, south-east, south-west,
-// north-west); roofAt(point): the roof of the standing building there (none if the tower is
-// destroyed). With them their tower's building number (roofs), so they go with it; in the museum
-// on the ground.
+// tower's roof (S5), each looking out another way (north-east, south-east, south-west, north-west);
+// roofAt(point): the roof of the standing building there (none if the tower is destroyed); fleeing
+// there round their places, staying on it. With them their tower's building number (roofs), so they
+// go with it; in the museum on the ground, fleeing as all.
 const TOWERS = [
   [2612702, 1267635],
   [2612756, 1267585],
@@ -324,6 +341,7 @@ function dancing(places, { roofAt, heightAt }) {
         return { x: roof.x + 2 * hx, y: roof.y, z: roof.z + 2 * hz, heading, pose: "dance" };
       }),
       FRIENDS.slice(2 * place.tower),
+      place.museum || "roof",
     );
     objects.push(...meshes);
     if (!place.museum) roofs.push([roof.number, meshes]);
@@ -429,17 +447,23 @@ const driven =
     const vehicles = create(parked(places), boost, world, danger);
     return { objects: vehicles.map(({ group }) => group), vehicles };
   };
-// The maker of a kind of boat (src/boats.js), on the water at its places.
+// The M41's middle, and a stern and a bow (WGS84) giving its heading.
+const M41 = at(47.577778, 7.583406);
+const M41_WAY = [at(47.576937, 7.583502), at(47.5768, 7.58351)];
+// The maker of boats by their create (src/boats.js and the like), on the water at their places;
+// a boat's spray, if it has any, in the scene apart.
 const afloat =
-  (kind) =>
+  (create) =>
   (places, { heightAt, boost, onWater }) => {
-    const boats = createBoats(
-      kind,
+    const boats = create(
       places.map((p) => ({ ...p, y: heightAt(p.x, p.z) })),
       boost,
       onWater,
     );
-    return { objects: boats.map(({ group }) => group), vehicles: boats };
+    return {
+      objects: boats.flatMap(({ group, spray }) => (spray ? [group, spray] : group)),
+      vehicles: boats,
+    };
   };
 
 export const CATALOG = {
@@ -708,13 +732,27 @@ export const CATALOG = {
     // Between the Mittlere Brücke and the Johanniterbrücke (LV95 2611109.0, 1267968.1).
     name: "Fireboat",
     places: [{ x: 109, z: -568.1, heading: 0.62 }],
-    make: afloat("fire"),
+    make: afloat((...on) => createBoats("fire", ...on)),
   },
   V16: {
     // Below the Mittlere Brücke (LV95 2611324.4, 1267926.5), 7 m off the bank, so it can turn.
     name: "Police boat",
     places: [{ x: 324.4, z: -526.5, heading: -2.53 }],
-    make: afloat("police"),
+    make: afloat((...on) => createBoats("police", ...on)),
+  },
+  V17: {
+    // On the Rhine off the Novartis Campus (M41), facing upstream (M41_WAY), its driver and the
+    // women on its deck aboard; the museum shows it there (src/museum.js).
+    name: "Traxxas DCB M41",
+    places: [
+      {
+        ...M41,
+        heading: Math.atan2(M41_WAY[1].x - M41_WAY[0].x, M41_WAY[1].z - M41_WAY[0].z),
+        driver: SKIPPER,
+        deck: DECK,
+      },
+    ],
+    make: afloat(createM41s),
   },
   // Kinds src/main.js makes itself, as parts of what the city and the museum share (the traffic,
   // the ways on foot and the Rhine): without make, only their plates in the museum (platesOf), a

@@ -64,6 +64,43 @@ const FADE = (() => {
   brush.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(canvas);
 })();
+// A boat's wake, width metres wide at its stern (also src/m41.js): mesh, to set at its stern, just
+// over the water (so it hides none of the hull above), drawn as if nearer, so the water never
+// shows through; from there back 1 m, three times as wide, stretched by update(seconds, speed) to
+// WAKE seconds of travel and faded in up to STRONG.
+export function createWake(width) {
+  const mesh = new THREE.Mesh(
+    new THREE.BufferGeometry()
+      .setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(
+          [-width / 2, 0, 0, width / 2, 0, 0, -1.5 * width, 0, -1, 1.5 * width, 0, -1],
+          3,
+        ),
+      )
+      .setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2))
+      .setIndex([0, 1, 2, 1, 3, 2]),
+    new THREE.MeshBasicMaterial({
+      map: FOAM,
+      alphaMap: FADE,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    }),
+  );
+  mesh.position.y = 0.03;
+  function update(seconds, speed) {
+    mesh.visible = speed > 0.5;
+    mesh.scale.z = speed * WAKE;
+    mesh.material.opacity = Math.min(1, speed / STRONG);
+    FOAM.offset.y = (-seconds * FOAM.repeat.y) / WAKE; // as fast back as the boat goes on
+  }
+  return { mesh, update };
+}
+
 // A hull's two side profiles ([z, y], bow ahead), below and above its band, as parts across width.
 const hull = (width, [below, above], [low, high]) => [
   part(profile(below, width), low, [0, 0, 0]),
@@ -99,11 +136,13 @@ const KINDS = {
         ],
         [DARK, RED],
       ),
-      part(box(4.3, 0.06, 18.4), WHITE, [0, 1.4, -0.1]), // deck
+      // The deck on the hull's top, rising with it from 1.3 m at the stern to 1.5 m at the bow,
+      // 0.2 m short of either end.
+      part(box(4.3, 0.06, 18.6).rotateX(-Math.atan2(0.2, 19)), WHITE, [0, 1.43, 0]),
       part(box(3.6, 2, 9), WHITE, [0, 2.4, -0.5]), // deckhouse
       part(box(3.62, 0.5, 8.6), GLASS, [0, 2.75, -0.5]), // its windows, out a little
       part(box(3.8, 0.15, 9.4), RED, [0, 3.45, -0.5]), // its roof
-      part(box(3.6, 1.2, 2.6), RED, [0, 2, 5.2]), // fore deckhouse
+      part(box(3.5, 1.2, 2.6), RED, [0, 2, 5.2]), // fore deckhouse, narrower than the deckhouse
       part(box(2.8, 1.4, 2.6), WHITE, [0, 4.2, 1.6]), // wheelhouse
       part(box(2.82, 0.45, 2.62), GLASS, [0, 4.4, 1.6]), // its windows, all round
       part(box(3, 0.12, 2.9), RED, [0, 4.95, 1.6]), // its roof
@@ -234,17 +273,6 @@ export function createBoats(kind, places, boost, world) {
   const lens = box(0.3, 0.2, 0.3);
   const glowMaterial = glow(0x1848ff);
   const driving = { ...spec, spin: 0.1, react: 3, axles, half, width };
-  // The wake: from the stern, as wide as the boat, back 1 m (scaled by speed), three times as wide.
-  const wake = new THREE.BufferGeometry()
-    .setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(
-        [-width / 2, 0, 0, width / 2, 0, 0, -1.5 * width, 0, -1, 1.5 * width, 0, -1],
-        3,
-      ),
-    )
-    .setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2))
-    .setIndex([0, 1, 2, 1, 3, 2]);
   // Each boat's lights flash this many seconds later than the one before.
   return places.map((place, k) => createBoat(place, k * 0.31));
 
@@ -255,18 +283,9 @@ export function createBoats(kind, places, boost, world) {
     const group = new THREE.Group();
     const rocking = new THREE.Group();
     rocking.add(new THREE.Mesh(body, material), new THREE.Mesh(signs, signMaterial));
-    const foam = new THREE.Mesh(
-      wake,
-      new THREE.MeshBasicMaterial({
-        map: FOAM,
-        alphaMap: FADE,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    );
-    foam.position.set(0, 0.15, -half);
-    group.add(rocking, foam);
+    const wake = createWake(width);
+    wake.mesh.position.z = -half;
+    group.add(rocking, wake.mesh);
     const flashers = lights.map((at) => {
       const core = new THREE.Mesh(lens, unlit);
       core.position.set(...at);
@@ -292,10 +311,7 @@ export function createBoats(kind, places, boost, world) {
         0,
         0.02 * Math.sin(seconds * 1.1),
       );
-      foam.visible = s.speed > 0.5;
-      foam.scale.z = s.speed * WAKE;
-      foam.material.opacity = Math.min(1, s.speed / STRONG);
-      FOAM.offset.y = (-seconds * FOAM.repeat.y) / WAKE; // as fast back as the boat goes on
+      wake.update(seconds, s.speed);
       const t = (seconds + late) % 0.6;
       const flash = t % 0.3 < 0.07 || (t % 0.3 > 0.12 && t % 0.3 < 0.19);
       flashers.forEach(({ core, light }, k) => {

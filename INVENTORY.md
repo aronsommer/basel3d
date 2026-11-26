@@ -93,6 +93,7 @@ place in the museum too.
 | V14 | Yellow attack helicopter, circling | over the serpent and the Roche towers | `aircraft.js`, `catalog.js`   |
 | V15 | Fireboat                           | Rhine                                 | `boats.js`, `catalog.js`      |
 | V16 | Police speedboat                   | Rhine                                 | `boats.js`, `catalog.js`      |
+| V17 | Traxxas DCB M41 and its crew       | Rhine off the Novartis Campus         | `m41.js`, `catalog.js`        |
 
 ## Traffic one rides along
 
@@ -180,6 +181,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | V14   | Attack helicopter                                        |
 | V15   | Fireboat                                                 |
 | V16   | Police boat                                              |
+| V17   | Traxxas DCB M41                                          |
 | T1-1  | Car                                                      |
 | T1-2  | SUV                                                      |
 | T1-3  | Sports car                                               |

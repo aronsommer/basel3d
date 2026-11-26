@@ -80,6 +80,20 @@ const pixel = (band, z, a) =>
       ? [(Z1 - z) * K, 2 * ROWS + (SPAN - a) * K]
       : [(band ? z - Z0 : Z1 - z) * K, band * ROWS + (HIGH - a) * K];
 
+// Words in Traxxas' lettering (also on src/m41.js): italic, black-heavy, size px high, squeezed
+// into length px, about the brush's origin as its textAlign and textBaseline say; edged in edge,
+// if given, a sixth of size wide.
+export function lettering(brush, words, color, size, length, edge) {
+  brush.font = `italic 900 ${size}px sans-serif`;
+  if (edge) {
+    brush.strokeStyle = edge;
+    brush.lineWidth = size / 6;
+    brush.strokeText(words, 0, 0, length);
+  }
+  brush.fillStyle = color;
+  brush.fillText(words, 0, 0, length);
+}
+
 // One XRT per place ({ x, y, z, heading }), each { group, material, update, look (sets the
 // camera riding it), half, width }; they
 // share their geometries and all materials but their own (so one is highlighted alone).
@@ -236,14 +250,7 @@ export function createXrts(places, boost, world) {
     brush.save();
     brush.translate(...pixel(band, z, a));
     brush.transform(...axes, 0, 0);
-    brush.font = `italic 900 ${size * K}px sans-serif`;
-    if (edge) {
-      brush.strokeStyle = edge;
-      brush.lineWidth = 0.05 * K;
-      brush.strokeText(words, 0, 0, length * K);
-    }
-    brush.fillStyle = color;
-    brush.fillText(words, 0, 0, length * K);
+    lettering(brush, words, color, size * K, length * K, edge);
     brush.restore();
   };
   for (band of [0, 1]) {

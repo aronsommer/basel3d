@@ -5,7 +5,14 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
-import { DRUM_ARMS, MAJOR_ARM, PIVOTS, createCrowd, peopleTime } from "./people.js";
+import {
+  DRUM_ARMS,
+  MAJOR_ARM,
+  PICCOLO as PIPED,
+  PIVOTS,
+  createCrowd,
+  peopleTime,
+} from "./people.js";
 import { night } from "./daylight.js";
 
 const SPEED = 0.8; // metres per second
@@ -42,7 +49,7 @@ const MASK = mergeGeometries([
   part(box(0.46, 0.34, 0.1), 0xff7043, [0, 1.8, -0.2]),
 ]);
 const LANTERN = part(box(0.16, 0.22, 0.16), 0xfff0c0, [0, 2.21, 0]);
-const PICCOLO = part(rod(0.022, 0.5).rotateZ(Math.PI / 2), 0x1a1a1a, [-0.19, 1.57, 0.25]);
+const PICCOLO = part(rod(0.022, 0.5).rotateZ(Math.PI / 2), 0x1a1a1a, [-0.19, ...PIPED]);
 const DRUM = mergeGeometries([
   part(rod(0.21, 0.36).rotateZ(0.45), 0xc62828, [0.08, 0.7, 0.3]),
   part(rod(0.215, 0.03).rotateZ(0.45), 0xf5f5f5, [0.002, 0.862, 0.3]), // the upper head

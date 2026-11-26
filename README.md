@@ -4,7 +4,7 @@ The whole city of Basel in 3D in the browser, built with three.js. Buildings, te
 
 ## Running
 
-A static website with no build step. three.js comes from jsDelivr via an import map. GitHub Pages serves the repo directly from `main`. Locally, any static server in the repo folder will do, for example:
+A static website with no build step, needing nothing from elsewhere: three.js is in `vendor/three-<version>/` (`npm run vendor` copies it from `node_modules` after changing its version or the addons imported), loaded via an import map. GitHub Pages serves the repo directly from `main`. Locally, any static server in the repo folder will do, for example:
 
 ```
 npx serve
@@ -35,6 +35,7 @@ npm run joints
 ```
 basel3d/
 ├── index.html         page with the import map for three.js
+├── vendor/three-*/    the three.js the page uses, its version in the name (tools/vendor.mjs)
 ├── style.css          styles of the page
 ├── fonts/Inter.woff2  UI font (Inter, variable)
 ├── src/main.js        viewer (three.js)
@@ -120,6 +121,7 @@ basel3d/
 │   ├── heights.mjs    terrain height at a point, for the converters
 │   ├── pack.mjs       packs whole numbers into few bytes, for terrain.bin, the routes and basel.bin (read by src/pack.js)
 │   ├── size.mjs       → size.json, runs after every converter
+│   ├── vendor.mjs     node_modules/three → vendor/three-<version>/ and the import map, only the files the page uses
 │   └── data.mjs       checks data/ against data.json, runs after every converter
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
 ```
@@ -209,6 +211,7 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js) 
 - Bridges: source: Geodaten Kanton Basel-Stadt. Public geodata with download service, CC BY 4.0.
 - Map, water and ferries: © OpenStreetMap contributors, ODbL.
 - Basiliskbrunnen: source: Industrielle Werke Basel (IWB), data.bs.ch. Free to use with attribution; commercial use only with their permission.
+- three.js by mrdoob and the three.js authors, MIT License (vendor/three-*/LICENSE).
 - Font: Inter by The Inter Project Authors, SIL Open Font License 1.1.
 - Font: Cherry Bomb One by Satsuyako, SIL Open Font License 1.1.
 - Font: Honk by The Honk Project Authors, SIL Open Font License 1.1.

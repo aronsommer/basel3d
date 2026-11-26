@@ -18,6 +18,7 @@
     "accept-data": "node tools/data.mjs accept",
     "inventory": "node tools/inventory.mjs",
     "joints": "node tools/joints.mjs",
+    "vendor": "node tools/vendor.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {

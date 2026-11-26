@@ -1459,6 +1459,7 @@ const onWater = {
 };
 const fireboats = build("V15", { heightAt, boost, onWater }).vehicles;
 const policeBoats = build("V16", { heightAt, boost, onWater }).vehicles;
+const m41s = build("V17", { heightAt, boost, onWater }).vehicles;
 let namesOn = false; // whether they were shown at the last update
 const APART = 4; // px at least between two names
 const placed = []; // the boxes of those shown so far this update: left, top, right, bottom
@@ -2080,8 +2081,9 @@ const drives = [
   [xrts],
   [tanks, [0, 5, -16], [0, 2, 14]],
   [dinos, [0, 30, -55], [0, 8, 20]],
-  [fireboats, [0, 9, -24], [0, 3, 20]],
-  [policeBoats, [0, 4, -14], [0, 1.5, 11]],
+  [fireboats, [0, 9, -30], [0, 1, 20]],
+  [policeBoats, [0, 5, -17], [0, 1, 12]],
+  [m41s, [0, 4.5, -22], [0, 1.5, 16]],
   [drones],
 ].map(([vehicles, eye, ahead]) => {
   const ride = riders(

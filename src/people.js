@@ -31,7 +31,16 @@ const ARM = 0.35;
 // ahead; metres it bounces up each step.
 const [RUN_LEG, RUN_ARM, RUN_FORWARD, BOUNCE] = [0.75, 0.7, 0.3, 0.06];
 // Radians fleeing: the arms UP_ARM ahead (up over the head), flailing by FLAIL each way.
-const [UP_ARM, FLAIL] = [2.7, 0.3];
+export const UP_ARM = 2.7;
+const FLAIL = 0.3;
+// Radians steering: the arms STEER[0] ahead, opened STEER[1] out about the shoulders.
+export const STEER = [1.1, 0.15];
+// Radians cheering: the raised arms (UP_ARM) opened CHEER[0] out, the legs CHEER[1] apart, each
+// about its shoulder or hip.
+export const CHEER = [0.3, 0.08];
+// Radians the raised arms of one cheering sway either way together, about the shoulders, and
+// radians a second (by peopleTime and its phase): SWAY[0] * sin(time * SWAY[1] + phase).
+export const SWAY = [0.2, 2.5];
 // Radians the legs swing each way under a long dress while walking or running, not through it.
 const DRESS_LEG = 0.2;
 const SWING = 0.3;
@@ -57,7 +66,9 @@ const FORWARD = 0.2;
 // cast held CAST radians ahead; prop, the same standing; shoulders, sitting on someone's
 // shoulders, the arms SHOULDERS[0] radians ahead to the head, the legs SHOULDERS[1] ahead over the
 // shoulders and turned SHOULDERS[2] out round the neck; lift, as running with the arms held still
-// up over the head (UP_ARM), holding something up.
+// up over the head (UP_ARM), holding something up; steer, as ride with the legs still and the
+// arms opened out (STEER), as to a wide steering wheel; cheer, standing a little astride, the arms
+// up over the head (UP_ARM), opened out (CHEER) and swaying together (SWAY).
 const POSES = [
   "stand",
   "walk",
@@ -83,9 +94,10 @@ const POSES = [
   "prop",
   "shoulders",
   "lift",
+  "steer",
+  "cheer",
 ];
 const SHOULDERS = [0.6, 1.2, 0.6];
-const PUSH = 0.72;
 const CRUTCH = [0.2, 0.3];
 const CAST = 0.3;
 // Lying on the back: tilted about its own x after the heading, its back on the ground (LIE metres
@@ -95,17 +107,55 @@ const LIE = 0.12;
 // Metres up where they turn, by limb: legs, arms, a dog's legs, a wheelchair's wheels (by its phase,
 // rolling), the arms of one sitting in it (walking, pushing the rims: ROW radians ahead, either way,
 // strokes per turn of the wheels).
-export const PIVOTS = [0.9, 1.47, 0.34, 0.34, 1.15];
+export const PIVOTS = [0.9, 1.41, 0.34, 0.34, 1.15];
+// Metres up the hanging arms end, at the hands (every body's but night's).
+export const HAND_Y = 0.87;
+// Where a point of an arm, y metres up and z ahead as built, is with the arm turned a radians
+// about the shoulders as the shader turns it (negative: ahead): [y, z].
+export function turnArm(a, y, z = 0) {
+  const [py, pz] = [y - PIVOTS[1], z];
+  return [PIVOTS[1] + py * Math.cos(a) - pz * Math.sin(a), py * Math.sin(a) + pz * Math.cos(a)];
+}
+// Metres up the handles of a pram, a buggy and a wheelchair; pushing, the arms PUSH radians ahead
+// to them.
+const HANDLES = 1.02;
+const PUSH = Math.acos((PIVOTS[1] - HANDLES) / (PIVOTS[1] - HAND_Y));
 const ROW = [0.35, 0.45, 2];
 export const WHEEL = 0.33; // metres, a wheelchair's wheels' radius
 // Metres a body sits lower than it stands: its legs, turned ahead, on the ground.
 const SEAT = 0.81;
 const LEAN = 0.45;
+// Tossing, sitting: the right arm's radians ahead, swinging either way.
+const TOSS_ARM = [1, 0.5];
+// Where one sitting tosses from: a man's right hand, its arm furthest ahead (x, y, z as placed).
+export const TOSS_HAND = (() => {
+  const [y, z] = turnArm(-TOSS_ARM[0] - TOSS_ARM[1], HAND_Y);
+  const q = y - PIVOTS[0];
+  return [
+    -0.28,
+    PIVOTS[0] + q * Math.cos(LEAN) + z * Math.sin(LEAN) - SEAT,
+    z * Math.cos(LEAN) - q * Math.sin(LEAN),
+  ];
+})();
 // How much longer the arms reach while swimming upright (pose swim), to the bag ahead.
-const REACH_ARMS = 1.4;
-// Piping (pose pipe): metres up where the arms bend (the elbow), the forearms' radians up there,
-// and per metre of forearm metres to the right, the left arm's and the right's, onto the piccolo.
-const PIPE_ARMS = [1.17, -2.12, 0.73, 0.07];
+export const REACH_ARMS = 1.4;
+// Piping (pose pipe): the piccolo's middle (y, z) under the mouth (src/fasnacht.js); metres up
+// where the arms bend (the elbow), the forearms' radians up there, and per metre of forearm metres
+// to the right, the left arm's and the right's, onto the piccolo; the arms' radians ahead
+// (PIPE_ARM). The bend and PIPE_ARM bring the hands' ends to the piccolo.
+export const PICCOLO = [1.57, 0.25];
+const ELBOW = 1.17;
+const PIPE_ARMS = (() => {
+  const [up, fore] = [ELBOW - PIVOTS[1], ELBOW - HAND_Y];
+  const [ty, tz] = [PICCOLO[0] - PIVOTS[1], PICCOLO[1]];
+  const bend = -Math.acos((up * up + fore * fore - ty * ty - tz * tz) / (2 * up * fore));
+  return [ELBOW, bend, 0.73, 0.07];
+})();
+export const PIPE_ARM = (() => {
+  const [up, fore, bend] = [ELBOW - PIVOTS[1], ELBOW - HAND_Y, PIPE_ARMS[1]];
+  const hand = Math.atan2(-fore * Math.sin(bend), up - fore * Math.cos(bend));
+  return hand - Math.atan2(PICCOLO[1], PICCOLO[0] - PIVOTS[1]);
+})();
 // Drumming: the arms' radians (as a), at rest and beating either way, and the beat (radians a
 // second), the arms in turn.
 export const DRUM_ARMS = [-0.9, 0.25, 14];
@@ -114,6 +164,8 @@ export const DRUM_ARMS = [-0.9, 0.25, 14];
 export const MAJOR_ARM = [-1.4, 0.8];
 // Radians a second of the sitting one's tossing arm, furthest ahead at 1.5708 (+ its phase).
 export const TOSS = 1.5;
+// Radians one dancing twists either way.
+export const TWIST = 0.4;
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 // A part at [x, y, z] in a colour slot; limb: ±1 a leg, ±2 an arm, ±3 a dog's leg, 4 a wheelchair's
@@ -198,7 +250,7 @@ const crutches = (arm, fore, leg, w) => [
   ]),
 ];
 
-// A pram or buggy with these parts: four small wheels, a frame and a handle behind, 1.02 metres up.
+// A pram or buggy with these parts: four small wheels, a frame and a handle behind, HANDLES up.
 const stroller = (parts) =>
   mergeGeometries([
     ...[-1, 1].flatMap((s) => [
@@ -211,7 +263,7 @@ const stroller = (parts) =>
       ),
       piece(box(0.03, 0.03, 0.6), "grey", [s * 0.22, 0.3, 0]),
     ]),
-    piece(box(0.46, 0.04, 0.04), "black", [0, 1.02, -0.38]),
+    piece(box(0.46, 0.04, 0.04), "black", [0, HANDLES, -0.38]),
     ...parts,
   ]);
 
@@ -263,7 +315,7 @@ const BODIES = {
       piece(box(0.04, 0.12, 0.12), "black", [s * 0.21, 0.06, 0.45]), // caster
       piece(box(0.03, 0.45, 0.03), "grey", [s * 0.21, 0.3, 0.38]),
       piece(box(0.03, 0.5, 0.03), "grey", [s * 0.21, 0.78, -0.15]),
-      piece(box(0.05, 0.035, 0.14), "black", [s * 0.22, 1.02, -0.2]), // handle
+      piece(box(0.05, 0.035, 0.14), "black", [s * 0.22, HANDLES, -0.2]), // handle
       piece(box(0.15, 0.16, 0.47), "bottom", [s * 0.1, 0.6, 0.18]), // thigh
       piece(box(0.14, 0.4, 0.15), "bottom", [s * 0.1, 0.4, 0.42]),
       piece(box(0.13, 0.08, 0.24), "shoes", [s * 0.1, 0.155, 0.48]),
@@ -422,6 +474,8 @@ material.onBeforeCompile = (shader) => {
         bool dressed = (int(more.z) & ${1 << OPTIONS.indexOf("dress")}) != 0;
         float a = limb == 4 ? phase
           : limb == 5 ? (pose == 1 ? -${ROW[0]} - ${ROW[1]} * sin(phase * ${ROW[2]}.0) : 0.0)
+          : pose == 25 ? (limb == 2 ? -${UP_ARM} : 0.0)
+          : pose == 24 ? (limb == 2 ? -${STEER[0]} : -0.4)
           : pose == 23 ? (limb == 2 ? -${UP_ARM} : -${RUN_LEG} * sin(phase) * side)
           : pose == 22 ? -(limb == 2 ? ${SHOULDERS[0]} : ${SHOULDERS[1]})
           : pose >= 19 ? (limb == 2 ? (pose == 19 ? -${PUSH}
@@ -441,13 +495,13 @@ material.onBeforeCompile = (shader) => {
           : pose == 5 ? -1.5708
           : pose == 7 ? (limb == 2 ? -1.1 : -0.4 + 0.3 * sin(phase) * side)
           : pose == 8 ? (limb == 2 ? -1.0 : -1.1 + 0.25 * sin(phase) * side)
-          : pose == 9 && limb == 2 ? (side < 0.0 ? -1.0 - 0.5 * sin(t * ${TOSS} + phase) : -0.3)
+          : pose == 9 && limb == 2 ? (side < 0.0 ? -float(${TOSS_ARM[0]}) - ${TOSS_ARM[1]} * sin(t * ${TOSS} + phase) : -0.3)
           : pose == 9 ? -1.5708
           : pose == 12 ? (limb == 2 ? -1.5708 : 0.2 * sin(t * 2.0 + phase) * side)
           : pose == 13 ? (limb == 2 ? mod(t * 2.4 + phase + side * 1.5708, 6.2832)
             : 0.25 * sin(t * 5.0 + phase) * side)
           : pose >= 14 && limb != 2 ? -${LEG} * sin(phase) * side
-          : pose == 14 ? -0.85
+          : pose == 14 ? -${PIPE_ARM}
           : pose == 15 ? ${DRUM_ARMS[0]} + ${DRUM_ARMS[1]} * sin(t * float(${DRUM_ARMS[2]}) + side * 1.5708)
           : pose == 16 ? (side < 0.0 ? ${MAJOR_ARM[0]} + ${MAJOR_ARM[1]} * sin(phase) : ${ARM} * sin(phase) * side)
           : pose == 18 ? -${PUSH}
@@ -464,10 +518,21 @@ material.onBeforeCompile = (shader) => {
         if (pose == 12 && limb == 2) p *= ${REACH_ARMS}; // swimming: reaching far to the bag
         transformed.yz = vec2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a))
           + vec2(pivot, 0.0);
-        if (pose == 6) {
-          // Out to its side in the body's plane, about the shoulder or hip of a slim body.
+        if (pose == 24 && limb == 2) {
+          // Opened out about the shoulder.
+          float b = side * ${STEER[1]};
+          vec2 joint = vec2(side * 0.2, 0.0);
+          vec2 q = transformed.xz - joint;
+          transformed.xz = joint + vec2(q.x * cos(b) + q.y * sin(b), q.y * cos(b) - q.x * sin(b));
+        }
+        if (pose == 6 || pose == 25) {
+          // Out to its side in the body's plane, about the shoulder or hip of a slim body (the
+          // arms of one cheering raised, so turned the other way).
           float spread = 0.5 - 0.5 * cos(t * 1.5 + phase);
-          float b = side * (limb == 2 ? 0.2 + 2.2 * spread : 0.05 + 0.45 * spread);
+          float b = pose == 25
+            ? (limb == 2 ? ${SWAY[0]} * sin(t * ${SWAY[1]} + phase) - side * ${CHEER[0]}
+              : side * ${CHEER[1]})
+            : side * (limb == 2 ? 0.2 + 2.2 * spread : 0.05 + 0.45 * spread);
           vec2 joint = vec2(side * (limb == 2 ? 0.2 : 0.09), pivot);
           vec2 q = transformed.xy - joint;
           transformed.xy = joint + vec2(q.x * cos(b) - q.y * sin(b), q.x * sin(b) + q.y * cos(b));
@@ -482,7 +547,7 @@ material.onBeforeCompile = (shader) => {
         }
       }
       if (int(more.w + 0.5) == 4) {
-        float w = 0.4 * sin(peopleTime * 1.0 + phase);
+        float w = ${TWIST} * sin(peopleTime * 1.0 + phase);
         transformed.xz = vec2(
           transformed.x * cos(w) + transformed.z * sin(w),
           transformed.z * cos(w) - transformed.x * sin(w)
@@ -510,7 +575,7 @@ material.onBeforeCompile = (shader) => {
 // The crowds whose figures flee from traffic (dodge).
 const fleeing = [];
 // Fleeing: running RUN metres per second, at most REACH metres from its place (or, loose, from
-// where it is), back after CALM
+// where it is; on a roof, round it ROOF metres out), back after CALM
 // seconds calm at its way's end, at BACK metres per second; radians of the run, of the walk per
 // metre (STRIDE); standing, it turns SPIN radians per second to face its place.
 // Each figure has its own pace (RUN and BACK times 0.6 to 1.4), CALM times 0.4 to 1.6, metres
@@ -518,6 +583,8 @@ const fleeing = [];
 // do not move as one.
 const RUN = 7;
 const REACH = 15;
+const ROOF = 1.5;
+const ROUND = 0.5; // times as fast as running, round on a roof
 const CALM = 2.5;
 const BACK = 1.3;
 const STRIDE = [2.6, 4.5];
@@ -541,7 +608,9 @@ const SWIM_BACK = 2; // swimming, times as fast going back
 // tilt: radians about its own x after the heading), hide(i), away(i): whether off its place
 // (dodge), offset(i) }; a look's head is short hair unless given, its face (OPTIONS: glasses or
 // shades) bare, without crutches unless given. Its figures flee from traffic (dodge) unless flee is false; if it is "march", only from
-// vehicles, keeping their pose (the marching clique, src/fasnacht.js).
+// vehicles, keeping their pose (the marching clique, src/fasnacht.js); if it is "roof", running
+// round their places (circling), keeping their height (on a roof, which dodge's ground does not
+// know).
 export function createCrowd(body, count, flee = true) {
   const geometry = new THREE.BufferGeometry();
   for (const name of ["position", "piece"])
@@ -571,7 +640,17 @@ export function createCrowd(body, count, flee = true) {
   const home = new Float32Array(8 * count);
   const off = new Float32Array(7 * count);
   const own = Float32Array.from({ length: 4 * count }, Math.random);
-  if (flee) fleeing.push({ count, home, off, own, put, poses: more, march: flee === "march" });
+  if (flee)
+    fleeing.push({
+      count,
+      home,
+      off,
+      own,
+      put,
+      poses: more,
+      march: flee === "march",
+      roof: flee === "roof",
+    });
   return {
     mesh,
     dress(
@@ -653,6 +732,40 @@ function flight(off, o, own, f, x, y, z, dt, danger, march, speed, back, room = 
   return step;
 }
 
+// One on a roof dt seconds on, as flight has it (off, own, its place, danger): in danger it runs
+// round its place ROOF metres out, ROUND times as fast as running, its own way round (by its
+// turn), from where it is (from its place, setting out its own way, by its clear); calm again for
+// its wait (CALM, by its calm), it walks back. The metres it moved, -1 if it is at its place and
+// calm.
+function circling(off, o, own, f, x, y, z, dt, danger) {
+  const [ox, oz] = [off[o], off[o + 1]];
+  let calm = off[o + 4];
+  const inDanger = danger(x + ox, y, z + oz, 0, false, 0, 0, 0);
+  if (!inDanger && !ox && !oz) return -1;
+  const pace = 0.6 + 0.8 * own[f];
+  const out = Math.hypot(ox, oz);
+  let [nx, nz] = [ox, oz];
+  if (inDanger) {
+    calm = 0;
+    const run = RUN * ROUND * pace * dt;
+    const a =
+      (out ? Math.atan2(ox, oz) : 2 * Math.PI * own[f + 2]) +
+      (own[f + 3] < 0.5 ? -run : run) / ROOF;
+    const r = Math.min(ROOF, out + run);
+    [nx, nz] = [r * Math.sin(a), r * Math.cos(a)];
+  } else if ((calm += dt) > CALM * (0.4 + 1.2 * own[f + 1])) {
+    const back = BACK * pace * dt;
+    [nx, nz] = back < out ? [ox - (ox / out) * back, oz - (oz / out) * back] : [0, 0];
+  }
+  const step = Math.hypot(nx - ox, nz - oz);
+  if (step) off[o + 2] = Math.atan2(nx - ox, nz - oz);
+  off.set([nx, nz], o);
+  off[o + 4] = calm;
+  if (!nx && !nz) off[o + 3] = off[o + 4] = 0;
+  else off[o + 3] += step * STRIDE[calm ? 1 : 0];
+  return step;
+}
+
 // count things that flee as the figures do (flight), speed times as fast, from danger (as dodge
 // has it), loose (flight): as far as they are chased, waiting less and going back faster. (i, x,
 // y, z, dt, room) moves the i-th, its place at x, y, z, taking up room metres round it, dt seconds
@@ -669,20 +782,22 @@ export function createFlight(count, danger, speed = 1) {
   };
 }
 
-// Moves the figures of all crowds dt seconds on (flight), after their own moves. Off its place one
-// stands on ground(x, z, y) upright, running or walking, else standing (marching ones keep their
-// pose). One swimming runs SWIM_FLEE times as fast, on the water (water(x, z): its surface's
+// Moves the figures of all crowds dt seconds on (flight; on a roof, circling), after their own
+// moves. Off its place one stands on ground(x, z, y) (on a roof, at its place's height) upright,
+// running or walking, else standing (marching ones keep their pose). One swimming runs SWIM_FLEE times as fast, on the water (water(x, z): its surface's
 // height there, null on land) or the ground, its arms up: lifting what it holds (swim), else
 // flailing; calm, it swims back SWIM_BACK times as fast, keeping its pose, height and tilt, or on
 // land walks back.
 export function dodge(dt, danger, ground, water) {
-  for (const { count, home, off, own, put, poses, march } of fleeing)
+  for (const { count, home, off, own, put, poses, march, roof } of fleeing)
     for (let i = 0; i < count; i++) {
       const [h, o] = [8 * i, 7 * i];
       const [x, y, z] = [home[h], home[h + 1], home[h + 2]];
       const swim = SWIMMING.has(home[h + 7]);
       const [speed, homeward] = swim ? [SWIM_FLEE, SWIM_BACK] : [1, 1];
-      const step = flight(off, o, own, 4 * i, x, y, z, dt, danger, march, speed, homeward);
+      const step = roof
+        ? circling(off, o, own, 4 * i, x, y, z, dt, danger)
+        : flight(off, o, own, 4 * i, x, y, z, dt, danger, march, speed, homeward);
       if (step < 0) continue;
       const back = !off[o] && !off[o + 1];
       const [fx, fz, calm] = [x + off[o], z + off[o + 1], off[o + 4]];
@@ -703,7 +818,9 @@ export function dodge(dt, danger, ground, water) {
       }
       if (back) put(i, ...home.subarray(h, h + 7));
       else {
-        const [fy, tilt] = swimming ? [y, home[h + 6]] : [surface ?? ground(fx, fz, y), 0];
+        const [fy, tilt] = swimming
+          ? [y, home[h + 6]]
+          : [roof ? y : (surface ?? ground(fx, fz, y)), 0];
         put(i, fx, fy, fz, off[o + 2], home[h + 4] + off[o + 3], home[h + 5], tilt);
       }
     }
@@ -711,12 +828,12 @@ export function dodge(dt, danger, ground, water) {
 
 // People at places ({ x, y, z, heading, pose, tilt }), standing unless another pose (POSES) is
 // given; one lying has its place at its feet (were they on the ground) and its head away along the
-// heading; one not lying is tilted forward by tilt radians, if given. With these looks in turn; a
-// mesh per body.
-export function createPeople(places, looks) {
+// heading; one not lying is tilted forward by tilt radians, if given. With these looks in turn,
+// fleeing as createCrowd's flee says; a mesh per body.
+export function createPeople(places, looks, flee = true) {
   const bodies = Map.groupBy(places.keys(), (k) => looks[k % looks.length].body);
   return [...bodies].map(([body, ks]) => {
-    const crowd = createCrowd(body, ks.length);
+    const crowd = createCrowd(body, ks.length, flee);
     ks.forEach((k, i) => {
       const { x, y, z, heading, pose = "stand", tilt = 0 } = places[k];
       crowd.dress(i, looks[k % looks.length], pose);

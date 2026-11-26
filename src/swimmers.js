@@ -16,7 +16,17 @@
 // the water running on their legs (on land walking), swimming back once calm.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { createCrowd, createFlight, mix, SWIM_FLEE } from "./people.js";
+import {
+  HAND_Y,
+  PIVOTS,
+  REACH_ARMS,
+  UP_ARM,
+  createCrowd,
+  createFlight,
+  mix,
+  SWIM_FLEE,
+  turnArm,
+} from "./people.js";
 import { PATIENCE } from "./space.js";
 import { STEP as LEG_STEP, SWAN_LEG, SWING as LEG_SWING, swan, swanLeg } from "./zoo.js";
 
@@ -49,13 +59,17 @@ const CLEAR = 2;
 const [STERN, BOW, HALF] = [-7, 8, 1.7];
 const [KEEP, STEP, LOOK, LONGEST] = [3, 2, 14, 60];
 // Drifting upright: FLOAT metres under the water's surface (its shoulders just out), its arms
-// stretched ahead lying on the bag, whose middle is HOLD metres ahead and BAG metres over the
-// surface, half in the water; turning up to SWAY radians either way. Crawling: lying TILT radians forward, its
-// feet SINK metres under, its hands REACH metres from its feet.
-const [FLOAT, HOLD, BAG, SWAY] = [1.3, 0.95, 0.08, 0.35];
+// stretched ahead lying on the bag, whose middle is HOLD metres ahead (0.11 beyond its hands,
+// src/people.js) and BAG metres over the surface, half in the water; turning up to SWAY radians
+// either way. Crawling: lying TILT radians forward, its feet SINK metres under, its hands REACH
+// metres from its feet.
+const [FLOAT, BAG, SWAY] = [1.3, 0.08, 0.35];
+const HOLD = (PIVOTS[1] - HAND_Y) * REACH_ARMS + 0.11;
 const DRIFT = 0.3; // metres one drifts slowly left and right of its lane, with its group
 const [TILT, SINK, REACH] = [1.4, 0.15, 2.3];
-const LIFT = [2.2, 0.25]; // metres the bag's middle is up and ahead of one fleeing on the water
+// Metres the bag's middle is up and ahead of one fleeing on the water: 0.19 over its hands (lifted
+// up over its head, src/people.js).
+const LIFT = (([y, z]) => [y + 0.19, z])(turnArm(-UP_ARM, HAND_Y));
 const LEAN = 0.12; // radians a jogger leans forward
 const CARRY = [1.2, 0.34]; // metres the bag's middle is up and behind one on land, leaning with it
 const SHALLOW = 0.6; // metres over the Rhine's surface the bank's lowest steps are swum from

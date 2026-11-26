@@ -91,6 +91,14 @@ function between(from, to) {
   return { x: (ax + bx) / 2, z: (az + bz) / 2, heading: Math.atan2(bx - ax, bz - az) };
 }
 
+// The boats on the Rhine, one behind the other, from the first point (WGS84) towards the second,
+// upstream (south).
+const BOATS = [
+  [47.580408, 7.583532],
+  [47.579975, 7.583432],
+];
+const UPSTREAM = between(...BOATS).heading;
+
 // By kind: the vehicles on the parking east of the people's site (spot); the jet and the UFO
 // north of the site; the airliner at its east side, facing south; east of it, towards the Rhine,
 // the Rega's helicopters on their pads side by side at PADS, facing south (on one height,
@@ -144,18 +152,9 @@ const AT = {
   V7: [spot(8, back(8, 2))],
   V8: [spot(9, back(9, 2))],
   V9: [spot(10)],
-  // On the Rhine, one behind the other, facing from the first to the second, upstream (south).
   ...(() => {
-    const [a, b] = [
-      [47.580408, 7.583532],
-      [47.579975, 7.583432],
-    ];
-    const { heading } = between(a, b);
-    const at = ([lat, lon]) => {
-      const [x, z] = fromWGS84(lat, lon);
-      return [{ x, z, heading }];
-    };
-    return { V15: at(a), V16: at(b) };
+    const at = ([lat, lon]) => [{ ...point(lat, lon), heading: UPSTREAM }];
+    return { V15: at(BOATS[0]), V16: at(BOATS[1]) };
   })(),
   V10: PADS.map(([x, z]) => ({ x, z, heading: VEHICLES.heading })),
   V11: [between([47.580464, 7.581148], [47.58021, 7.581115])],
@@ -167,6 +166,8 @@ const AT = {
   A3: [{ ...point(47.5791, 7.5836), look: fromWGS84(47.5797, 7.5805) }],
   A4: [point(47.584733, 7.580797)],
 };
+// Kinds the museum shows where they are in the city, by id: metres ahead of each its label lies.
+const IN_PLACE = { V17: 12 };
 // The catalog's kinds (src/catalog.js) in the museum: where it shows the kind with this id and
 // name, placed in the city at places: one of each variant (places differing but in x, z and
 // heading; one if it keeps to no place), each marked museum (for makers laying it out otherwise
@@ -371,6 +372,10 @@ export function platesOf(id, name, places) {
 }
 export function exhibitsOf(id, name, places) {
   if (!OPEN) return [];
+  if (id in IN_PLACE) {
+    for (const p of places) label(`${id} ${name}`, ...ahead(p, IN_PLACE[id]));
+    return [];
+  }
   const keyed = places.map(({ x, z, heading, ...rest }) => [JSON.stringify(rest), rest]);
   const variants = new Map(places.length ? keyed : [["{}", {}]]); // one, keeping to no place
   return [...variants].map(([key, rest], k) => {
