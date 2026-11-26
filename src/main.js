@@ -2979,7 +2979,8 @@ function readView() {
   if (!values || [zoom, lat, lon, bearing, pitch].some((n) => !Number.isFinite(n))) return false;
   const [x, z] = intoArea(...fromWGS84(lat, lon));
   const r = THREE.MathUtils.clamp(perZoom(lat) / 2 ** zoom, orbit.minDistance, orbit.maxDistance);
-  const [h, t] = [bearing, THREE.MathUtils.clamp(pitch, 0, 83)].map(THREE.MathUtils.degToRad);
+  // Never quite straight down, where OrbitControls, reading the bearing from the offset, loses it.
+  const [h, t] = [bearing, THREE.MathUtils.clamp(pitch, 0.0001, 83)].map(THREE.MathUtils.degToRad);
   orbit.target.set(x, heightAt(x, z) + CENTRE, z);
   camera.position
     .copy(orbit.target)
