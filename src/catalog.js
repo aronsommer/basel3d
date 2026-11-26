@@ -11,6 +11,7 @@ import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createBike } from "./bike.js";
 import { FLOCKS, createBirds } from "./birds.js";
 import { createBoats } from "./boats.js";
+import { createCatCars } from "./catcar.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createClique } from "./fasnacht.js";
@@ -753,6 +754,12 @@ export const CATALOG = {
       },
     ],
     make: afloat(createM41s),
+  },
+  V18: {
+    // On the Kaserne's lawn (WGS84 47.563303, 7.590998), facing northeast.
+    name: "Cat Car",
+    places: [{ ...at(47.563303, 7.590998), heading: (3 * Math.PI) / 4 }],
+    make: driven(createCatCars),
   },
   // Kinds src/main.js makes itself, as parts of what the city and the museum share (the traffic,
   // the ways on foot and the Rhine): without make, only their plates in the museum (platesOf), a

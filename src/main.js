@@ -923,6 +923,7 @@ const fireTrucks = build("V3", { parked, boost, world }).vehicles;
 const motorcycles = build("V4", { parked, boost, world }).vehicles;
 const quads = build("V5", { parked, boost, world }).vehicles;
 const xrts = build("V6", { parked, boost, world }).vehicles;
+const catCars = build("V18", { parked, boost, world }).vehicles;
 const fromLV95 = ([e, n]) => ({ x: e - LV95[0], z: LV95[1] - n });
 // Metres the towels' tops are above the ground at the feet, so uneven ground does not cover them.
 const TOWEL = 0.06;
@@ -2070,7 +2071,7 @@ const jetRides = jets.map(({ group, material }) =>
   riders([{ object: group, materials: [material], eye: [0, 8, -48], ahead: [0, 2.6, 40] }]),
 );
 // What is driven or flown by their own rules, each [vehicles, ride]: the police cars, the ambulance, the fire truck, the
-// motorcycles, the quads, the XRT, the tanks, the dinosaur and the boats, from behind and above; the fire truck from its own eye
+// motorcycles, the quads, the cat car, the XRT, the tanks, the dinosaur and the boats, from behind and above; the fire truck from its own eye
 // and ahead; the XRT and the drones through their own camera (look).
 const drives = [
   [police, [0, 3, -8.5], [0, 1.2, 8]],
@@ -2078,6 +2079,7 @@ const drives = [
   [fireTrucks],
   [motorcycles, [0, 2.6, -6], [0, 0.6, 5]],
   [quads, [0, 2.6, -6], [0, 0.6, 5]],
+  [catCars, [0, 3, -8.5], [0, 1.2, 8]],
   [xrts],
   [tanks, [0, 5, -16], [0, 2, 14]],
   [dinos, [0, 30, -55], [0, 8, 20]],
@@ -2099,7 +2101,7 @@ const drives = [
 });
 // Water splashing round the wheels of the road vehicles and dinos on the Rhine (src/splash.js).
 const splash = createSplash(
-  [police, ambulances, fireTrucks, motorcycles, quads, xrts, tanks, dinos].flat(),
+  [police, ambulances, fireTrucks, motorcycles, quads, catCars, xrts, tanks, dinos].flat(),
   inRhine,
   WATER,
 );

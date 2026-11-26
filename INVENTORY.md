@@ -94,6 +94,7 @@ place in the museum too.
 | V15 | Fireboat                           | Rhine                                 | `boats.js`, `catalog.js`      |
 | V16 | Police speedboat                   | Rhine                                 | `boats.js`, `catalog.js`      |
 | V17 | Traxxas DCB M41 and its crew       | Rhine off the Novartis Campus         | `m41.js`, `catalog.js`        |
+| V18 | Cat Car                            | Kaserne                               | `catcar.js`, `catalog.js`     |
 
 ## Traffic one rides along
 
@@ -182,6 +183,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | V15   | Fireboat                                                 |
 | V16   | Police boat                                              |
 | V17   | Traxxas DCB M41                                          |
+| V18   | Cat Car                                                  |
 | T1-1  | Car                                                      |
 | T1-2  | SUV                                                      |
 | T1-3  | Sports car                                               |
