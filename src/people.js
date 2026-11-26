@@ -168,8 +168,8 @@ export const TOSS = 1.5;
 export const TWIST = 0.4;
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-// A part at [x, y, z] in a colour slot; limb: ±1 a leg, ±2 an arm, ±3 a dog's leg, 4 a wheelchair's
-// wheel, 5 an arm in a wheelchair, the sign its side (or for a dog's leg its
+// A part at [x, y, z] in a colour slot; limb: ±1 a leg, ±2 an arm (±2.5 its forearm, which piping
+// bends up), ±3 a dog's leg, 4 a wheelchair's wheel, 5 an arm in a wheelchair, the sign its side (or for a dog's leg its
 // pair, the diagonal ones moving together); shown only with one of these options, if any given.
 function piece(geometry, slot, [x, y, z], limb = 0, options = []) {
   const g = geometry.toNonIndexed();
@@ -275,7 +275,15 @@ const BODIES = {
       piece(box(0.14, 0.08, 0.28), "shoes", [s * 0.1, 0.04, 0.03], s),
       piece(box(0.16, 0.82, 0.18), "bottom", [s * 0.1, 0.49, 0], s),
       piece(box(0.13, 0.2, 0.15), "top", [s * 0.28, 1.39, 0], 2 * s),
-      piece(box(0.1, 0.42, 0.12), "skin", [s * 0.28, 1.08, 0], 2 * s),
+      // The bare arm in two at the elbow (ELBOW), so the forearm bends whole (piping), the upper
+      // reaching on over it by half its depth, so it covers the bent elbow.
+      piece(
+        box(0.1, 1.29 - ELBOW + 0.06, 0.12),
+        "skin",
+        [s * 0.28, (1.29 + ELBOW - 0.06) / 2, 0],
+        2 * s,
+      ),
+      piece(box(0.1, ELBOW - HAND_Y, 0.12), "skin", [s * 0.28, (ELBOW + HAND_Y) / 2, 0], 2.5 * s),
     ]),
     piece(box(0.44, 0.62, 0.25), "top", [0, 1.21, 0]),
     piece(box(0.1, 0.08, 0.1), "skin", [0, 1.56, 0]),
@@ -290,7 +298,13 @@ const BODIES = {
       piece(box(0.11, 0.07, 0.24), "shoes", [s * 0.085, 0.035, 0.03], s),
       piece(box(0.13, 0.83, 0.15), "bottom", [s * 0.085, 0.48, 0], s),
       piece(box(0.11, 0.18, 0.13), "top", [s * 0.235, 1.38, 0], 2 * s),
-      piece(box(0.085, 0.42, 0.1), "skin", [s * 0.235, 1.08, 0], 2 * s),
+      piece(
+        box(0.085, 1.29 - ELBOW + 0.05, 0.1),
+        "skin",
+        [s * 0.235, (1.29 + ELBOW - 0.05) / 2, 0],
+        2 * s,
+      ),
+      piece(box(0.085, ELBOW - HAND_Y, 0.1), "skin", [s * 0.235, (ELBOW + HAND_Y) / 2, 0], 2.5 * s),
     ]),
     piece(new THREE.CylinderGeometry(0.18, 0.27, 0.75, 8), "bottom", [0, 0.55, 0], 0, ["dress"]),
     piece(box(0.36, 0.58, 0.22), "top", [0, 1.18, 0]),
@@ -506,7 +520,7 @@ material.onBeforeCompile = (shader) => {
           : pose == 16 ? (side < 0.0 ? ${MAJOR_ARM[0]} + ${MAJOR_ARM[1]} * sin(phase) : ${ARM} * sin(phase) * side)
           : pose == 18 ? -${PUSH}
           : 0.0;
-        if (pose == 14 && limb == 2 && transformed.y < ${PIPE_ARMS[0]}) {
+        if (pose == 14 && abs(piece.y) > 2.25) {
           // Piping: the forearm turned up at the elbow and to the right, onto the piccolo.
           float down = ${PIPE_ARMS[0]} - transformed.y, b = ${PIPE_ARMS[1]};
           transformed.x -= (side > 0.0 ? ${PIPE_ARMS[2]} : ${PIPE_ARMS[3]}) * down;

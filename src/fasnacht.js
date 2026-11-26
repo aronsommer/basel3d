@@ -31,7 +31,7 @@ const ROWS = [
 ];
 const COSTUME = { top: 0x2e7d32, bottom: 0xf9a825, shoes: 0x111111 };
 const MAJOR = { top: 0xb71c1c, bottom: 0xb71c1c, shoes: 0x111111 };
-const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a];
+const SKIN = [0xf1c7a5, 0xe8b996, 0xd9a27a, 0x8a5634];
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const rod = (r, length) => new THREE.CylinderGeometry(r, r, length, 8);
@@ -135,7 +135,8 @@ export function createClique([a, b], ground) {
   );
   members.forEach((m, i) => {
     Object.assign(m, { crowd: crowds[i % 2], i: i >> 1, body: bodies[i % 2] });
-    const skin = SKIN[i % SKIN.length];
+    // Each skin in turn among the men and among the women (every other one).
+    const skin = SKIN[(i + (i >> 1)) % SKIN.length];
     m.crowd.dress(m.i, { skin, hair: 0x2a1d14, ...(m.pose === "major" ? MAJOR : COSTUME) }, m.pose);
   });
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
