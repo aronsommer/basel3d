@@ -38,6 +38,7 @@ basel3d/
 ├── vendor/three-*/    the three.js the page uses, its version in the name (tools/vendor.mjs)
 ├── style.css          styles of the page
 ├── fonts/Inter.woff2  UI font (Inter, variable)
+├── img/               favicon.ico (rounded) and apple-touch-icon.png (square): the Baselstab on magenta (tools/icons.mjs)
 ├── src/main.js        viewer (three.js)
 ├── src/catalog.js     every kind with an id: its name, its places in the city and how it is built
 ├── src/museum.js      the museum: where each kind of the catalog stands there, and its plate
@@ -121,6 +122,7 @@ basel3d/
 │   ├── heights.mjs    terrain height at a point, for the converters
 │   ├── pack.mjs       packs whole numbers into few bytes, for terrain.bin, the routes and basel.bin (read by src/pack.js)
 │   ├── size.mjs       → size.json, runs after every converter
+│   ├── icons.mjs      src/baselstab.js → img/favicon.ico, img/apple-touch-icon.png
 │   ├── vendor.mjs     node_modules/three → vendor/three-<version>/ and the import map, only the files the page uses
 │   └── data.mjs       checks data/ against data.json, runs after every converter
 └── data/              raw data from swisstopo and OSM (not in the repo, ~5 GB, downloaded automatically)
@@ -182,7 +184,7 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js) 
 - **Ships** (`createShips`, data from `npm run ships`): a circuit on the Rhine, downstream right and upstream left of the centre, turning at the north edge of the area and about 220 m before the Birsfelden power station. Where a lane would hit bridge piers (parts of the 3D bridges up to 4 m above the water) or the monster, it moves over to the nearest free passage. Every point keeps at least 10 m clearance, with ships at most 11 m wide. 20 ships (tanker, container ship, passenger ship, speedboat in turn, each tinted slightly differently) run at the same speed, evenly spread at the start, each at least 20 m behind the one ahead. All are at most 6 m high and fit under the bridges. The ferries keep out of a ship's (or whale's) lane from 70 m before their line until it is past; one stops before the line only while a ferry is still in its lane. A waiting whale does not leap.
 - **Ferries** (`src/ferries.js`): Basel's four ferries (St. Johann "Ueli", Klingental "Vogel Gryff", Münster "Leu", St. Alban "Wild Maa") on their lines from OpenStreetMap (`route=ferry`), listed with their landings (and masts where they were placed by hand) in `LANDINGS` in `src/ferries.js`. Each hangs by a rope from a pulley on a cable 20 m upstream, sagging between two masts beyond the landings, at least 16 m above the water; its bow turns towards the other bank, the more the faster it goes, as the current pushes it over. Each crosses at up to 3 m/s and rests 15 s at each landing, for ever, making way for everything else on the river: it keeps off where ships, whales, swimmers and swans are or will soon be, stopping short of them or, if one comes where it is, hurrying out at up to 5 m/s to the nearer side, backwards too. With "Names" each shows its name. They can be ridden.
 - **Basiliskbrunnen** (`src/basilisks.js`): the 31 basilisk fountains, green cast iron: a wide round basin on a slender column, and on its rim the basilisk with the Basel shield, the water running from a brass spout in its beak onto a grating. Those within 60 m of the Rhine face it. The places: 30 from the canton's list of fountains (data.bs.ch, dataset 100008, Industrielle Werke Basel), one more from OpenStreetMap. Each place is listed with its streets in the file. With "Names" each shows "Basiliskbrunnen".
-- **Baselstab** (`src/baselstab.js`): the black crozier of Basel's arms as a flat shape (hook, three bands, foot; 65 points), simplified from an SVG of the arms, for flags and shields: on the ferries' flags and the basilisks' shields.
+- **Baselstab** (`src/baselstab.js`): the black crozier of Basel's arms as a flat shape (hook, three bands, foot; 65 points), simplified from an SVG of the arms, for flags, shields and icons: on the ferries' and the station's flags, the basilisks' shields and the site's icons (`tools/icons.mjs`).
 - **Monster** (`createSerpent`): in the Rhine in front of the Roche towers, head level with Building 2. Looks at the towers, rises and sinks, snaps every 10 s.
 - **Helicopter** (`createHelicopter`): circles over the monster and the Roche towers, at 275–325 m, keeping at least 40 m from the monster and 50 m from the towers (calculation in the code).
 - **Planes** (`createPlanes`): two airliners circle in an oval (5 × 3.6 km) over the city, at 700 and 950 m above sea level, in opposite directions so they are always in view. 1.5 times real size, without an airline.
