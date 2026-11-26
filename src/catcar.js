@@ -5,7 +5,8 @@
 // low and nimble, the front wheels steering.
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
-import { part } from "./parts.js";
+import { MAGENTA } from "./lines.js";
+import { TYRE, part } from "./parts.js";
 import { createDriving } from "./drive.js";
 
 const GOLD = 0xca982a; // the body texture's mean
@@ -151,9 +152,9 @@ export function createCatCars(places, boost, world) {
   ];
   const sphere = (r, color, at) => part(new THREE.SphereGeometry(r, 12, 8), color, at);
   const face = mergeGeometries([
-    sphere(0.143, 0xfb02ff, [0, 0.684, 1.169]),
+    sphere(0.143, MAGENTA, [0, 0.684, 1.169]),
     ...[-1, 1].flatMap((x) => [
-      sphere(0.245, 0xffff0a, [x * 0.343, 0.736, 0.917]),
+      sphere(0.245, 0xffff00, [x * 0.343, 0.736, 0.917]),
       sphere(0.136, 0x000000, [x * 0.378, 0.817, 1.068]),
     ]),
   ]);
@@ -167,7 +168,7 @@ export function createCatCars(places, boost, world) {
           new THREE.CylinderGeometry(radius - LUG_HIGH, radius - LUG_HIGH, width, 24).rotateZ(
             Math.PI / 2,
           ),
-          0x1b1b1b,
+          TYRE,
           [0, 0, 0],
         ),
         part(new THREE.CircleGeometry(hub, 18).rotateY((x * Math.PI) / 2), 0xb4b4b4, [

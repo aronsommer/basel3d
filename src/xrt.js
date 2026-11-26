@@ -9,7 +9,7 @@
 // makes a backflip.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { part, profile } from "./parts.js";
+import { TYRE, part, profile } from "./parts.js";
 import { createDriving } from "./drive.js";
 
 // Built in units of 100 mm of the model (Traxxas: 798 × 595 × 258 mm, wheelbase 480 mm, ground
@@ -109,7 +109,6 @@ export function createXrts(places, boost, world) {
   const DARK = 0x2c2e33;
   const SPRING = 0x3fcf2a;
   const METAL = 0x9ea4ac;
-  const TYRE = 0x18191b;
   const box = ([w, h, d], color, p, angle = 0) =>
     part(new THREE.BoxGeometry(w, h, d).rotateX(angle), color, p);
   // A round bar r thick from a to b ([x, y, z]).

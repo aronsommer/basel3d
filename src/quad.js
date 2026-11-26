@@ -5,7 +5,7 @@
 // jersey, jeans and a poison green helmet.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { part, profile } from "./parts.js";
+import { TYRE, part, profile } from "./parts.js";
 import { createDriving } from "./drive.js";
 
 const AXLES = 1.25; // metres between them
@@ -185,7 +185,6 @@ export function createQuads(places, boost, world) {
   const lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
   // Each a balloon tyre with stripes across its tread round a black rim with an orange beadlock
   // ring. Its axis along x.
-  const TYRE = 0x15171a;
   const across = (g, color) => part(g.rotateZ(Math.PI / 2), color, [0, 0, 0]); // y axis to x
   // On the side x (-1, 1) of a tyre width wide, facing out.
   const flank = (g, color, x, width) =>

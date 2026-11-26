@@ -3,7 +3,7 @@
 // exhaust; driven as in src/drive.js, leaning into turns; a crouched rider in black leathers.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { part, profile } from "./parts.js";
+import { TYRE, part, profile } from "./parts.js";
 import { createDriving } from "./drive.js";
 
 // Front, back: radius, width and z of the axle in metres; the front one at the fork's foot.
@@ -150,7 +150,6 @@ export function createMotorcycles(places, boost, world) {
   const lampMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
   // Each a tyre with a flat tread and straight sidewalls round a gold rim with five spokes; stripes
   // across the tread show it turn. Its axis along x.
-  const TYRE = 0x15171a;
   const TREAD = 0x50545b;
   const across = (g, color) => part(g.rotateZ(Math.PI / 2), color, [0, 0, 0]); // y axis to x
   // On the side x (-1, 1) of a tyre width wide, facing out.

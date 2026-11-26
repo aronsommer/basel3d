@@ -1,6 +1,9 @@
 // Building low-poly models from parts with vertex colours, to merge with mergeGeometries.
 import * as THREE from "three";
 
+// The black of tyres.
+export const TYRE = 0x15171a;
+
 // A part at [x, y, z], coloured by a colour or by a function of its own (untranslated) y and z;
 // without normals and uvs (flat shading makes them).
 export function part(geometry, color, [x, y, z]) {

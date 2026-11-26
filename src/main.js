@@ -42,6 +42,7 @@ import {
 import { createStation } from "./station.js";
 import { createFireStation, GREY } from "./firestation.js";
 import { createPride, dress, prideShader } from "./pride.js";
+import { createTripoint } from "./tripoint.js";
 import { clockTime, createClocks } from "./clocks.js";
 import { createRunners } from "./runners.js";
 import { createSpace } from "./space.js";
@@ -1220,6 +1221,10 @@ for (const [x, z] of spires) {
   scene.add(flag);
   onRoofs.set(roof.number, [...(onRoofs.get(roof.number) ?? []), flag]);
 }
+// The Dreiländereck's tetrahedron (src/tripoint.js) over the tip of the Hafen Kleinhüningen (WGS84
+// 47.588392, 7.589732), its base 1 m under the Rhine's surface.
+const [tripointX, tripointZ] = fromWGS84(47.588392, 7.589732);
+scene.add(createTripoint(tripointX, WATER - 1, tripointZ));
 // Graffiti on walls, roofs and bridges (src/graffiti.js), in its fonts; and whole cars on trams
 // and trains, each design in WHOLE_CARS on SHARE of the vehicles of its kind in the city (by a
 // chance of their own, so always the same) and on all on the museum's round; of the trams, SONG

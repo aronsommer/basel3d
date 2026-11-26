@@ -23,21 +23,22 @@ place in the museum too.
 
 ## Landmarks and decorations
 
-| Id  | What                                     | Where                 | File                                 |
-| --- | ---------------------------------------- | --------------------- | ------------------------------------ |
-| L1  | 31 Basiliskbrunnen                       | all over the city     | `basilisks.js`, `catalog.js`         |
-|     | St. Jakob-Park in FC Basel's colours     | St. Jakob             | `main.js`                            |
-|     | Roche's buildings, a green roof grey     | Roche site            | `main.js`                            |
-|     | Basel SBB: platform roofs, front, clocks | Basel SBB             | `main.js`, `station.js`, `clocks.js` |
-|     | Badischer Bahnhof's platform roofs       | Badischer Bahnhof     | `main.js`                            |
-|     | Fire station: grey, gates, name          | WGS84 47.5562, 7.5824 | `firestation.js`                     |
-|     | Rainbow flags on the Münster's towers    | Münster               | `pride.js`                           |
-|     | Elisabethenkirche in rainbow stripes     | Elisabethenkirche     | `main.js`, `pride.js`                |
-|     | A building with old-town windows         |                       | `main.js`, `facade.js`               |
-|     | Novartis Pavillon's light show           | Novartis Campus       | `pavilion.js`                        |
-|     | "PUMA" mown into a lawn                  | Erlenmatt             | `lawn.js`                            |
-|     | Graffiti (FCB pieces and tags)           | GRAFFITI list         | `graffiti.js`                        |
-|     | Whole cars and whole trams               | City and museum       | `graffiti.js`, `movers.js`           |
+| Id  | What                                      | Where                 | File                                 |
+| --- | ----------------------------------------- | --------------------- | ------------------------------------ |
+| L1  | 31 Basiliskbrunnen                        | all over the city     | `basilisks.js`, `catalog.js`         |
+|     | St. Jakob-Park in FC Basel's colours      | St. Jakob             | `main.js`                            |
+|     | Roche's buildings, a green roof grey      | Roche site            | `main.js`                            |
+|     | Basel SBB: platform roofs, front, clocks  | Basel SBB             | `main.js`, `station.js`, `clocks.js` |
+|     | Badischer Bahnhof's platform roofs        | Badischer Bahnhof     | `main.js`                            |
+|     | Fire station: grey, gates, name           | WGS84 47.5562, 7.5824 | `firestation.js`                     |
+|     | Rainbow flags on the Münster's towers     | Münster               | `pride.js`                           |
+|     | Elisabethenkirche in rainbow stripes      | Elisabethenkirche     | `main.js`, `pride.js`                |
+|     | Tetrahedron in the three countries' flags | Dreiländereck         | `tripoint.js`                        |
+|     | A building with old-town windows          |                       | `main.js`, `facade.js`               |
+|     | Novartis Pavillon's light show            | Novartis Campus       | `pavilion.js`                        |
+|     | "PUMA" mown into a lawn                   | Erlenmatt             | `lawn.js`                            |
+|     | Graffiti (FCB pieces and tags)            | GRAFFITI list         | `graffiti.js`                        |
+|     | Whole cars and whole trams                | City and museum       | `graffiti.js`, `movers.js`           |
 
 ## Animals
 
