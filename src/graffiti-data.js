@@ -85,4 +85,14 @@ export default [
     width: 6.14,
     tilt: 2.3,
   },
+  {
+    text: "EIGENTUM IST DIEBSTAHL",
+    style: 2,
+    location: [47.5599889, 7.5896277, 253.63],
+    facing: 143.33,
+    lean: 0,
+    width: 8.64,
+    tilt: 0.6,
+    plain: 0xf21c47,
+  },
 ];
