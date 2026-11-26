@@ -1,6 +1,14 @@
-# basel3d
+<div align="center">
 
-The whole city of Basel in 3D in the browser, built with three.js. Buildings, terrain, aerial photo and trees come from swisstopo.
+# Basel 3D
+
+**[www.basel3d.com](https://www.basel3d.com/)**
+
+</div>
+
+The whole city of Basel in 3D in your browser. Walk, drive or fly through the streets, over the rooftops and along the Rhine.
+
+Built with three.js. Buildings, terrain, aerial photo and trees come from swisstopo.
 
 ## Running
 
