@@ -6,7 +6,7 @@
 // others run as usual; the triangles drawn and the draw calls. Below, a button steps through the
 // SCALES of the resolution; a box per part hides and shows it, to see what it costs; then "Aerial"
 // shows the aerial photo as the ground and "Riders". "Tools" holds the Move tool (src/placer.js)
-// and the click modes Select, Graffiti and God mode. All of it lives here, the menu entry in
+// and the click modes Transform, Graffiti and God mode. All of it lives here, the menu entry in
 // index.html and the styles in style.css (#dev-box, #dev), so it can be taken out whole (but
 // godAt, showRiders, src/sprayer.js and src/placer.js).
 import { copy } from "./copy.js";
@@ -97,7 +97,7 @@ export function createDev(renderer, render, parts, aerial, god, riders, graffiti
   placer.mount(page);
   // What a click in the scene does, one at a time.
   const MODES = [
-    ["Select", () => {}],
+    ["Transform", () => {}],
     ["Graffiti", spraying],
     ["God mode", god],
   ];
