@@ -218,6 +218,7 @@ Everything that moves is built in the viewer itself ([src/main.js](src/main.js) 
 - Font: Lacquer by The Lacquer Project Authors (Niki Polyocan, Eli Block), SIL Open Font License 1.1.
 - Font: Crafty Girls by Tart Workshop (Font Diner, Inc), Apache License 2.0.
 - Font: New Rocker by Pablo Impallari, Brenda Gallo and Rodrigo Fuenzalida, SIL Open Font License 1.1 (Reserved Font Name "New Rocker"; subset here as Rocker).
+- The fonts' copyright notices and licence texts: [FONT-LICENSES.txt](FONT-LICENSES.txt).
 
 ---
 
