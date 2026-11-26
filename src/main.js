@@ -658,8 +658,8 @@ for (const mover of movers) {
   overlay.add(mover.routes);
   for (const deck of brokenDecks) mover.cut(deck);
 }
-// The ferries (src/ferries.js), the museum's too (src/museum.js), which the ships wait for, and the
-// Basiliskbrunnen (src/catalog.js) on the ground.
+// The ferries (src/ferries.js), the museum's too (src/museum.js), which make way for the ships, the
+// swimmers and the swans, and the Basiliskbrunnen (src/catalog.js) on the ground.
 const ferries = createFerries(fromWGS84, heightAt, boost, OPEN ? [FERRY] : []);
 scene.add(ferries.group);
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
@@ -705,7 +705,7 @@ const space = createSpace();
 const runners = createRunners([rheinweg], heightAt, danger, space);
 scene.add(...runners.meshes);
 // Passers-by and joggers who swim down the Rhine (src/swimmers.js) on their round
-// (src/rheinweg.js), waiting for the ferries and swimming aside from them, and swans beside them.
+// (src/rheinweg.js), the ferries making way for them, and swans beside them.
 const rheinrunde = RHEINRUNDE.map(([lat, lon]) => fromWGS84(lat, lon));
 const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries, space, danger);
 scene.add(...swimmers.meshes);
@@ -2276,7 +2276,7 @@ function flee(dt) {
     d.speed = d.vehicle === ridden ? moved : 0;
     [d.x, d.z] = [position.x, position.z];
   }
-  dodge(dt, danger, walkGround);
+  dodge(dt, danger, walkGround, (x, z) => (heightAt(x, z) <= WATER ? WATER : null));
 }
 // The ferries seated on the open deck before the hut, looking upstream.
 const ferryRide = riders(
@@ -3151,7 +3151,7 @@ nightBox.addEventListener("change", () => {
 });
 
 let last = performance.now();
-let afloat = 0; // seconds the ferries and ships have moved, so they keep in step
+let afloat = 0; // seconds the ferries and ships have moved
 // The museum's labels on the ground (src/museum.js), once all is built. "Move labels" in the Dev
 // panel (src/dev.js): while ticked, a label dragged follows the pointer over the ground and clicks
 // do nothing else; unticked, every label's place is copied (src/copy.js), "text: latitude,
@@ -3303,7 +3303,7 @@ renderer.setAnimationLoop((time) => {
   for (const clique of cliques) clique.carry();
   if (riding?.ride.away?.(riding.vehicle)) getOff();
   afloat += dt;
-  ferries.update(afloat);
+  ferries.update(afloat, dt);
   ships.update(afloat, dt);
   animals.update(time / 1000, dt);
   feeding.update(time / 1000, dt);

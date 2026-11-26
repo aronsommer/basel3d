@@ -136,7 +136,7 @@ const wolfHead = mergeGeometries([
 // grey with a dark one. Its legs (SWAN_LEG: thick, long, either side, from y up to their hips)
 // hang from under its body, tucked up in the water. The same swans everywhere: here, by the old
 // man (createSwans) and on the Rhine (src/swimmers.js).
-const SWAN_LEG = [0.05, 0.3, 0.1, -0.375];
+export const SWAN_LEG = [0.05, 0.3, 0.1, -0.375];
 const swanColours = (young) => (young ? [0x8a8278, 0x4a4545] : [WHITE, ORANGE]);
 const swanBody = (young) => {
   const [color] = swanColours(young);
@@ -156,8 +156,12 @@ const swanNeck = (young) => {
     ...eyes(0.025, 0.025, 0.055, 0.735, 0.47),
   ];
 };
-// A swan, whole, without its legs (on the Rhine it never leaves the water).
+// A swan, whole, without its legs; a leg as swanLegs has it, hanging from its hip.
 export const swan = (young) => [...swanBody(young), ...swanNeck(young)];
+export const swanLeg = () => {
+  const [w, h] = SWAN_LEG;
+  return part(box(w, h + w / 2, w), BLACK, [0, (w / 2 - h) / 2, 0]);
+};
 const swanLegs = () => {
   const [w, h, x, at] = SWAN_LEG;
   return legs(w, h, x, 0, BLACK, { at, tucked: true });
@@ -655,6 +659,7 @@ for (const kind of Object.values(KINDS)) {
 // radians either way, WAG radians a second, and FAST more at the legs' full swing. Fleeing, an
 // animal is out (its tucked legs down, its head up) eased EASE times a second.
 const [SWING, SPEED, STEP, EASE] = [0.5, 0.5, 6, 8];
+export { STEP, SWING }; // as a swan's legs swing (src/swimmers.js)
 const [TAIL, WAG, FAST] = [0.3, 2, 10];
 
 // Metres round each kind (before BIG and its size), kept clear of trees and of traffic as it flees.
@@ -1033,9 +1038,8 @@ const PECK = 1;
 export function createSwans(places, from, period, first, ground, danger, feeding) {
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const breadShape = part(box(0.12, 0.07, 0.12), 0xd9b26a, [0, 0.035, 0]);
-  // A leg as swanLegs has it, hanging from its hip.
-  const [W, H, X, AT] = SWAN_LEG;
-  const legShape = part(box(W, H + W / 2, W), BLACK, [0, (W / 2 - H) / 2, 0]);
+  const [, H, X, AT] = SWAN_LEG;
+  const legShape = swanLeg();
   const shapes = [false, true].map((young) => [
     mergeGeometries(swanBody(young)),
     mergeGeometries(swanNeck(young)).translate(...NECK.map((v) => -v)),

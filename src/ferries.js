@@ -1,7 +1,8 @@
 // Basel's four ferries across the Rhine, which have no engine: each hangs by a rope from a pulley
 // running on a cable high over the river between two masts, upstream of the ferry, and with its
 // bow turned towards the other bank the current pushes it over. Each crosses from bank to bank and
-// back for ever, resting at each landing.
+// back for ever, resting at each landing, and makes way for all else on the river: it keeps off
+// where they are or will soon be (keep), waiting before them, or hurrying out, back if nearer.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
@@ -39,11 +40,12 @@ const OUT = 8; // metres the masts stand beyond the landings
 // out while the bank under its side there is more than HIDE above the water (it would hide it).
 const IN = 3;
 const HIDE = 0.3;
-const SPEED = 1.5; // metres per second crossing, on average
+// Metres per second crossing, making way; metres per second it speeds up or slows down by a second.
+const [FAST, MAKE_WAY, PUSH] = [3, 5, 3];
 const REST = 15; // seconds at each landing
-const TURN = 0.45; // radians the bow turns towards the other bank halfway over
+const TURN = 0.45; // radians the bow turns towards the other bank, at FAST and faster
 const BOW = [0, 0.46, 7]; // where the rope holds the ferry, on its deck
-const LATE = 41; // seconds each ferry is ahead of the one before
+const LATE = 41; // seconds each ferry rests less at first than the one before
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const DARK = 0x202224;
@@ -58,6 +60,10 @@ const PLAN = [
   [-1.7, 2],
   [-1.7, -5],
 ];
+// Metres its hull reaches either side of where it is on its line at most, turned; up the river
+// from its line: its stern's, its bow's.
+const WIDE = PLAN[2][0] * Math.cos(TURN) + PLAN[4][1] * Math.sin(TURN);
+const HULL = [PLAN[0][1], PLAN[4][1]];
 // A flat shape of PLAN, laid down (extruded high metres up when high is given).
 const flat = (high) => {
   const shape = new THREE.Shape(PLAN.map(([x, z]) => new THREE.Vector2(x, -z)));
@@ -125,8 +131,11 @@ const PULLEY = mergeGeometries([
 ]);
 
 // The ferries, their masts, cables and ropes in group; each ferry
-// { name, mesh, material, a, r, length, at(seconds) }: on the line from its Grossbasel landing a
-// (scene x, z) along r (towards Kleinbasel) length metres long, at(seconds) metres from a.
+// { name, mesh, material, a, r, length, p, keep, keepOff, update }: on the line from its Grossbasel
+// landing a (scene x, z) along r (towards Kleinbasel) length metres long, p metres from a. This
+// frame it keeps off from to metres from a (keepOff(from, to)), and keep(x, z, room) keeps its
+// hull room metres off x, z if it could come there, giving how many metres up or down the river
+// x, z is from that (room metres more than its hull reaches), else 0.
 // place(latitude, longitude): scene [x, z]; boost(position): how much wider and higher to draw it
 // far away; more: further ferries, as LANDINGS.
 export function createFerries(place, heightAt, boost, more = []) {
@@ -178,26 +187,70 @@ export function createFerries(place, heightAt, boost, more = []) {
       while (d < length / 2 && hidden(d)) d += 0.5;
       return d;
     });
-    // Over after resting, gently away and in, and back again.
-    const span = length - rest0 - rest1;
-    const cross = span / SPEED;
-    const cycle = 2 * (REST + cross);
-    const ease = THREE.MathUtils.smoothstep;
-    const at = (seconds) => {
-      const t = (seconds + i * LATE) % cycle;
-      return rest0 + span * (ease(t, REST, REST + cross) - ease(t, 2 * REST + cross, cycle));
+    // Resting at a landing (side: 0 Grossbasel's, 1 Kleinbasel's), then over to the other one;
+    // where it keeps off this frame ([from, to] metres from a).
+    const [low, high] = [rest0, length - rest1];
+    let [p, speed, side, resting] = [low, 0, 0, REST - ((i * LATE) % REST)];
+    const off = [];
+    const keepOff = (from, to) => off.push([from, to]);
+    const keep = (x, z, room) => {
+      const [dx, dz] = [x - ax, z - az];
+      const w = dx * up.x + dz * up.z;
+      const out = Math.max(HULL[0] - room - w, w - HULL[1] - room, 0);
+      if (!out) {
+        const u = dx * r.x + dz * r.z;
+        keepOff(u - WIDE - room, u + WIDE + room);
+      }
+      return out;
+    };
+    // dt seconds on: to its landing, or out of where it keeps off to its nearer end (one it may be
+    // at), else stopping short of where it keeps off ahead.
+    const move = (dt) => {
+      if (resting > 0 && (resting -= dt) <= 0) side = 1 - side;
+      const goal = side ? high : low;
+      off.sort((a, b) => a[0] - b[0]);
+      const spans = [];
+      for (const [from, to] of off) {
+        const last = spans.at(-1);
+        if (last && from <= last[1]) last[1] = Math.max(last[1], to);
+        else spans.push([from, to]);
+      }
+      off.length = 0;
+      let [target, top] = [goal, FAST];
+      const inside = spans.find(([from, to]) => p > from && p < to);
+      if (inside) {
+        const ends = inside.filter((q) => q >= low && q <= high);
+        target = ends.length
+          ? ends.reduce((a, b) => (Math.abs(b - p) < Math.abs(a - p) ? b : a))
+          : p;
+        top = MAKE_WAY;
+      } else
+        for (const [from, to] of spans) {
+          if (goal > p && from >= p && from < target) target = from;
+          if (goal < p && to <= p && to > target) target = to;
+        }
+      // As fast as it may, slowing down in time to stop there.
+      const d = target - p;
+      const want = Math.sign(d) * Math.min(top, Math.sqrt(2 * PUSH * Math.abs(d)));
+      speed += THREE.MathUtils.clamp(want - speed, -PUSH * dt, PUSH * dt);
+      const next = THREE.MathUtils.clamp(p + speed * dt, low, high);
+      if (next !== p + speed * dt) speed = 0;
+      p = next;
+      if (resting <= 0 && Math.abs(goal - p) < 0.05) resting = REST;
     };
     const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const mesh = new THREE.Mesh(BOAT, material);
     const pulley = new THREE.Mesh(PULLEY, painted);
     pulley.rotation.y = Math.atan2(x1 - x0, z1 - z0);
     group.add(mesh, pulley);
-    // Its place and heading seconds in, its pulley over its bow; returns the rope's ends.
+    // Moved dt seconds on, its place and heading seconds in, its pulley over its bow; returns the
+    // rope's ends.
     const [bow, hook] = [new THREE.Vector3(), new THREE.Vector3()];
-    const update = (seconds) => {
-      const p = at(seconds);
-      // Turned the more the faster it goes (1.5 SPEED at most).
-      const turn = (TURN * (at(seconds + 0.5) - at(seconds - 0.5))) / (1.5 * SPEED);
+    const update = (seconds, dt) => {
+      move(dt);
+      ferry.p = p;
+      // Turned the more the faster it goes (FAST and faster: TURN).
+      const turn = TURN * THREE.MathUtils.clamp(speed / FAST, -1, 1);
       mesh.position.set(ax + r.x * p, water + 0.04 * Math.sin(seconds * 1.3 + i), az + r.z * p);
       mesh.rotation.set(0, Math.atan2(up.x, up.z) + turn, 0.015 * Math.sin(seconds * 1.1 + i));
       const b = boost(mesh.position);
@@ -210,7 +263,19 @@ export function createFerries(place, heightAt, boost, more = []) {
       hook.copy(pulley.position).y -= 0.6; // the pulley's bottom
       return [hook, bow];
     };
-    return { name, mesh, material, a: { x: ax, z: az }, r, length, at, update };
+    const ferry = {
+      name,
+      mesh,
+      material,
+      a: { x: ax, z: az },
+      r,
+      length,
+      p,
+      keep,
+      keepOff,
+      update,
+    };
+    return ferry;
   });
   const lines = new THREE.LineBasicMaterial({ color: 0x2b2b2b });
   const mastMesh = new THREE.Mesh(mergeGeometries(masts), painted);
@@ -230,9 +295,9 @@ export function createFerries(place, heightAt, boost, more = []) {
   ropes.frustumCulled = false; // its bounds are never computed
   group.add(mastMesh, cableLines, ropes);
 
-  const update = (seconds) => {
+  const update = (seconds, dt) => {
     ferries.forEach((ferry, i) =>
-      ferry.update(seconds).forEach(({ x, y, z }, k) => ropeEnds.setXYZ(2 * i + k, x, y, z)),
+      ferry.update(seconds, dt).forEach(({ x, y, z }, k) => ropeEnds.setXYZ(2 * i + k, x, y, z)),
     );
     ropeEnds.needsUpdate = true;
   };

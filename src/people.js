@@ -56,7 +56,8 @@ const FORWARD = 0.2;
 // CRUTCH[0] radians ahead swinging by CRUTCH[1] together, the left leg walking, the right in its
 // cast held CAST radians ahead; prop, the same standing; shoulders, sitting on someone's
 // shoulders, the arms SHOULDERS[0] radians ahead to the head, the legs SHOULDERS[1] ahead over the
-// shoulders and turned SHOULDERS[2] out round the neck.
+// shoulders and turned SHOULDERS[2] out round the neck; lift, as running with the arms held still
+// up over the head (UP_ARM), holding something up.
 const POSES = [
   "stand",
   "walk",
@@ -81,6 +82,7 @@ const POSES = [
   "hobble",
   "prop",
   "shoulders",
+  "lift",
 ];
 const SHOULDERS = [0.6, 1.2, 0.6];
 const PUSH = 0.72;
@@ -420,6 +422,7 @@ material.onBeforeCompile = (shader) => {
         bool dressed = (int(more.z) & ${1 << OPTIONS.indexOf("dress")}) != 0;
         float a = limb == 4 ? phase
           : limb == 5 ? (pose == 1 ? -${ROW[0]} - ${ROW[1]} * sin(phase * ${ROW[2]}.0) : 0.0)
+          : pose == 23 ? (limb == 2 ? -${UP_ARM} : -${RUN_LEG} * sin(phase) * side)
           : pose == 22 ? -(limb == 2 ? ${SHOULDERS[0]} : ${SHOULDERS[1]})
           : pose >= 19 ? (limb == 2 ? (pose == 19 ? -${PUSH}
               : -${CRUTCH[0]} - (pose == 20 ? ${CRUTCH[1]} * sin(phase) : 0.0))
@@ -527,9 +530,12 @@ const [HOMEWARD, WARY] = [3, 10];
 // Radians the loose flee off straight across a danger towards where it goes, each 0.8 to 1.2 times
 // this, so they run away from what chases them rather than round it.
 const ONWARD = 0.9;
-const [WALK, STAND, FLEE] = ["walk", "stand", "flee"].map((pose) => POSES.indexOf(pose));
+const [WALK, STAND, FLEE, SWIM, LIFT] = ["walk", "stand", "flee", "swim", "lift"].map((pose) =>
+  POSES.indexOf(pose),
+);
 const SWIMMING = new Set(["swim", "crawl"].map((pose) => POSES.indexOf(pose)));
 export const SWIM_FLEE = 0.4; // swimming, times as fast as running
+const SWIM_BACK = 2; // swimming, times as fast going back
 
 // count of a body (BODIES): { mesh, dress(i, look, pose), place(i, x, y, z, heading, phase, size,
 // tilt: radians about its own x after the heading), hide(i), away(i): whether off its place
@@ -592,13 +598,15 @@ export function createCrowd(body, count, flee = true) {
       this.place(i, 0, -1000, 0, 0, 0);
     },
     away: (i) => off[7 * i] !== 0 || off[7 * i + 1] !== 0,
-    offset: (i) => off.subarray(7 * i, 7 * i + 3), // off its place x, z, and its heading (dodge)
+    // Off its place x, z, its heading, its phase beyond the placed one and seconds calm (dodge).
+    offset: (i) => off.subarray(7 * i, 7 * i + 5),
   };
 }
 
 // One fleeing dt seconds on, its place at x, y, z (off: at o, metres off it x, z, heading, phase
 // beyond the placed one, seconds calm, where off it it goes x, z; own: at f, its pace, calm, clear
-// and turn, each 0 to 1), speed times as fast, taking up room metres round it: in danger
+// and turn, each 0 to 1), speed times as fast (back times going back), taking up room metres round
+// it: in danger
 // (danger(x, y, z, reach, march, clear, turn, room, onward): null if none, else its way out
 // [x, z] within reach metres, [0, 0] if none, so always for reach 0; march: whether only vehicles
 // count; clear: extra metres beyond the danger; turn: radians the way turns off straight across
@@ -607,9 +615,9 @@ export function createCrowd(body, count, flee = true) {
 // danger too; calm again, it walks back (loose, after a HOMEWARD-th of the wait, HOMEWARD times as
 // fast, and not while danger is within WARY); off its place but still, it turns to face it. The
 // metres it moved, -1 if it is at its place and calm.
-function flight(off, o, own, f, x, y, z, dt, danger, march, speed = 1, room = 0, loose = false) {
+function flight(off, o, own, f, x, y, z, dt, danger, march, speed, back, room = 0, loose = false) {
   const homeward = loose ? HOMEWARD : 1;
-  const pace = speed * (0.6 + 0.8 * own[f]);
+  const pace = 0.6 + 0.8 * own[f];
   let [ox, oz, calm, tx, tz] = [off[o], off[o + 1], off[o + 4], off[o + 5], off[o + 6]];
   const inDanger = danger(x + ox, y, z + oz, 0, march, 0, 0, room);
   if (!inDanger && !ox && !oz) return -1;
@@ -629,7 +637,7 @@ function flight(off, o, own, f, x, y, z, dt, danger, march, speed = 1, room = 0,
     [tx, tz] = [0, 0];
   const [dx, dz] = [tx - ox, tz - oz];
   const left = Math.hypot(dx, dz);
-  const step = Math.min(left, (calm ? BACK * homeward : RUN) * pace * dt);
+  const step = Math.min(left, (calm ? BACK * homeward * back : RUN * speed) * pace * dt);
   if (step) {
     off[o + 2] = Math.atan2(dx, dz);
     [ox, oz] = step < left ? [ox + (dx / left) * step, oz + (dz / left) * step] : [tx, tz];
@@ -655,7 +663,7 @@ export function createFlight(count, danger, speed = 1) {
   const own = Float32Array.from({ length: 4 * count }, Math.random);
   return (i, x, y, z, dt, room = 0) => {
     const o = 7 * i;
-    if (dt && flight(off, o, own, 4 * i, x, y, z, dt, danger, false, speed, room, true) < 0)
+    if (dt && flight(off, o, own, 4 * i, x, y, z, dt, danger, false, speed, speed, room, true) < 0)
       return null;
     return off[o] || off[o + 1] ? off.subarray(o, o + 7) : null;
   };
@@ -663,25 +671,39 @@ export function createFlight(count, danger, speed = 1) {
 
 // Moves the figures of all crowds dt seconds on (flight), after their own moves. Off its place one
 // stands on ground(x, z, y) upright, running or walking, else standing (marching ones keep their
-// pose); one swimming swims, SWIM_FLEE times as fast, keeping its height and tilt.
-export function dodge(dt, danger, ground) {
+// pose). One swimming runs SWIM_FLEE times as fast, on the water (water(x, z): its surface's
+// height there, null on land) or the ground, its arms up: lifting what it holds (swim), else
+// flailing; calm, it swims back SWIM_BACK times as fast, keeping its pose, height and tilt, or on
+// land walks back.
+export function dodge(dt, danger, ground, water) {
   for (const { count, home, off, own, put, poses, march } of fleeing)
     for (let i = 0; i < count; i++) {
       const [h, o] = [8 * i, 7 * i];
       const [x, y, z] = [home[h], home[h + 1], home[h + 2]];
       const swim = SWIMMING.has(home[h + 7]);
-      const step = flight(off, o, own, 4 * i, x, y, z, dt, danger, march, swim ? SWIM_FLEE : 1);
+      const [speed, homeward] = swim ? [SWIM_FLEE, SWIM_BACK] : [1, 1];
+      const step = flight(off, o, own, 4 * i, x, y, z, dt, danger, march, speed, homeward);
       if (step < 0) continue;
       const back = !off[o] && !off[o + 1];
-      const pose = back || march || swim ? home[h + 7] : !step ? STAND : off[o + 4] ? WALK : FLEE;
+      const [fx, fz, calm] = [x + off[o], z + off[o + 1], off[o + 4]];
+      const surface = swim ? water(fx, fz) : null;
+      const swimming = calm && surface !== null; // back in the water
+      const run = home[h + 7] === SWIM ? LIFT : FLEE;
+      const pose =
+        back || march || swimming
+          ? home[h + 7]
+          : !calm && (swim || step)
+            ? run
+            : step
+              ? WALK
+              : STAND;
       if (poses.array[4 * i + 3] !== pose) {
         poses.array[4 * i + 3] = pose;
         poses.needsUpdate = true;
       }
       if (back) put(i, ...home.subarray(h, h + 7));
       else {
-        const [fx, fz] = [x + off[o], z + off[o + 1]];
-        const [fy, tilt] = swim ? [y, home[h + 6]] : [ground(fx, fz, y), 0];
+        const [fy, tilt] = swimming ? [y, home[h + 6]] : [surface ?? ground(fx, fz, y), 0];
         put(i, fx, fy, fz, off[o + 2], home[h + 4] + off[o + 3], home[h + 5], tilt);
       }
     }

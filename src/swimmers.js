@@ -4,20 +4,21 @@
 // they talk, and dressing again where it comes out. Every NAKED-th has no bag: in swimwear all the
 // way, it swims down crawling. Men swim in trunks, women in swimsuits. Some drift in groups of
 // friends side by side (on land in twos side by side, PAIR metres apart), one behind catching up.
-// They flee from traffic as all people do (src/people.js, dodge), in the water swimming.
+// They flee from traffic as all people do (src/people.js, dodge), in the water running up on it,
+// the bag held up over the head, and swimming back fast once calm.
 // In the water each keeps one of LANES lanes, LANE metres apart from the line towards the river; on
 // land the passers-by keep a little left of the path's middle and the joggers a little right, so
 // joggers pass them; going in or out of the water they go in single file. None comes nearer than
-// GAP metres behind another in its lane. Before a ferry's line none swims into the band its hull sweeps while
-// the ferry is near, any in it hurries out, any with a hull near swims on faster, and none swims
-// with its hands against one.
+// GAP metres behind another in its lane. The ferries (src/ferries.js) keep off where they will
+// be; none swims on with its hands against a hull.
 // Beside them families of swans swim down with the current and back up against it, further out
-// (SWAN), waiting for the ferries as they do, fleeing from traffic as the swimmers do.
+// (SWAN), the ferries keeping off them as off the swimmers, fleeing from traffic as they do: up on
+// the water running on their legs (on land walking), swimming back once calm.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { createCrowd, createFlight, mix, SWIM_FLEE } from "./people.js";
 import { PATIENCE } from "./space.js";
-import { swan } from "./zoo.js";
+import { STEP as LEG_STEP, SWAN_LEG, SWING as LEG_SWING, swan, swanLeg } from "./zoo.js";
 
 // Passers-by and joggers (unless given), each half men, half women.
 const [WALKERS, JOGGERS] = [64, 40];
@@ -40,17 +41,13 @@ const SHORE = [0.45, -0.45]; // metres left of the path's middle: the passers-by
 const [APART, APART_LAND] = [1.3, 0.8];
 const GAP = 2.5; // metres
 const DRESS = 6; // seconds changing clothes, standing on the way, those behind waiting
-// A ferry's hull sweeps BAND metres along the swimmers' way either side of its line (or its way
-// on, EXTEND beyond its landings): while the ferry is within FERRY metres of where they cross, one
-// waits up to WAIT metres before the band, and one in it hurries out. A segment running within
-// ON_WAY metres of a ferry's line (as along it to its landing) one enters only while the ferry is
-// FAR or more from it, waiting up to WAIT before it; one on it hurries.
-const [BAND, WAIT, FERRY, EXTEND, ON_WAY, FAR] = [11, 16, 30, 20, 10, 60];
-// Within NEAR metres of a hull one swims HURRY times as fast; none swims on with its hands within
-// CLEAR metres of a hull. The hull: STERN to BOW metres along its middle, HALF metres either side
-// (src/ferries.js).
-const [NEAR, HURRY, CLEAR] = [10, 1.8, 2];
+// None swims on with its hands (or beak) within CLEAR metres of a hull: STERN to BOW metres along
+// its middle, HALF metres either side (src/ferries.js). The ferries keep KEEP metres off where one
+// in the water will be, from where it is on, every STEP metres of its way, as long as LOOK
+// metres ahead or beside a ferry's line, up to LONGEST.
+const CLEAR = 2;
 const [STERN, BOW, HALF] = [-7, 8, 1.7];
+const [KEEP, STEP, LOOK, LONGEST] = [3, 2, 14, 60];
 // Drifting upright: FLOAT metres under the water's surface (its shoulders just out), its arms
 // stretched ahead lying on the bag, whose middle is HOLD metres ahead and BAG metres over the
 // surface, half in the water; turning up to SWAY radians either way. Crawling: lying TILT radians forward, its
@@ -58,6 +55,7 @@ const [STERN, BOW, HALF] = [-7, 8, 1.7];
 const [FLOAT, HOLD, BAG, SWAY] = [1.3, 0.95, 0.08, 0.35];
 const DRIFT = 0.3; // metres one drifts slowly left and right of its lane, with its group
 const [TILT, SINK, REACH] = [1.4, 0.15, 2.3];
+const LIFT = [2.2, 0.25]; // metres the bag's middle is up and ahead of one fleeing on the water
 const LEAN = 0.12; // radians a jogger leans forward
 const CARRY = [1.2, 0.34]; // metres the bag's middle is up and behind one on land, leaning with it
 const SHALLOW = 0.6; // metres over the Rhine's surface the bank's lowest steps are swum from
@@ -88,7 +86,7 @@ const [SWAN_GAP, BILL, SWAN_DRIFT] = [2, 0.6, 0.2];
 const [JOIN, SWAN_ROOM] = [5, 400];
 
 // Metres from x, z to a ferry's hull.
-export function fromHull({ position, rotation }, x, z) {
+function fromHull({ position, rotation }, x, z) {
   const [fx, fz] = [Math.sin(rotation.y), Math.cos(rotation.y)];
   const [dx, dz] = [x - position.x, z - position.z];
   const t = THREE.MathUtils.clamp(dx * fx + dz * fz, STERN, BOW);
@@ -150,71 +148,19 @@ export function createSwimmers(
     return low;
   };
 
-  // Where each ferry's line, EXTEND beyond its landings, crosses the segments in the water or
-  // wading: [distance along the loop, x, z].
-  const crossings = ferries.map(({ a: start, r, length }) => {
-    const a = { x: start.x - r.x * EXTEND, z: start.z - r.z * EXTEND };
-    const [rx, rz] = [r.x * (length + 2 * EXTEND), r.z * (length + 2 * EXTEND)];
-    for (let i = 0; i < points.length; i++) {
-      if (!bathing[i]) continue;
-      const [p, q] = [points[i], points[(i + 1) % points.length]];
-      const [ex, ez] = [q.x - p.x, q.z - p.z];
-      const d = ex * rz - ez * rx;
-      if (!d) continue;
-      const t = ((a.x - p.x) * rz - (a.z - p.z) * rx) / d; // along p → q
-      const u = ((a.x - p.x) * ez - (a.z - p.z) * ex) / d; // along the ferry's line
-      if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
-        return [along[i] + t * (along[i + 1] - along[i]), p.x + t * ex, p.z + t * ez];
-    }
-    return null;
-  });
-
-  // Metres from x, z to the segment from p to q.
-  const fromSegment = (x, z, p, q) => {
-    const [ex, ez] = [q.x - p.x, q.z - p.z];
-    const t = THREE.MathUtils.clamp(((x - p.x) * ex + (z - p.z) * ez) / (ex * ex + ez * ez), 0, 1);
-    return Math.hypot(p.x + t * ex - x, p.z + t * ez - z);
-  };
-  // Per segment in the water or wading, the ferries whose line runs within ON_WAY metres of it.
-  const onWay = points.map((p, i) => {
-    const q = points[(i + 1) % points.length];
-    if (!bathing[i]) return [];
-    const steps = Math.ceil(Math.hypot(q.x - p.x, q.z - p.z));
-    return ferries.filter(({ a, r, length }) => {
-      const end = { x: a.x + r.x * length, z: a.z + r.z * length };
-      for (let k = 0; k <= steps; k++) {
-        const [x, z] = [p.x + ((q.x - p.x) * k) / steps, p.z + ((q.z - p.z) * k) / steps];
-        if (fromSegment(x, z, a, end) < ON_WAY) return true;
+  // Whether one at x, z may swim on along ux, uz, its front reach metres ahead: not against a hull.
+  const clear = (x, z, ux, uz, reach) =>
+    ferries.every(({ mesh }) => fromHull(mesh, x + ux * reach, z + uz * reach) >= CLEAR);
+  // The ferries keeping off where one will be, ahead(k) where it will be k metres on (null out of
+  // the water).
+  function keepOff(ahead) {
+    for (const ferry of ferries)
+      for (let k = 0; k <= LONGEST; k += STEP) {
+        const spot = ahead(k);
+        if (!spot) break;
+        const out = ferry.keep(spot.x, spot.z, KEEP);
+        if (k ? out && k >= LOOK : out > LOOK) break;
       }
-      return false;
-    });
-  });
-  // Whether a ferry on segment i's way is within FAR of it.
-  const busy = (i) =>
-    onWay[i].some(
-      ({ mesh }) =>
-        fromSegment(mesh.position.x, mesh.position.z, points[i], points[(i + 1) % points.length]) <
-        FAR,
-    );
-  // How fast one at s along the loop, going dir (1 along it, -1 back), at x, z, its front reach
-  // metres ahead along ux, uz, may swim for the ferries: 0 waiting before a ferry's band or with
-  // its front at a hull, HURRY in a band or near a hull, else 1.
-  function forFerries(s, dir, x, z, ux, uz, reach) {
-    let [waiting, hurry] = [false, false];
-    crossings.forEach((c, f) => {
-      if (!c) return;
-      const { x: fx, z: fz } = ferries[f].mesh.position;
-      if (Math.hypot(fx - c[1], fz - c[2]) >= FERRY) return;
-      const ahead = (c[0] - s) * dir;
-      if (ahead > BAND && ahead <= BAND + WAIT) waiting = true;
-      else if (Math.abs(ahead) <= BAND) hurry = true;
-    });
-    for (const { mesh } of ferries) {
-      if (fromHull(mesh, x, z) >= NEAR) continue;
-      if (fromHull(mesh, x + ux * reach, z + uz * reach) < CLEAR) waiting = true;
-      else hurry = true;
-    }
-    return waiting ? 0 : hurry ? HURRY : 1;
   }
   // At distance s along the loop, side metres left of it: its segment, the place, the loop's
   // height there (where swum, the water's surface) and its heading.
@@ -383,8 +329,8 @@ export function createSwimmers(
   );
   // Metres the first of a group in the water is down the round's straight from its top.
   const down = (m) => (m.s - start + total) % total;
-  // At u round the round: distance along the loop, metres left of it, going along it (dir 1) or
-  // back, its heading's turn from the loop's and its speed.
+  // At u round the round: distance along the loop, metres left of it, its heading's turn from the
+  // loop's and its speed.
   function round(u) {
     const back = u >= half;
     const dir = back ? -1 : 1;
@@ -398,7 +344,6 @@ export function createSwimmers(
           dir * (Math.min(v, reach) + RADIUS * Math.sin(turn))) %
         total,
       side: (SWAN[0] + SWAN[1]) / 2 - dir * RADIUS * Math.cos(turn),
-      dir,
       turn: turn + (back ? Math.PI : 0),
       speed: back || turn ? UPSTREAM : SWIM,
     };
@@ -415,15 +360,23 @@ export function createSwimmers(
     flock.forEach((w, slot) => Object.assign(w, { flock: mesh, slot }));
     return [mesh];
   });
-  swans.forEach((w, k) => Object.assign(w, { k, x: 0, z: 0, heading: 0 }));
+  // Their legs (src/zoo.js), left and right, shown only while they run; where each was last and its
+  // legs' phase.
+  const legs = new THREE.InstancedMesh(swanLeg(), swanMaterial, 2 * swans.length);
+  legs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const [, H, X, AT] = SWAN_LEG;
+  const [hip, none] = [new THREE.Matrix4(), new THREE.Matrix4().makeScale(0, 0, 0)];
+  swans.forEach((w, k) =>
+    Object.assign(w, { k, x: 0, z: 0, heading: 0, lastX: 0, lastZ: 0, phase: 0 }),
+  );
   // Each in order round the round on as far as the one ahead lets it, then placed, off it while
   // it flees.
   function paddle(dt) {
     swans.sort((a, b) => a.u - b.u);
     swans.forEach((w, n) => {
-      const { s, dir, speed } = round(w.u);
+      const { speed } = round(w.u);
       const [ux, uz] = [Math.sin(w.heading), Math.cos(w.heading)];
-      let step = speed * dt * forFerries(s, dir, w.x, w.z, ux, uz, BILL * w.size);
+      let step = clear(w.x, w.z, ux, uz, BILL * w.size) ? speed * dt : 0;
       const family = families[w.f];
       if (w.lead && w.u < reach) {
         family.with ??= people.find(
@@ -444,12 +397,31 @@ export function createSwimmers(
       const now = round(w.u);
       const spot = at(now.s, now.side + SWAN_DRIFT * Math.sin(clock * 0.2 + w.f));
       [w.x, w.z, w.heading] = [spot.x, spot.z, spot.heading + now.turn];
+      keepOff((k) => {
+        const on = round((w.u + k) % (2 * half));
+        return at(on.s, on.side);
+      });
       const off = flee(w.k, w.x, spot.y, w.z, dt);
       matrix.makeRotationY(off ? off[2] : w.heading).scale(place.setScalar(w.size));
       if (off) [spot.x, spot.z] = [w.x + off[0], w.z + off[1]];
+      // Fleeing, out of the water on its legs, its feet on the water or the ground; calm in the
+      // water, swimming back.
+      const g = off ? ground(spot.x, spot.z) : -Infinity;
+      const running = off && (!off[4] || g > water);
+      if (running) {
+        spot.y = Math.max(g, water) - AT * w.size;
+        w.phase += (LEG_STEP * Math.hypot(spot.x - w.lastX, spot.z - w.lastZ)) / w.size;
+      }
+      [w.lastX, w.lastZ] = [spot.x, spot.z];
       w.flock.setMatrixAt(w.slot, matrix.setPosition(spot.x, spot.y, spot.z));
+      for (const side of [0, 1]) {
+        const swing = (side ? LEG_SWING : -LEG_SWING) * Math.sin(w.phase);
+        hip.makeRotationX(swing).setPosition((2 * side - 1) * X, AT + H, 0);
+        legs.setMatrixAt(2 * w.k + side, running ? hip.premultiply(matrix) : none);
+      }
     });
     for (const flock of flocks) flock.instanceMatrix.needsUpdate = true;
+    legs.instanceMatrix.needsUpdate = true;
   }
 
   // One's way at distance s, metres left of the loop: its lane in the water, its side of the path
@@ -489,9 +461,7 @@ export function createSwimmers(
         const [p, q] = [points[i], points[(i + 1) % points.length]];
         const length = along[i + 1] - along[i];
         const [ux, uz] = [(q.x - p.x) / length, (q.z - p.z) / length];
-        const ferry = forFerries(m.s, 1, m.x, m.z, ux, uz, m.bag ? HOLD : REACH);
-        if (!ferry || (along[i + 1] - m.s < WAIT && busy((i + 1) % points.length))) step = 0;
-        else if (ferry > 1 || busy(i)) step *= HURRY;
+        if (!clear(m.x, m.z, ux, uz, m.bag ? HOLD : REACH)) step = 0;
         else if (wet && m.first !== m) {
           const behind = (m.first.s - m.s + total) % total;
           if (behind > BESIDE && behind < total / 2) step *= CATCH;
@@ -538,10 +508,18 @@ export function createSwimmers(
         if (m.bag) {
           heading += SWAY * Math.sin(clock * 0.25 + m.phase);
           m.crowd.place(m.i, x, y - FLOAT, z, heading, m.phase, 1, 0);
-          // Fleeing, its bag ahead of it where it swims.
-          const [ox, oz, h] = fleeing ? m.crowd.offset(m.i) : [0, 0, heading];
-          heading = h;
-          place.set(x + ox + Math.sin(h) * HOLD, y + BAG, z + oz + Math.cos(h) * HOLD);
+          // Fleeing (src/people.js, dodge): running on the water, its bag up across its hands over
+          // its head; calm, swimming back with it ahead, or walking back on land, it hidden.
+          const [ox, oz, h, , calm] = fleeing ? m.crowd.offset(m.i) : [0, 0, heading, 0, 1];
+          const [fx, fz] = [x + ox, z + oz];
+          const g = fleeing ? ground(fx, fz) : -Infinity;
+          const [up, ahead] = calm ? [y + BAG, HOLD] : [Math.max(g, water) + LIFT[0], LIFT[1]];
+          place.set(
+            fx + Math.sin(h) * ahead,
+            calm && g > water ? -1000 : up,
+            fz + Math.cos(h) * ahead,
+          );
+          heading = calm ? h : h + Math.PI / 2;
         } else m.crowd.place(m.i, x, y - SINK, z, heading, m.phase, 1, TILT);
       } else {
         const y = ground(x, z);
@@ -556,6 +534,11 @@ export function createSwimmers(
         );
       }
       [m.x, m.z] = [x, z];
+      if (bathing[j])
+        keepOff((k) => {
+          const on = (m.s + k) % total;
+          return bathing[segment(on)] ? at(on, offset(m, on)) : null;
+        });
       if (!m.bag || (fleeing && !afloat)) place.y = -1000; // none, or hidden while it runs
       matrix.makeRotationY(heading);
       if (!afloat) matrix.multiply(leaning.makeRotationX(lean)).multiply(upright);
@@ -565,7 +548,7 @@ export function createSwimmers(
     paddle(dt);
   }
   update(0);
-  const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags, ...flocks];
+  const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags, ...flocks, legs];
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
   for (const m of people) Object.assign(m, { radius: ROOM, group: m });
   space.add(people);

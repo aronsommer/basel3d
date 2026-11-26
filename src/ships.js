@@ -8,14 +8,16 @@ import { riders } from "./riders.js";
 // piers and the sea monster: SHIPS tankers, container ships, passenger ships and speedboats in
 // turn, evenly spaced and all at the same speed. Each is at most 11 m wide (the course keeps 10 m
 // clear around its middle) and 6 m high, to pass under the bridges. Whale families swim among
-// them, diving out of traffic's way (danger, src/main.js). Each keeps GAP behind the one ahead, and stops before a ferry's line (src/ferries.js)
-// unless the ferry stays out of its lane until it is past, and the one ahead lets it pass.
+// them, diving out of traffic's way (danger, src/main.js). Each keeps GAP behind the one ahead.
+// The ferries (src/ferries.js) keep out of its lane while it comes and passes, and before a
+// ferry's line it stops only while the ferry is in it still.
 export function createShips(course, ferries, boost, bridgeDecks, danger) {
   const SPEED = 5; // metres per second
   const SHIPS = 12; // about one every 1.1 km of the course
   const GAP = 20; // metres
   const ZONE = 30; // metres along the course each side of a ferry's line: its hull and rope
   const LANE = 12; // metres the ferry is off the course there at least: half a ship and a ferry
+  const SEE = 40; // metres before ZONE from where the ferry keeps out of a ship's lane
   // Cumulative distance along the course (x, y, z per point).
   const n = course.length / 3;
   const distance = new Float32Array(n);
@@ -61,22 +63,27 @@ export function createShips(course, ferries, boost, bridgeDecks, danger) {
         });
     }
   }
-  // Whether a ship may go on by step metres seconds in: GAP behind the one ahead, and if it would
-  // come within ZONE of a ferry's line, only if the ferry keeps LANE away until its back is ZONE
-  // past and the one ahead is far enough on to let it get there.
-  const mayGo = (ship, step, seconds) => {
+  // Whether a ship may go on by step metres: GAP behind the one ahead, and into ZONE of a ferry's
+  // line only while the ferry is LANE or more off the course there.
+  const mayGo = (ship, step) => {
     const ahead = mod(ship.ahead.d - ship.d) - (ship.length + ship.ahead.length) / 2;
-    if (ahead - step < GAP) return false;
     const front = ship.d + ship.length / 2;
+    return (
+      ahead - step >= GAP &&
+      crossings.every(
+        ({ ferry, distance, across }) =>
+          mod(distance - ZONE - front) >= step || Math.abs(ferry.p - across) >= LANE,
+      )
+    );
+  };
+  // The ferries keep LANE off the course from SEE before ZONE of their line until its back is ZONE
+  // past.
+  const keepOff = (ship) => {
     for (const { ferry, distance, across } of crossings) {
-      const before = mod(distance - ZONE - front);
-      if (before >= step) continue; // not reached, or in or past it already
-      const past = before + 2 * ZONE + ship.length; // metres until its back is past
-      if (ahead < past + GAP) return false;
-      for (let t = 0; t <= past / SPEED; t += 0.25)
-        if (Math.abs(ferry.at(seconds + t) - across) < LANE) return false;
+      const before = mod(distance - ZONE - ship.d - ship.length / 2);
+      if (before < SEE || total - before < 2 * ZONE + ship.length)
+        ferry.keepOff(across - LANE, across + LANE);
     }
-    return true;
   };
 
   // Ships along +z, the waterline at y = 0, built from coloured parts.
@@ -369,8 +376,9 @@ export function createShips(course, ferries, boost, bridgeDecks, danger) {
   const yAxis = new THREE.Vector3(0, 1, 0);
   const update = (seconds, dt) => {
     for (const ship of fleet) {
-      ship.waiting = !mayGo(ship, SPEED * dt, seconds);
+      ship.waiting = !mayGo(ship, SPEED * dt);
       if (!ship.waiting) ship.d += SPEED * dt;
+      keepOff(ship);
       const d = ship.d;
       at(d + ship.length / 2, front);
       at(d - ship.length / 2, back);
