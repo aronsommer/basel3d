@@ -1,7 +1,7 @@
 // A low-poly fighter jet, twice life size: grey, with a pointed nose, a dark canopy, delta wings,
-// two canted fins, two engines and a dark rocket on each wing tip, standing on three legs. Parked
-// at its place; flown (createFlight in src/main.js), its engines glow and flicker. It fires
-// rockets and does not hover.
+// two canted fins, two engines and a dark rocket on each wing tip, standing on three wheels,
+// hidden in flight. Parked at its place; flown (createFlight in src/main.js), its engines glow and
+// flicker. It fires rockets and does not hover.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { glow, part, profile } from "./parts.js";
@@ -13,6 +13,18 @@ const GLASS = 0x141a22;
 const FLOOR = 1.5; // metres from its middle down to what it stands on, before scaling
 // Along +z (the nose).
 const along = (g) => g.rotateX(Math.PI / 2);
+// A leg at x, z: a strut from top down to a black wheel of radius r with a grey hub, its bottom on
+// what it stands on.
+function leg(x, z, r, top) {
+  const axle = [x, r - FLOOR, z];
+  const disc = (radius, width, color) =>
+    part(new THREE.CylinderGeometry(radius, radius, width, 12).rotateZ(Math.PI / 2), color, axle);
+  return [
+    part(new THREE.BoxGeometry(0.14, top + FLOOR - r, 0.14), DARK, [x, (top + r - FLOOR) / 2, z]),
+    disc(r, 0.22, 0x1d1d1d),
+    disc(r / 2, 0.24, 0xb8bec4),
+  ];
+}
 // A plate 0.15 m thick with this outline seen from above ([x, z] points of its right half),
 // mirrored to the left.
 const plate = (half) =>
@@ -81,11 +93,17 @@ export function createJet({ x, y, z, heading }, boost, level) {
       part(along(new THREE.CylinderGeometry(0.55, 0.45, 1, 8)), DARK, [side * 0.5, 0, -5.9]), // nozzle
       part(along(new THREE.CylinderGeometry(0.25, 0.25, 3.6, 6)), DARK, [side * TIP, 0, -2.6]), // rocket
       part(along(new THREE.ConeGeometry(0.25, 0.8, 6)), DARK, [side * TIP, 0, -0.4]), // its tip
-      part(new THREE.BoxGeometry(0.1, 0.9, 0.1), DARK, [side * 1.2, -1.05, -2]), // leg
     ]),
-    part(new THREE.BoxGeometry(0.1, 0.9, 0.1), DARK, [0, -1.05, 4]), // front leg
   ]).scale(SCALE, SCALE, SCALE);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // Its legs, shown only while it is parked.
+  const legs = new THREE.Mesh(
+    mergeGeometries([
+      ...[-1, 1].flatMap((side) => leg(side * 1.2, -2, 0.32, 0)), // into the wing
+      ...leg(0, 4, 0.24, -0.6), // into the body
+    ]).scale(SCALE, SCALE, SCALE),
+    material,
+  );
   // The engines' fire, unlit and added onto what is behind: a bright core from each nozzle and a
   // soft glow round it.
   const NOZZLE = -6.4 * SCALE; // z of the nozzles' ends
@@ -112,11 +130,12 @@ export function createJet({ x, y, z, heading }, boost, level) {
     sprite.position.set(side * 0.5 * SCALE, 0, NOZZLE - 1);
     return sprite;
   });
-  const group = new THREE.Group().add(new THREE.Mesh(body, material), cores, ...glows);
+  const group = new THREE.Group().add(new THREE.Mesh(body, material), legs, cores, ...glows);
   group.rotation.order = "YXZ"; // heading first, then pitch and bank
   const parked = new THREE.Vector3(x, y + FLOOR * SCALE, z);
 
-  // Placed by flown while flown, its fire growing with its speed and flickering, else parked.
+  // Placed by flown while flown, its fire growing with its speed and flickering, else parked on its
+  // legs.
   const update = (seconds, flown) => {
     if (flown) {
       group.position.set(flown.x, flown.y, flown.z);
@@ -129,6 +148,7 @@ export function createJet({ x, y, z, heading }, boost, level) {
       group.rotation.set(0, heading, 0);
     }
     cores.visible = glows[0].visible = glows[1].visible = !!flown;
+    legs.visible = !flown;
     group.scale.setScalar(boost(group.position));
   };
   update(0, null);

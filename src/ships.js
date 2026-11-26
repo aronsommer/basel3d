@@ -8,9 +8,9 @@ import { riders } from "./riders.js";
 // piers and the sea monster: SHIPS tankers, container ships, passenger ships and speedboats in
 // turn, evenly spaced and all at the same speed. Each is at most 11 m wide (the course keeps 10 m
 // clear around its middle) and 6 m high, to pass under the bridges. Whale families swim among
-// them. Each keeps GAP behind the one ahead, and stops before a ferry's line (src/ferries.js)
+// them, diving out of traffic's way (danger, src/main.js). Each keeps GAP behind the one ahead, and stops before a ferry's line (src/ferries.js)
 // unless the ferry stays out of its lane until it is past, and the one ahead lets it pass.
-export function createShips(course, ferries, boost, bridgeDecks) {
+export function createShips(course, ferries, boost, bridgeDecks, danger) {
   const SPEED = 5; // metres per second
   const SHIPS = 12; // about one every 1.1 km of the course
   const GAP = 20; // metres
@@ -140,42 +140,76 @@ export function createShips(course, ferries, boost, bridgeDecks) {
     box([3.55, 0.4, 7.5], 0xc8282d, [0, 1.3, -1.5]), // red stripe
     box([2.6, 1.0, 2.0], WINDOWS, [0, 2.5, 0.5]), // windscreen and cockpit
   ];
-  // A whale, 32 m long and 10.5 m wide across its flukes, its head along +z; its flukes apart.
+  // A whale, 32 m long and 10.5 m wide across its flukes, its head along +z; its flukes apart. Its
+  // flippers flap about their roots (FLIPPER: x, y; the left one's x negative), marked by flap: ±1
+  // which side, 0 for the rest.
   const WHALE = 0x46566a;
-  const whale = mergeGeometries([
-    part(
-      new THREE.LatheGeometry(
-        [
-          [0, -16],
-          [0.75, -13.75],
-          [1.6, -10],
-          [2.9, -5],
-          [3.75, 0],
-          [4.1, 5],
-          [3.9, 10],
-          [3, 13.75],
-          [1.6, 15.75],
-          [0, 16],
-        ].map(([r, z]) => new THREE.Vector2(r, z)),
-        12,
-      )
-        .rotateX(Math.PI / 2)
-        .scale(1, 0.8, 1),
-      WHALE,
-      [0, 1.2, 0],
-    ),
-    ...[-1, 1].map((side) =>
-      part(new THREE.BoxGeometry(3.2, 0.3, 1.75).rotateZ(-side * 0.35), WHALE, [
-        side * 3.9,
-        0.2,
-        6,
-      ]),
-    ), // flippers
-    part(new THREE.ConeGeometry(0.6, 1.1, 4).scale(0.5, 1, 2), WHALE, [0, 3.3, -7.5]), // dorsal fin
-    ...[-1, 1].map((side) =>
-      part(new THREE.BoxGeometry(0.4, 0.4, 0.4), 0x111111, [side * 3.25, 1.5, 12.5]),
-    ), // eyes
-  ]);
+  const FLIPPER = [2.4, 0.75];
+  const flapping = (side, g) =>
+    g.setAttribute(
+      "flap",
+      new THREE.Float32BufferAttribute(Array(g.attributes.position.count).fill(side), 1),
+    );
+  const whale = mergeGeometries(
+    [
+      part(
+        new THREE.LatheGeometry(
+          [
+            [0, -16],
+            [0.75, -13.75],
+            [1.6, -10],
+            [2.9, -5],
+            [3.75, 0],
+            [4.1, 5],
+            [3.9, 10],
+            [3, 13.75],
+            [1.6, 15.75],
+            [0, 16],
+          ].map(([r, z]) => new THREE.Vector2(r, z)),
+          12,
+        )
+          .rotateX(Math.PI / 2)
+          .scale(1, 0.8, 1),
+        WHALE,
+        [0, 1.2, 0],
+      ),
+      ...[-1, 1].map((side) =>
+        flapping(
+          side,
+          part(new THREE.BoxGeometry(3.2, 0.3, 1.75).rotateZ(-side * 0.35), WHALE, [
+            side * 3.9,
+            0.2,
+            6,
+          ]),
+        ),
+      ), // flippers
+      part(new THREE.ConeGeometry(0.6, 1.1, 4).scale(0.5, 1, 2), WHALE, [0, 3.3, -7.5]), // dorsal fin
+      ...[-1, 1].map((side) =>
+        part(new THREE.BoxGeometry(0.4, 0.4, 0.4), 0x111111, [side * 3.25, 1.5, 12.5]),
+      ), // eyes
+    ].map((g) => (g.attributes.flap ? g : flapping(0, g))),
+  );
+  // A whale's material, its flippers turned about their roots by its own flap (radians, down
+  // negative).
+  const flapped = (material) => {
+    const flap = { value: 0 };
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.flapAngle = flap;
+      shader.vertexShader = shader.vertexShader
+        .replace("void main() {", "attribute float flap;\nuniform float flapAngle;\nvoid main() {")
+        .replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          if (flap != 0.0) {
+            vec2 root = vec2(flap * ${FLIPPER[0].toFixed(2)}, ${FLIPPER[1].toFixed(2)});
+            float a = flap * flapAngle;
+            transformed.xy = root + mat2(cos(a), sin(a), -sin(a), cos(a)) * (transformed.xy - root);
+          }`,
+        );
+    };
+    material.customProgramCacheKey = () => "whale";
+    return flap;
+  };
   // Its flukes, turning up and down about where they meet its tail (their origin).
   const flukes = part(
     new THREE.ExtrudeGeometry(
@@ -218,15 +252,23 @@ export function createShips(course, ferries, boost, bridgeDecks) {
   });
   // Whale families among the ships, each halfway between two: a large one ahead, a smaller one and
   // a calf behind, FOLLOW metres apart, so each leaps where the one ahead did. A whale swims at the
-  // surface, dives DEEP metres, comes up and leaps out at LEAP metres per second, falls back and
-  // dips in, then blows a spout (its rise above its course: height, c seconds after it fell back).
+  // surface, dives DEEP metres steeply, stays down, comes up and leaps out at LEAP metres per
+  // second, rolling, falls back and dips in, then blows a spout (its rise above its course:
+  // height, c seconds after it fell back). Its flukes beat and its flippers flap, the harder the
+  // steeper it goes. In traffic it dives DEEP metres, coming up again CALM seconds after.
   const [FAMILIES, FOLLOW, DEEP, LEAP, GRAVITY] = [2, 60, 12, 12, 9.8];
+  // Seconds calm before it comes up from traffic, metres a second it dives and comes up; its
+  // flukes beat BEAT radians a second, more by HARD at its steepest, ROLL radians it turns over at
+  // the top of its leap, to one side or the other by leap and whale.
+  const [CALM, DUCK, BEAT, HARD, ROLL] = [2.5, 4, 1.6, 4, 0.9];
+  const TOP = (LEAP * LEAP) / 2 / GRAVITY; // metres up a leap goes
   const RISE = (DEEP * Math.PI) / 2 / LEAP; // seconds up from the depth
   const CYCLE = 12 + RISE + (2 * LEAP) / GRAVITY; // seconds
   const height = (c) => {
     if (c < 2) return -2 * Math.sin((Math.PI * c) / 2); // dipping in
     if (c < 8) return 0;
-    if (c < 12) return -DEEP * Math.sin((Math.PI * (c - 8)) / 8); // diving
+    if (c < 10) return -DEEP * Math.sin((Math.PI * (c - 8)) / 4); // diving
+    if (c < 12) return -DEEP; // down
     if (c < 12 + RISE) return -DEEP * Math.cos((Math.PI * (c - 12)) / 2 / RISE); // coming up
     c -= 12 + RISE;
     return LEAP * c - (GRAVITY / 2) * c * c; // leaping
@@ -281,6 +323,7 @@ export function createShips(course, ferries, boost, bridgeDecks) {
     [1, 0.8, 0.5].map((size, k) => {
       const mesh = new THREE.Mesh(whale, material.clone());
       mesh.matrixAutoUpdate = false;
+      const flap = flapped(mesh.material);
       const tail = new THREE.Mesh(flukes, mesh.material);
       tail.position.set(0, 1.2, -15.6);
       const drops = new THREE.BufferAttribute(new Float32Array(DROPS * 3), 3);
@@ -294,7 +337,22 @@ export function createShips(course, ferries, boost, bridgeDecks) {
       const start = (total * (f * (SHIPS / FAMILIES) + 0.5)) / SHIPS - k * FOLLOW;
       const delay = (k * FOLLOW) / SPEED;
       const [length, eye] = [32 * size, [0, 6.5, 3]];
-      return { mesh, tail, drops, size, delay, blowing: false, start, leaps: {}, length, eye };
+      // Its flukes' and flippers' phase; metres it is down out of traffic, seconds calm since; a
+      // number for the side it rolls to.
+      const beat = { beat: delay, flap, duck: 0, calm: CALM, seed: f + k };
+      return {
+        mesh,
+        tail,
+        drops,
+        size,
+        delay,
+        blowing: false,
+        start,
+        leaps: {},
+        length,
+        eye,
+        ...beat,
+      };
     }),
   );
   fleet.push(...whales);
@@ -305,7 +363,7 @@ export function createShips(course, ferries, boost, bridgeDecks) {
     ship.ahead = ring[(k + 1) % ring.length];
   });
   const [drop, scale] = [new THREE.Vector3(), new THREE.Vector3()];
-  const tilt = new THREE.Matrix4();
+  const [tilt, roll] = [new THREE.Matrix4(), new THREE.Matrix4()];
 
   const [front, back, forward, right, up] = [...Array(5)].map(() => new THREE.Vector3());
   const yAxis = new THREE.Vector3(0, 1, 0);
@@ -324,16 +382,30 @@ export function createShips(course, ferries, boost, bridgeDecks) {
         .makeBasis(right.multiplyScalar(b), up.multiplyScalar(b), forward)
         .setPosition(front);
     }
-    // The whales, raised or lowered by height, nose up while rising, flukes beating.
+    // The whales, raised or lowered by height (and out of traffic), nose up while rising, rolling
+    // at the top of a leap, flukes beating and flippers flapping.
     for (const w of whales) {
       const t = (w.t = seconds - w.delay);
       const climb = rise(w, t + 0.5) - rise(w, t - 0.5); // metres in the second around t
-      w.mesh.matrix.multiply(
-        tilt.makeRotationX(-Math.atan2(climb, SPEED)).scale(scale.setScalar(w.size)),
-      );
-      w.mesh.matrix.elements[13] += rise(w, t);
-      w.tail.rotation.x = 0.35 * Math.sin(1.6 * seconds + w.delay);
+      const m = w.mesh.matrix.elements;
+      const inDanger = dt && danger(m[12], m[13], m[14], 0, false, 0, 0, w.length / 2);
+      w.calm = inDanger ? 0 : w.calm + dt;
+      const down = w.calm < CALM ? DEEP * w.size : 0;
+      w.duck += THREE.MathUtils.clamp(down - w.duck, -DUCK * dt, DUCK * dt);
+      const up = rise(w, t);
       const n = Math.floor(t / CYCLE);
+      const side = (n + w.seed) % 2 ? 1 : -1; // which way it rolls, by leap and whale
+      w.mesh.matrix.multiply(
+        tilt
+          .makeRotationX(-Math.atan2(climb, SPEED))
+          .multiply(roll.makeRotationZ((side * ROLL * Math.max(0, up)) / (TOP * w.size)))
+          .scale(scale.setScalar(w.size)),
+      );
+      m[13] += up - w.duck;
+      const hard = Math.min(1, Math.abs(climb) / SPEED);
+      w.beat += (BEAT + HARD * hard) * dt;
+      w.tail.rotation.x = (0.3 + 0.3 * hard) * Math.sin(w.beat);
+      w.flap.value = (0.15 + 0.25 * hard) * Math.sin(0.5 * w.beat + 1);
       const blow = t - n * CYCLE - 2;
       const on = blow >= 0 && blow < BURST + 3 && leaps(w, n - 1);
       if (!on && !w.blowing) continue; // all hidden already

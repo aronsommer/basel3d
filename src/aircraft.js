@@ -4,7 +4,8 @@ import { part, profile } from "./parts.js";
 import { riders } from "./riders.js";
 
 // Two airliners circling over the city on an oval, one higher and the other way round, so they
-// are always in view, and one parked at each of parked ({ x, y, z, heading }: its wheels on y).
+// are always in view, and one parked at each of parked ({ x, y, z, heading }: its wheels on y), its
+// gear out only there.
 // 1.5 times life size (and more far away, see boost), white with dark windows and a red tail
 // with a Swiss cross, no airline. Each is a craft to fly (createFlight), back on its oval or
 // place at once when let go.
@@ -48,6 +49,27 @@ export function createPlanes(boost, flight, parked = []) {
     new THREE.Float32BufferAttribute(band.flat(), 3),
   );
   const tailCone = new THREE.ConeGeometry(2, 6, 8).rotateX(-Math.PI / 2);
+  // A leg of its gear at x, z: a strut from top down to an axle with two black wheels of radius
+  // r, apart metres between their middles, with grey hubs, their bottoms FLOOR metres below its
+  // middle.
+  const FLOOR = 3.6;
+  const leg = (x, z, r, apart, top) => {
+    const y = r - FLOOR; // the axle's
+    const disc = (radius, width, color, dx) =>
+      part(new THREE.CylinderGeometry(radius, radius, width, 12).rotateZ(Math.PI / 2), color, [
+        x + dx,
+        y,
+        z,
+      ]);
+    return [
+      part(new THREE.BoxGeometry(0.25, top - y, 0.25), 0x9aa0a6, [x, (top + y) / 2, z]),
+      part(new THREE.BoxGeometry(apart, 0.15, 0.15), 0x9aa0a6, [x, y, z]),
+      ...[-1, 1].flatMap((s) => [
+        disc(r, 0.35, 0x1d1d1d, (s * apart) / 2),
+        disc(r / 2, 0.37, 0xb8bec4, (s * apart) / 2),
+      ]),
+    ];
+  };
   // A swept wing on side (±1), from its root at x 0 out to span, [leading, trailing] edge z at
   // root and tip, rising a little outwards.
   const wing = (side, span, [rootLead, rootTrail], [tipLead, tipTrail], thick) =>
@@ -104,6 +126,11 @@ export function createPlanes(boost, flight, parked = []) {
       part(new THREE.BoxGeometry(0.3, 1, 2.4), WHITE, [x, -1, 0.9]),
     ]),
   ]).scale(SCALE, SCALE, SCALE);
+  // Its gear, a mesh of its own, shown only while it stands on the ground.
+  const wheels = mergeGeometries([
+    ...[-1, 1].flatMap((side) => leg(side * 3, -1.5, 0.6, 0.8, -0.6)), // into the wing
+    ...leg(0, 11, 0.45, 0.55, -1.5), // into the nose
+  ]).scale(SCALE, SCALE, SCALE);
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   // Ovals over the city (scene metres), so the planes always stay in view: the second one higher
   // and the other way round.
@@ -116,17 +143,19 @@ export function createPlanes(boost, flight, parked = []) {
   ].map((flight) => {
     const mesh = new THREE.Mesh(geometry, material.clone()); // its own, highlighted under the mouse
     mesh.rotation.order = "YXZ"; // heading, then pitch and bank in the plane's frame
+    const gear = new THREE.Mesh(wheels, mesh.material);
+    mesh.add(gear);
     // Riding along: from behind and above.
     const ride = riders([
       { object: mesh, materials: [mesh.material], eye: [0, 12, -70], ahead: [0, 0, 60] },
     ]);
-    // Its engines low below its middle; a plane does not hover.
+    // Its wheels low below its middle; a plane does not hover.
     const craft = {
       group: mesh,
       ride,
       speed: SPEED,
       turn: 0.4,
-      low: 4.9,
+      low: FLOOR * SCALE,
       nose: 30, // metres from its middle to its nose
       unarmed: true,
       plane: true,
@@ -134,12 +163,14 @@ export function createPlanes(boost, flight, parked = []) {
       // (else flying on level it meets the ground ahead at once), clear of what is round it.
       lift: flight.place ? LIFT : 0,
     };
-    return { ...flight, mesh, craft };
+    return { ...flight, mesh, gear, craft };
   });
-  // Each placed by flown (createFlight) while it is the one flown (flier), else on its oval.
+  // Each placed by flown (createFlight) while it is the one flown (flier), else on its oval or
+  // place; its gear out only there.
   const update = (seconds, flier, flown) => {
-    for (const { mesh, height, direction, craft, place } of flights) {
+    for (const { mesh, gear, height, direction, craft, place } of flights) {
       mesh.scale.setScalar(boost(mesh.position));
+      gear.visible = !!place && craft !== flier;
       if (craft === flier) {
         mesh.position.set(flown.x, flown.y, flown.z);
         mesh.rotation.set(flown.nose - flight.LEVEL, flown.heading, -0.6 * flown.turn);

@@ -3,8 +3,10 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riders } from "./riders.js";
 
 // A creepy sea serpent looking at (lookX, lookZ): a pale, ringed neck with spines that sways, an
-// angular head with horns, fangs and glowing red eyes. It slowly rises and sinks a little, and
-// every 10 s it leans back, then strikes forward. The terrain hides what is below the water.
+// angular head with horns, glowing red eyes and a mouth, fangs and teeth above and below. It
+// slowly rises and sinks a little, its mouth a little open, chewing; every 10 s it leans back,
+// opening it, then strikes forward, it wide open, and shuts it again. The terrain hides what is
+// below the water.
 export function createSerpent(x, z, scale, lookX, lookZ, heightAt) {
   const NECK = 24; // metres before scaling
   // Non-indexed, coloured by a function of the position, without normals and uvs.
@@ -24,6 +26,8 @@ export function createSerpent(x, z, scale, lookX, lookZ, heightAt) {
   const back = new THREE.Color(0x6f8556);
   const belly = new THREE.Color(0xd6cc8f);
   const bone = new THREE.Color(0xe2d8bc);
+  // Its mouth in the eyes' red: its tongue so, inside darker.
+  const [TONGUE, MOUTH] = [eyeColor, eyeColor.clone().multiplyScalar(0.45)];
   // Mossy back with darker rings, a pale yellow throat and belly towards the front (+z).
   const skin = (c, px, py, pz) =>
     c
@@ -31,57 +35,160 @@ export function createSerpent(x, z, scale, lookX, lookZ, heightAt) {
       .lerp(belly, THREE.MathUtils.smoothstep(pz, -0.2, 0.8))
       .multiplyScalar(py < NECK ? 0.8 + 0.2 * Math.sin(py * 1.6) : 1);
   const plain = (color) => (c) => c.copy(color);
+  // A part of its jaw (1, turning at HINGE: y, z) or not (0), as the attribute jaw.
+  const HINGE = [NECK + 0.2, 0.6]; // up in the jaw, just ahead of its back
+  const jawed = (on, g) =>
+    g.setAttribute(
+      "jaw",
+      new THREE.Float32BufferAttribute(Array(g.attributes.position.count).fill(on), 1),
+    );
+  // A tooth length long from its base at x, y, z: up, or down with its tip RAKE radians ahead.
+  const RAKE = 0.15;
+  const tooth = (length, down, x, y, z) => {
+    const g = new THREE.ConeGeometry(length / 4, length, 4).translate(0, length / 2, 0); // base at 0
+    if (down) g.rotateX(Math.PI - RAKE); // its tip a little ahead
+    return colored(g.translate(x, y, z), plain(bone));
+  };
 
-  const neck = new THREE.CylinderGeometry(0.9, 2.2, NECK, 8, 16, true);
-  neck.translate(0, NECK / 2, 0);
-  const head = new THREE.IcosahedronGeometry(1, 1);
-  head.scale(1.6, 1.1, 3.4);
-  head.translate(0, NECK + 0.6, 1.8); // snout towards +z
+  // The neck reaches up into the head, so no gap shows behind it.
+  const neck = new THREE.CylinderGeometry(0.9, 2.2, NECK + 0.5, 8, 16, true);
+  neck.translate(0, (NECK + 0.5) / 2, 0);
+  // A flat piece, thick metres down from top, its outline seen from above given by [x, z] of its
+  // right half (from the middle at the back round to the middle at the front), mirrored.
+  const flat = (half, thick, top) => {
+    const outline = [
+      ...half,
+      ...half
+        .filter(([x]) => x)
+        .toReversed()
+        .map(([x, z]) => [-x, z]),
+    ];
+    return new THREE.ExtrudeGeometry(
+      new THREE.Shape(outline.map(([x, z]) => new THREE.Vector2(x, z))),
+      { depth: thick, bevelEnabled: false },
+    )
+      .rotateX(Math.PI / 2) // its outline level, thick below
+      .translate(0, top, 0);
+  };
+  // The head (snout towards +z) and, under it, its lower jaw: flat on top, as the dinosaur's,
+  // wide at its back (just in the neck) and narrowing to its rounded tip, dark red there inside its mouth; a tongue
+  // on it, wider towards its tip, slit there and out of its mouth a little.
+  const head = new THREE.IcosahedronGeometry(1, 2);
+  head.scale(1.6, 0.85, 3.4);
+  head.translate(0, NECK + 0.85, 1.8);
+  // Its back blunt, not a point sticking out behind the neck: no corner further back than BLUNT.
+  const BLUNT = -1.05;
+  {
+    const position = head.attributes.position;
+    for (let i = 0; i < position.count; i++) position.setZ(i, Math.max(BLUNT, position.getZ(i)));
+  }
+  // Its back just inside the neck (its corners too), so head, neck and jaw meet.
+  const JAW = [
+    [0, 0.3],
+    [0.8, 0.3],
+    [0.8, 0.8],
+    [0.75, 2],
+    [0.55, 3.6],
+    [0.35, 4.3],
+    [0, 4.45],
+  ];
+  // Thin at the chin, thicker towards the neck: its underside (CHIN metres under its top at the
+  // tip, THROAT at its back) sloping down backwards.
+  const [CHIN, THROAT] = [0.3, 0.75];
+  const lower = flat(JAW, THROAT, NECK + 0.275);
+  {
+    const position = lower.attributes.position;
+    const [back, tip] = [JAW[0][1], JAW.at(-1)[1]];
+    for (let i = 0; i < position.count; i++)
+      if (position.getY(i) < NECK) {
+        const along = (tip - position.getZ(i)) / (tip - back); // 0 at the tip, 1 at the back
+        position.setY(i, NECK + 0.275 - CHIN - (THROAT - CHIN) * along);
+      }
+  }
+  const floor = flat(
+    JAW.map(([x, z]) => [Math.max(0, x - 0.08), z]),
+    0.02,
+    NECK + 0.295,
+  );
+  const tongue = flat(
+    [
+      [0, 1],
+      [0.1, 1],
+      [0.25, 4.3],
+      [0.2, 4.95],
+      [0.05, 4.5],
+      [0, 4.4],
+    ],
+    0.05,
+    NECK + 0.345,
+  );
+  // Teeth along both jaws, out of each into the mouth (hidden in the other while it is shut).
+  const teeth = (down) =>
+    [-1, 1].flatMap((side) =>
+      (down ? [1.6, 2.3, 3, 3.6] : [1.95, 2.65, 3.3, 3.95]).map((z) =>
+        tooth(
+          down ? 0.3 : 0.45,
+          down,
+          side * (down ? 0.4 : 0.33),
+          down ? NECK + 0.2 : NECK + 0.15,
+          z,
+        ),
+      ),
+    );
   const horns = [-1, 1].map((side) => {
-    const horn = new THREE.ConeGeometry(0.35, 2.4, 4);
-    horn.rotateX(-0.9);
+    const horn = new THREE.ConeGeometry(0.42, 2.9, 4);
+    horn.rotateX(-0.9).rotateZ(-side * 0.25); // back, and a little outwards
     horn.translate(side * 0.7, NECK + 1.6, -0.8);
     return colored(horn, plain(bone));
   });
-  const fangs = [-1, 1].map((side) => {
-    const fang = new THREE.ConeGeometry(0.16, 1.1, 4);
-    fang.rotateX(Math.PI); // pointing down
-    fang.translate(side * 0.55, NECK - 0.2, 4.3);
-    return colored(fang, plain(bone));
-  });
+  // Its fangs, beside the jaw's narrow tip, clear of it.
+  const fangs = [-1, 1].map((side) => tooth(0.9, true, side * 0.68, NECK + 0.45, 4.3));
   // Spines down the back of the neck, smaller towards the water.
   const spines = [...Array(10)].map((_, i) => {
     const y = NECK - 1 - i * 2;
     const radius = 0.9 + ((2.2 - 0.9) * (NECK - y)) / NECK;
-    const spine = new THREE.ConeGeometry(0.25, 1.6 - i * 0.08, 4);
+    const spine = new THREE.ConeGeometry(0.3, (1.6 - i * 0.08) * 1.3, 4);
     spine.rotateX(-1.2);
     spine.translate(0, y, -radius - 0.4);
     return colored(spine, plain(bone));
   });
   const body = mergeGeometries([
-    colored(neck, skin),
-    colored(head, skin),
-    ...horns,
-    ...fangs,
-    ...spines,
+    ...[colored(neck, skin), colored(head, skin)].map((g) => jawed(0, g)),
+    ...[...horns, ...fangs, ...teeth(true), ...spines].map((g) => jawed(0, g)),
+    ...[
+      colored(lower, skin),
+      colored(floor, plain(MOUTH)),
+      colored(tongue, plain(TONGUE)),
+      ...teeth(false),
+    ].map((g) => jawed(1, g)),
   ]);
   const eyes = mergeGeometries(
     [-1, 1].map((side) => {
-      const eye = new THREE.IcosahedronGeometry(0.45, 0);
-      eye.translate(side * 1.3, NECK + 0.95, 3.0); // half out of the head's side
-      return colored(eye, plain(eyeColor));
+      const eye = new THREE.IcosahedronGeometry(0.45, 2); // as fine as the head
+      eye.translate(side * 1.25, NECK + 1.05, 3.2); // half out of the head's side
+      return jawed(0, colored(eye, plain(eyeColor)));
     }),
   );
 
-  // The neck sways like a snake; the head (above the neck) moves with its top.
+  // Its jaw turns open about its hinge by jaw radians; then the neck sways like a snake, the head
+  // (above the neck) moving with its top.
   const time = { value: 0 };
+  const jaw = { value: 0 };
   const sway = (shader) => {
-    shader.uniforms.serpentTime = time;
+    Object.assign(shader.uniforms, { serpentTime: time, serpentJaw: jaw });
     shader.vertexShader = shader.vertexShader
-      .replace("void main() {", "uniform float serpentTime;\nvoid main() {")
+      .replace(
+        "void main() {",
+        "attribute float jaw;\nuniform float serpentTime;\nuniform float serpentJaw;\nvoid main() {",
+      )
       .replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
+        if (jaw > 0.5) {
+          vec2 hinge = vec2(${HINGE[0].toFixed(2)}, ${HINGE[1].toFixed(2)});
+          float a = serpentJaw;
+          transformed.yz = hinge + mat2(cos(a), sin(a), -sin(a), cos(a)) * (transformed.yz - hinge);
+        }
         float h = clamp(transformed.y / ${NECK.toFixed(1)}, 0.0, 1.0);
         transformed.x += sin(serpentTime * 0.9 - h * 2.5) * h * h * 3.0;
         transformed.z += sin(serpentTime * 0.6 - h * 2.0 + 1.3) * h * h * 2.0;`,
@@ -128,6 +235,17 @@ export function createSerpent(x, z, scale, lookX, lookZ, heightAt) {
         : t < 6.4
           ? -0.18 + 0.48 * ease(t, 6, 6.4)
           : 0.3 * (1 - ease(t, 6.4, 10));
+    // Its mouth a little open, chewing; opening as it leans back, wide as it strikes, snapping
+    // shut at its end in 0.15 s, then a little open again in 0.5 s.
+    const chew = 0.18 + 0.06 * Math.sin(seconds * 1.7);
+    jaw.value =
+      t < 6
+        ? chew + 0.45 * ease(t, 0, 6)
+        : t < 6.3
+          ? chew + 0.45 + 0.45 * ease(t, 6, 6.3)
+          : t < 6.45
+            ? (chew + 0.9) * (1 - ease(t, 6.3, 6.45))
+            : chew * ease(t, 6.45, 6.95);
   };
   return { group, update, ride };
 }

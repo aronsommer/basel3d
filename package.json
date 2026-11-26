@@ -17,6 +17,7 @@
     "names": "node tools/names.mjs && node tools/size.mjs && node tools/data.mjs",
     "accept-data": "node tools/data.mjs accept",
     "inventory": "node tools/inventory.mjs",
+    "joints": "node tools/joints.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {

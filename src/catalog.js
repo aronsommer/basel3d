@@ -20,7 +20,7 @@ import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
 import { createJet } from "./jet.js";
 import { createMotorcycles } from "./motorcycle.js";
-import { TOSS, createPeople, mix } from "./people.js";
+import { TOSS, createCrowd, createPeople, mix } from "./people.js";
 import { createPolice } from "./police.js";
 import { createQuads } from "./quad.js";
 import { createRega } from "./rega.js";
@@ -66,7 +66,7 @@ const OLD_MAN = {
   hat: 0x2f3b4c,
   head: "cap",
 };
-function feeder({ x, z, turn = 0 }, { heightAt, towel, TOWEL }) {
+function feeder({ x, z, turn = 0 }, { heightAt, towel, TOWEL, danger }) {
   const [c, s] = [Math.cos(turn), Math.sin(turn)];
   const family = FAMILY.map(([dx, dz, size]) => {
     const [sx, sz] = [x + dx * c + dz * s, z - dx * s + dz * c];
@@ -83,14 +83,23 @@ function feeder({ x, z, turn = 0 }, { heightAt, towel, TOWEL }) {
   const hand = new THREE.Vector3(-0.28, 0.83, 0.31)
     .applyEuler(new THREE.Euler(tilt, facing, 0, "YXZ"))
     .add(new THREE.Vector3(x, y + TOWEL, z));
-  const swans = createSwans(family, hand, (2 * Math.PI) / TOSS, Math.PI / 2 / TOSS);
+  // He tosses bread only while sitting, not fleeing.
+  const crowd = createCrowd("man", 1);
+  crowd.dress(0, OLD_MAN, "sit");
+  crowd.place(0, x, y + TOWEL, z, facing, 0, 1, tilt);
+  crowd.mesh.frustumCulled = false; // he may flee
+  const swans = createSwans(
+    family,
+    hand,
+    (2 * Math.PI) / TOSS,
+    Math.PI / 2 / TOSS,
+    heightAt,
+    danger,
+    () => !crowd.away(0),
+  );
   const cloth = new THREE.BoxGeometry(1.1, 0.02, 1.5).translate(0, TOWEL - 0.01, 0.35);
   return {
-    objects: [
-      ...swans.meshes,
-      towel(man, 0x24539e, cloth),
-      ...createPeople([{ ...man, y: y + TOWEL, pose: "sit" }], [OLD_MAN]),
-    ],
+    objects: [...swans.meshes, towel(man, 0x24539e, cloth), crowd.mesh],
     update: swans.update,
   };
 }
@@ -416,8 +425,8 @@ const [CIRCLE, HELICOPTER] = [150, 6]; // the attack helicopter's: metres round,
 // at its places.
 const driven =
   (create) =>
-  (places, { parked, boost, world }) => {
-    const vehicles = create(parked(places), boost, world);
+  (places, { parked, boost, world, danger }) => {
+    const vehicles = create(parked(places), boost, world, danger);
     return { objects: vehicles.map(({ group }) => group), vehicles };
   };
 // The maker of a kind of boat (src/boats.js), on the water at its places.
@@ -453,7 +462,7 @@ export const CATALOG = {
       const scenes = places.map((place) => feeder(place, city));
       return {
         objects: scenes.flatMap(({ objects }) => objects),
-        update: (seconds) => scenes.forEach(({ update }) => update(seconds)),
+        update: (seconds, dt) => scenes.forEach(({ update }) => update(seconds, dt)),
       };
     },
   },
@@ -472,12 +481,13 @@ export const CATALOG = {
   S6: {
     name: "Girl on a bike and her sister",
     places: [middleOf(BIKE_PATH)],
-    make(places, { heightAt }) {
+    make(places, { heightAt, danger }) {
       const middle = middleOf(BIKE_PATH);
       const rides = places.map(({ x, z }) =>
         createBike(
           moved(BIKE_PATH, x - middle.x, z - middle.z).map((p) => [p.x, p.z]),
           heightAt,
+          danger,
         ),
       );
       return {
@@ -517,8 +527,8 @@ export const CATALOG = {
   A1: {
     name: "Animals",
     places: ANIMALS,
-    make(places, { heightAt, clear }) {
-      const zoo = createZoo(places, heightAt, clear);
+    make(places, { heightAt, clear, danger }) {
+      const zoo = createZoo(places, heightAt, clear, danger);
       return { objects: zoo.meshes, update: zoo.update };
     },
   },

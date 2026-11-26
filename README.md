@@ -10,7 +10,7 @@ A static website with no build step. three.js comes from jsDelivr via an import 
 npx serve
 ```
 
-`npm install` is only needed for the converters, Prettier and the inventory check.
+`npm install` is only needed for the converters, Prettier and the checks.
 
 Format with Prettier, line width 100 as set in `.prettierrc`:
 
@@ -22,6 +22,12 @@ Check that `INVENTORY.md` matches the museum's plates:
 
 ```
 npm run inventory
+```
+
+Check that every animal is in one piece, its legs and tail joined to its body:
+
+```
+npm run joints
 ```
 
 ## Structure

@@ -4,19 +4,50 @@
 // wide and seals swimming round in a ring, flamingos (some on one leg) bobbing their heads beside
 // the hippos and amid the seals;
 // a crocodile opening its jaws slowly; wild boars and their striped piglets rooting, foxes and a
-// wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans,
-// mallards and geese swimming round in rings, goats grazing, small monkeys hopping about and a lynx
-// looking round, donkeys grazing, wolves looking round or howling, wisents (a calf among them)
+// wildcat looking round; red deer (a stag with antlers) grazing, chamois looking round; swans with
+// cygnets, mallards and geese swimming round in rings, goats grazing, small monkeys hopping about
+// and a lynx looking round, donkeys grazing, wolves looking round or howling, wisents (a calf among them)
 // grazing. Apart from them, swans at given
-// places pecking now and then (createSwans).
+// places pecking now and then (createSwans). All flee from traffic as people do (src/people.js),
+// the zoo's swinging their legs as they go.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
+import { createFlight } from "./people.js";
 
 const BIG = 2;
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const legs = (w, h, x, z, color) =>
-  [-1, 1].flatMap((sx) => [-1, 1].map((sz) => part(box(w, h, w), color, [sx * x, h / 2, sz * z])));
+// Parts marked with how they move (stride, drawn by createZoo): a leg [way, y, z, 0] swings about
+// its hip at y, z, way ±1 (the diagonal pairs together), ±3 if tucked up into its hip while the
+// animal is in the water at its place; a tail [2, y, z, axis] wags sideways about its base at y,
+// z, axis the radians its turning axis is tilted from straight up towards ahead.
+const mark = (stride, ...parts) => parts.map((p) => ((p.userData.stride = stride), p));
+// Legs w thick and h long, from y at up to their hips, x either side and (four) z ahead and
+// behind, or (two, z 0) under the middle; tucked up in the water if tucked. Each reaches w / 2
+// above its hip into the body, so its top stays in it as it swings.
+const legs = (w, h, x, z, color, { at = 0, tucked = false } = {}) =>
+  (z ? [-1, 1] : [1]).flatMap((sz) =>
+    [-1, 1].flatMap((sx) =>
+      mark(
+        [sx * sz * (tucked ? 3 : 1), at + h, sz * z, 0],
+        part(box(w, h + w / 2, w), color, [sx * x, at + (h + w / 2) / 2, sz * z]),
+      ),
+    ),
+  );
+// A tail of these parts, from its base at y, z (where it meets the body) out to its end.
+const tail = ([y, z], [ey, ez], ...parts) => mark([2, y, z, Math.atan2(ey - y, z - ez)], ...parts);
+// A part with its stride as an attribute, none if it does not move.
+const strode = (g) =>
+  g.setAttribute(
+    "stride",
+    new THREE.Float32BufferAttribute(
+      Array.from(
+        { length: g.attributes.position.count },
+        () => g.userData.stride ?? [0, 0, 0, 0],
+      ).flat(),
+      4,
+    ),
+  );
 const BLACK = 0x161616;
 const WHITE = 0xf2f2f0;
 const ORANGE = 0xf08a1c;
@@ -52,10 +83,12 @@ const eyes = (w, d, x, y, z, color = BLACK) =>
 // waddling on land or bobbing in water; hop: metres it hops up, twice a second; lift: metres
 // raised, so more shows above the water (or
 // lowered, to stand in it).
-const flamingo = [
-  part(box(0.35, 0.35, 0.6), PINK, [0, 1, 0]),
-  part(box(0.04, 0.85, 0.04), PINK, [0.06, 0.42, 0]),
-];
+// A flamingo on two legs, or on one, the other tucked up till it flees.
+const flamingo = (onTwo) => {
+  const [left, right] = legs(0.04, 0.85, 0.06, 0, PINK);
+  if (!onTwo) left.userData.stride[0] *= 3;
+  return [part(box(0.35, 0.35, 0.6), PINK, [0, 1, 0]), left, right];
+};
 const flamingoNeck = {
   geometry: mergeGeometries([
     part(box(0.06, 0.6, 0.06).translate(0, 0.3, 0).rotateX(0.2), PINK, [0, 0, 0]), // neck
@@ -84,8 +117,12 @@ const wolf = [
   part(box(0.35, 0.4, 1), WOLF, [0, 0.68, 0]),
   part(box(0.3, 0.25, 0.1), 0xc8c0b0, [0, 0.62, 0.5]), // chest
   ...legs(0.09, 0.5, 0.11, 0.35, WOLF),
-  part(box(0.12, 0.12, 0.5).rotateX(-0.6), WOLF, [0, 0.6, -0.68]), // bushy tail
-  part(box(0.13, 0.13, 0.1).rotateX(-0.6), 0x3a3836, [0, 0.46, -0.88]), // its tip
+  ...tail(
+    [0.74, -0.47],
+    [0.42, -0.93],
+    part(box(0.12, 0.12, 0.5).rotateX(-0.6), WOLF, [0, 0.6, -0.68]), // bushy tail
+    part(box(0.13, 0.13, 0.1).rotateX(-0.6), 0x3a3836, [0, 0.46, -0.88]), // its tip
+  ),
 ];
 const wolfHead = mergeGeometries([
   part(box(0.22, 0.3, 0.25).translate(0, 0.12, 0).rotateX(0.3), WOLF, [0, 0, 0]), // neck
@@ -95,22 +132,37 @@ const wolfHead = mergeGeometries([
   ...[-1, 1].map((x) => part(new THREE.ConeGeometry(0.05, 0.13, 4), WOLF, [x * 0.08, 0.37, 0.05])), // ears
   ...eyes(0.03, 0.02, 0.07, 0.25, 0.26, 0xd8b030),
 ]);
-// A swan's body and its neck with the head (both facing +z), in these colours.
-const swanBody = (color) => [
-  part(box(0.45, 0.35, 0.9), color, [0, 0.1, 0]),
-  part(box(0.25, 0.15, 0.25).rotateX(0.5), color, [0, 0.3, -0.45]), // tail
-  ...[-1, 1].map((x) => part(box(0.1, 0.15, 0.6), color, [x * 0.2, 0.32, -0.05])), // wings
-];
-const swanNeck = (color, beak) => [
-  part(box(0.08, 0.5, 0.08).rotateX(-0.2), color, [0, 0.45, 0.35]), // neck
-  part(box(0.1, 0.1, 0.2), color, [0, 0.72, 0.42]), // head
-  part(box(0.06, 0.05, 0.12), beak, [0, 0.7, 0.56]), // beak
-  part(box(0.05, 0.05, 0.04), BLACK, [0, 0.72, 0.5]), // its knob
-  ...eyes(0.025, 0.025, 0.055, 0.735, 0.47),
-];
-// A swan, whole (src/swimmers.js has them on the Rhine).
-export const swan = [...swanBody(WHITE), ...swanNeck(WHITE, ORANGE)];
-const KINDS = {
+// A swan's body and its neck with the head (both facing +z): white with an orange beak, or young,
+// grey with a dark one. Its legs (SWAN_LEG: thick, long, either side, from y up to their hips)
+// hang from under its body, tucked up in the water. The same swans everywhere: here, by the old
+// man (createSwans) and on the Rhine (src/swimmers.js).
+const SWAN_LEG = [0.05, 0.3, 0.1, -0.375];
+const swanColours = (young) => (young ? [0x8a8278, 0x4a4545] : [WHITE, ORANGE]);
+const swanBody = (young) => {
+  const [color] = swanColours(young);
+  return [
+    part(box(0.45, 0.35, 0.9), color, [0, 0.1, 0]),
+    part(box(0.25, 0.15, 0.25).rotateX(0.5), color, [0, 0.3, -0.45]), // tail
+    ...[-1, 1].map((x) => part(box(0.1, 0.15, 0.6), color, [x * 0.2, 0.32, -0.05])), // wings
+  ];
+};
+const swanNeck = (young) => {
+  const [color, beak] = swanColours(young);
+  return [
+    part(box(0.08, 0.5, 0.08).rotateX(-0.2), color, [0, 0.45, 0.35]), // neck
+    part(box(0.1, 0.1, 0.2), color, [0, 0.72, 0.42]), // head
+    part(box(0.06, 0.05, 0.12), beak, [0, 0.7, 0.56]), // beak
+    part(box(0.04, 0.04, 0.04), BLACK, [0, 0.73, 0.53]), // its knob, on the beak's root
+    ...eyes(0.025, 0.025, 0.055, 0.735, 0.47),
+  ];
+};
+// A swan, whole, without its legs (on the Rhine it never leaves the water).
+export const swan = (young) => [...swanBody(young), ...swanNeck(young)];
+const swanLegs = () => {
+  const [w, h, x, at] = SWAN_LEG;
+  return legs(w, h, x, 0, BLACK, { at, tucked: true });
+};
+export const KINDS = {
   wolf: {
     body: wolf,
     swing: { geometry: wolfHead, pivot: [0, 0.85, 0.45], axis: "y", amount: 0.6, speed: 0.4 },
@@ -139,8 +191,9 @@ const KINDS = {
       ]),
     },
   },
+  cygnet: { body: [...swan(true), ...swanLegs()], ring: 3, pace: 0.3, swims: true },
   swan: {
-    body: swan,
+    body: [...swan(false), ...swanLegs()],
     ring: 3,
     pace: 0.3,
     swims: true,
@@ -149,7 +202,11 @@ const KINDS = {
     body: [
       part(box(0.4, 0.45, 0.85), GOAT, [0, 0.7, 0]),
       ...legs(0.08, 0.48, 0.13, 0.32, GOAT),
-      part(box(0.06, 0.12, 0.04).rotateX(-0.5), GOAT, [0, 0.95, -0.43]), // tail
+      ...tail(
+        [0.9, -0.4],
+        [1, -0.46],
+        part(box(0.06, 0.12, 0.04).rotateX(-0.5), GOAT, [0, 0.95, -0.43]),
+      ),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -170,17 +227,18 @@ const KINDS = {
   },
   monkey: {
     body: [
-      part(box(0.25, 0.3, 0.2), MONKEY, [0, 0.3, 0]), // sitting up
-      ...[-1, 1].map((x) => part(box(0.09, 0.1, 0.22), MONKEY, [x * 0.09, 0.08, 0.08])), // legs
-      ...[-1, 1].map((x) =>
-        part(box(0.06, 0.25, 0.06).rotateX(-0.4), MONKEY, [x * 0.15, 0.28, 0.08]),
-      ), // arms
-      part(box(0.04, 0.04, 0.45), MONKEY, [0, 0.04, -0.3]), // tail
-      part(box(0.04, 0.2, 0.04), MONKEY, [0, 0.14, -0.52]), // its curl
-      part(box(0.18, 0.18, 0.16), MONKEY, [0, 0.55, 0]), // head
-      part(box(0.12, 0.1, 0.02), 0xd8b890, [0, 0.53, 0.08]), // face
-      ...eyes(0.03, 0.01, 0.03, 0.56, 0.095),
-      ...[-1, 1].map((x) => part(box(0.04, 0.07, 0.04), 0xd8b890, [x * 0.1, 0.56, 0])), // ears
+      part(box(0.2, 0.18, 0.4), MONKEY, [0, 0.3, 0]), // on all fours
+      ...legs(0.06, 0.21, 0.07, 0.14, MONKEY),
+      ...tail(
+        [0.36, -0.19],
+        [0.72, -0.52],
+        part(box(0.04, 0.04, 0.4).rotateX(0.6), MONKEY, [0, 0.47, -0.355]), // tail, up
+        part(box(0.04, 0.15, 0.04), MONKEY, [0, 0.65, -0.52]), // its curl
+      ),
+      part(box(0.18, 0.18, 0.16), MONKEY, [0, 0.42, 0.24]), // head
+      part(box(0.12, 0.1, 0.02), 0xd8b890, [0, 0.41, 0.325]), // face
+      ...eyes(0.03, 0.01, 0.03, 0.44, 0.335),
+      ...[-1, 1].map((x) => part(box(0.04, 0.07, 0.04), 0xd8b890, [x * 0.1, 0.44, 0.24])), // ears
     ],
     hop: 0.25,
   },
@@ -195,8 +253,12 @@ const KINDS = {
         [-1, 1].map((x) => part(box(0.02, 0.08, 0.1), 0x5a4028, [x * 0.18, 0.62 + y - 0.2, z])),
       ), // spots
       ...legs(0.1, 0.45, 0.12, 0.35, LYNX),
-      part(box(0.07, 0.07, 0.15), LYNX, [0, 0.75, -0.55]), // short tail
-      part(box(0.075, 0.075, 0.05), BLACK, [0, 0.75, -0.64]), // its tip
+      ...tail(
+        [0.75, -0.475],
+        [0.75, -0.665],
+        part(box(0.07, 0.07, 0.15), LYNX, [0, 0.75, -0.55]), // short tail
+        part(box(0.075, 0.075, 0.05), BLACK, [0, 0.75, -0.64]), // its tip
+      ),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -221,8 +283,12 @@ const KINDS = {
       part(box(0.08, 0.03, 1), 0x3a3430, [0, 1.13, 0]), // stripe on its back
       part(box(0.45, 0.08, 0.9), PALE, [0, 0.58, 0]), // belly
       ...legs(0.1, 0.6, 0.16, 0.4, DONKEY),
-      part(box(0.05, 0.5, 0.05), DONKEY, [0, 0.75, -0.57]), // tail
-      part(box(0.08, 0.12, 0.08), 0x3a3430, [0, 0.48, -0.57]), // its tuft
+      ...tail(
+        [1, -0.57],
+        [0.42, -0.57],
+        part(box(0.05, 0.5, 0.05), DONKEY, [0, 0.75, -0.57]), // tail
+        part(box(0.08, 0.12, 0.08), 0x3a3430, [0, 0.48, -0.57]), // its tuft
+      ),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -270,7 +336,7 @@ const KINDS = {
         [2.55, 0.6],
         [2.2, -0.8],
       ].map(([y, z]) => part(box(1.02, 0.25, 0.3), PATCH, [0, y, z])), // patches
-      part(box(0.08, 0.8, 0.08), PATCH, [0, 2.1, -1.05]), // tail
+      ...tail([2.5, -1.03], [1.7, -1.03], part(box(0.08, 0.8, 0.08), PATCH, [0, 2.1, -1.03])),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -294,7 +360,7 @@ const KINDS = {
       ), // ears
       ...[-1, 1].map((x) => part(box(0.12, 0.12, 0.7).rotateX(0.5), WHITE, [x * 0.35, 1.9, 2.5])), // tusks
       ...eyes(0.12, 0.12, 0.55, 2.75, 2.4),
-      part(box(0.1, 0.9, 0.1), GREY, [0, 1.9, -1.55]), // tail
+      ...tail([2.35, -1.55], [1.45, -1.55], part(box(0.1, 0.9, 0.1), GREY, [0, 1.9, -1.55])),
     ],
     swing: {
       geometry: part(new THREE.CylinderGeometry(0.12, 0.2, 1.7, 6), GREY, [0, -0.85, 0]), // trunk
@@ -308,7 +374,7 @@ const KINDS = {
       part(box(0.7, 0.8, 1.6), WHITE, [0, 1.1, 0]),
       ...[-0.6, -0.3, 0, 0.3, 0.6].map((z) => part(box(0.72, 0.82, 0.12), BLACK, [0, 1.1, z])), // stripes
       ...legs(0.15, 0.8, 0.22, 0.6, WHITE),
-      part(box(0.06, 0.6, 0.06), BLACK, [0, 1.1, -0.83]), // tail
+      ...tail([1.4, -0.83], [0.8, -0.83], part(box(0.06, 0.6, 0.06), BLACK, [0, 1.1, -0.83])),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -329,7 +395,7 @@ const KINDS = {
       part(box(1.6, 1.5, 3.2), RHINO, [0, 1.45, 0]),
       ...[-0.6, 0.7].map((z) => part(box(1.65, 1.2, 0.1), 0x6f675f, [0, 1.45, z])), // folds
       ...legs(0.45, 0.8, 0.5, 1.1, RHINO),
-      part(box(0.08, 0.6, 0.08), RHINO, [0, 1.6, -1.65]), // tail
+      ...tail([1.9, -1.63], [1.3, -1.63], part(box(0.08, 0.6, 0.08), RHINO, [0, 1.6, -1.63])),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -345,12 +411,8 @@ const KINDS = {
       speed: 0.5,
     },
   },
-  flamingo: { body: flamingo, swing: flamingoNeck, lift: -0.3 }, // on one leg
-  flamingoOnTwo: {
-    body: [...flamingo, part(box(0.04, 0.85, 0.04), PINK, [-0.06, 0.42, 0])],
-    swing: flamingoNeck,
-    lift: -0.3,
-  },
+  flamingo: { body: flamingo(false), swing: flamingoNeck, lift: -0.3 }, // on one leg
+  flamingoOnTwo: { body: flamingo(true), swing: flamingoNeck, lift: -0.3 },
   penguin: {
     body: [
       part(box(0.4, 0.7, 0.35), BLACK, [0, 0.45, 0]),
@@ -359,7 +421,13 @@ const KINDS = {
       part(box(0.06, 0.06, 0.15), ORANGE, [0, 0.9, 0.2]), // beak
       ...eyes(0.06, 0.06, 0.145, 0.97, 0.07, WHITE),
       ...eyes(0.03, 0.03, 0.17, 0.97, 0.08), // pupils
-      ...[-1, 1].map((x) => part(box(0.12, 0.04, 0.18), ORANGE, [x * 0.1, 0.02, 0.05])), // feet
+      ...[-1, 1].flatMap((x) =>
+        mark(
+          [x, 0.1, 0, 0],
+          part(box(0.06, 0.08, 0.06), ORANGE, [x * 0.1, 0.06, 0]), // leg
+          part(box(0.12, 0.04, 0.18), ORANGE, [x * 0.1, 0.02, 0.05]), // its foot
+        ),
+      ),
       ...[-1, 1].map((x) => part(box(0.05, 0.4, 0.15).rotateZ(x * 0.3), BLACK, [x * 0.24, 0.5, 0])), // flippers
     ],
     ring: 3,
@@ -372,6 +440,7 @@ const KINDS = {
       part(box(1, 0.3, 1), HIPPO, [0, -0.15, 1.75]), // lower jaw
       part(box(0.9, 0.05, 0.9), 0xd77a8a, [0, 0.02, 1.75]), // mouth
       ...[-1, 1].map((x) => part(box(0.1, 0.2, 0.1), WHITE, [x * 0.35, 0.12, 2.15])), // teeth
+      ...legs(0.4, 0.5, 0.5, 0.9, HIPPO, { at: -1.45, tucked: true }),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -390,7 +459,7 @@ const KINDS = {
       part(box(0.6, 0.65, 1.2), BOAR, [0, 0.65, 0]),
       part(box(0.1, 0.12, 1), 0x2e241c, [0, 1.02, 0]), // bristles
       ...legs(0.12, 0.35, 0.2, 0.45, BOAR),
-      part(box(0.04, 0.25, 0.04), BOAR, [0, 0.75, -0.62]), // tail
+      ...tail([0.875, -0.62], [0.625, -0.62], part(box(0.04, 0.25, 0.04), BOAR, [0, 0.75, -0.62])),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -412,8 +481,12 @@ const KINDS = {
       part(box(0.3, 0.3, 0.7), FOX, [0, 0.4, 0]),
       part(box(0.25, 0.2, 0.1), WHITE, [0, 0.35, 0.33]), // chest
       ...legs(0.07, 0.27, 0.1, 0.25, 0x2a1d14),
-      part(box(0.16, 0.16, 0.55).rotateX(-0.3), FOX, [0, 0.33, -0.6]), // tail
-      part(box(0.17, 0.17, 0.12).rotateX(-0.3), WHITE, [0, 0.25, -0.88]), // its tip
+      ...tail(
+        [0.41, -0.34],
+        [0.23, -0.94],
+        part(box(0.16, 0.16, 0.55).rotateX(-0.3), FOX, [0, 0.33, -0.6]), // tail
+        part(box(0.17, 0.17, 0.12).rotateX(-0.3), WHITE, [0, 0.25, -0.88]), // its tip
+      ),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -436,9 +509,13 @@ const KINDS = {
       part(box(0.25, 0.28, 0.6), CAT, [0, 0.38, 0]),
       ...[-0.2, 0, 0.2].map((z) => part(box(0.27, 0.3, 0.05), TABBY, [0, 0.38, z])), // stripes
       ...legs(0.07, 0.25, 0.08, 0.22, CAT),
-      part(box(0.1, 0.1, 0.4), CAT, [0, 0.4, -0.48]), // bushy tail
-      ...[-0.55, -0.62].map((z) => part(box(0.11, 0.11, 0.04), TABBY, [0, 0.4, z])), // its rings
-      part(box(0.11, 0.11, 0.06), BLACK, [0, 0.4, -0.69]), // its tip
+      ...tail(
+        [0.4, -0.3],
+        [0.4, -0.72],
+        part(box(0.1, 0.1, 0.4), CAT, [0, 0.4, -0.48]), // bushy tail
+        ...[-0.55, -0.62].map((z) => part(box(0.11, 0.11, 0.04), TABBY, [0, 0.4, z])), // its rings
+        part(box(0.11, 0.11, 0.06), BLACK, [0, 0.4, -0.69]), // its tip
+      ),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -459,12 +536,21 @@ const KINDS = {
     body: [
       part(box(0.7, 0.35, 1.4), CROCODILE, [0, 0.25, 0]),
       ...[-0.2, 0, 0.2].map((x) => part(box(0.08, 0.08, 1.3), 0x3a4826, [x, 0.45, 0])), // scutes
-      part(box(0.45, 0.25, 0.6), CROCODILE, [0, 0.2, -1]), // tail
-      part(box(0.3, 0.18, 0.6), CROCODILE, [0, 0.15, -1.55]),
-      part(box(0.15, 0.12, 0.5), CROCODILE, [0, 0.1, -2.05]),
+      ...tail(
+        [0.2, -0.7],
+        [0.1, -2.3],
+        part(box(0.45, 0.25, 0.6), CROCODILE, [0, 0.2, -1]), // tail
+        part(box(0.3, 0.18, 0.6), CROCODILE, [0, 0.15, -1.55]),
+        part(box(0.15, 0.12, 0.5), CROCODILE, [0, 0.1, -2.05]),
+      ),
       ...[-1, 1].flatMap((x) =>
-        [-1, 1].map((z) => part(box(0.35, 0.12, 0.15), CROCODILE, [x * 0.45, 0.08, z * 0.5])),
-      ), // legs
+        [-1, 1].flatMap((z) =>
+          mark(
+            [x * z, 0.08, z * 0.5, 0],
+            part(box(0.35, 0.12, 0.15), CROCODILE, [x * 0.45, 0.08, z * 0.5]),
+          ),
+        ),
+      ), // legs, sprawled
       part(box(0.45, 0.12, 0.75), CROCODILE, [0, 0.12, 1.05]), // lower jaw
       part(box(0.4, 0.02, 0.7), 0xc77a6a, [0, 0.19, 1.05]), // mouth
       ...[-1, 1].map((x) => part(box(0.04, 0.05, 0.65), WHITE, [x * 0.19, 0.22, 1.07])), // teeth
@@ -486,8 +572,12 @@ const KINDS = {
       part(box(1, 1.25, 1), SHAG, [0, 1.35, 0.6]), // shaggy forequarters
       part(box(0.7, 0.3, 0.8), SHAG, [0, 2.05, 0.45]), // hump
       ...legs(0.2, 0.8, 0.28, 0.75, WISENT),
-      part(box(0.06, 0.6, 0.06), WISENT, [0, 1.15, -1.13]), // tail
-      part(box(0.1, 0.15, 0.1), SHAG, [0, 0.8, -1.13]), // its tuft
+      ...tail(
+        [1.45, -1.13],
+        [0.725, -1.13],
+        part(box(0.06, 0.6, 0.06), WISENT, [0, 1.15, -1.13]), // tail
+        part(box(0.1, 0.15, 0.1), SHAG, [0, 0.8, -1.13]), // its tuft
+      ),
     ],
     swing: {
       geometry: mergeGeometries([
@@ -513,6 +603,7 @@ const KINDS = {
       part(box(0.12, 0.1, 0.1), BLACK, [0, 0.2, 1.2]), // nose
       ...eyes(0.07, 0.04, 0.1, 0.3, 1.18), // ahead
       part(box(0.6, 0.06, 0.3), 0x5a5550, [0, -0.05, -0.9]), // hind flippers
+      ...legs(0.12, 0.25, 0.2, 0.5, SEAL, { at: -0.6, tucked: true }),
     ],
     ring: 4,
     pace: 1.2,
@@ -532,6 +623,10 @@ const bird = (body, head, beak, size) => ({
       0.12 * size,
       -0.22 * size,
     ]), // tail
+    ...legs(0.03 * size, 0.15 * size, 0.05 * size, 0, beak, {
+      at: -0.19 * size,
+      tucked: true,
+    }),
   ],
   ring: 2.5,
   pace: 0.5,
@@ -549,9 +644,20 @@ KINDS.piglet = {
     ...[0.55, 0.7, 0.85].map((y) => part(box(0.62, 0.05, 1.1), 0xb89a6a, [0, y, 0])),
   ],
 };
-for (const kind of Object.values(KINDS)) kind.body = mergeGeometries(kind.body);
+// Each kind's parts with their strides, and where its tucked legs' feet are (foot, y; 0 if none).
+for (const kind of Object.values(KINDS)) {
+  const tucked = kind.body.filter((g) => Math.abs(g.userData.stride?.[0]) === 3);
+  kind.foot = Math.min(0, ...tucked.map((g) => (g.computeBoundingBox(), g.boundingBox.min.y)));
+  kind.body = mergeGeometries(kind.body.map(strode));
+}
+// Legs swing up to SWING radians, by SPEED times a body's speed (its sizes a second); their gait
+// goes on STEP radians per size gone, eased to its swing EASE times a second. Tails wag TAIL
+// radians either way, WAG radians a second, and FAST more at the legs' full swing. Fleeing, an
+// animal is out (its tucked legs down, its head up) eased EASE times a second.
+const [SWING, SPEED, STEP, EASE] = [0.5, 0.5, 6, 8];
+const [TAIL, WAG, FAST] = [0.3, 2, 10];
 
-// Metres round each kind (before BIG and its size), kept clear of trees.
+// Metres round each kind (before BIG and its size), kept clear of trees and of traffic as it flees.
 const REACH = {
   giraffe: 1.6,
   elephant: 2.2,
@@ -571,6 +677,7 @@ const REACH = {
   stag: 1.2,
   chamois: 0.7,
   swan: 0.7,
+  cygnet: 0.7, // as the swans, so their ring is the same
   drake: 0.3,
   duck: 0.3,
   goose: 0.5,
@@ -658,7 +765,8 @@ const GROUPS = {
     ["hind", 1, -2, 2.6, 1],
     ["hind", 2.6, -1.2, 1.2, 0.55], // a calf
   ],
-  swans: ring("swan", 4, 1.1),
+  // Four swans, a cygnet after each.
+  swans: ring("swan", 8, 1.1).map((swan, k) => (k % 2 ? ["cygnet", 0, 0, swan[3], 0.6] : swan)),
   goats: [
     ["goat", 0, 0, 0, 1],
     ["goat", 1.3, 0.8, 0.7, 1.05],
@@ -719,10 +827,12 @@ const GROUPS = {
 };
 
 // The groups at their places ({ group, x, z, heading }); ground(x, z): the height there; clear(x,
-// z, r): whether no tree reaches within r metres. Each animal stands at the nearest spot clear of
-// trees (a ring's middle so the whole ring is); returns { meshes, update(seconds) }: per body and
-// per neck geometry one mesh, its instances the animals with it, in one draw call.
-export function createZoo(places, ground, clear) {
+// z, r): whether no tree reaches within r metres; danger: what they flee from (createFlight). Each
+// animal stands at the nearest spot clear of trees (a ring's middle so the whole ring is); returns
+// { meshes, update(seconds, dt) }: per body and per neck geometry one mesh, its instances the
+// animals with it, in one draw call. Fleeing, one stands on its legs (those in the water put them
+// down), its head up, its legs swinging as it goes; its tail wags all the while.
+export function createZoo(places, ground, clear, danger) {
   const free = (x, z, r) => {
     for (let d = 0; d <= 40; d += 2)
       for (let k = 0; k < (d ? 8 : 1); k++) {
@@ -732,7 +842,7 @@ export function createZoo(places, ground, clear) {
     return [x, z];
   };
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const animals = places.flatMap(({ group, x, z, heading }) =>
+  const animals = places.flatMap(({ group, x, z, heading }, herd) =>
     GROUPS[group].map(([name, dx, dz, turn, size], k) => {
       const kind = KINDS[name];
       const mesh = new THREE.Object3D(); // placed here, drawn as an instance of its body's mesh
@@ -752,20 +862,81 @@ export function createZoo(places, ground, clear) {
         mesh.add(neck);
       }
       const center = { x: ax, y: ground(ax, az), z: az };
-      return { mesh, neck, kind, turn, k, lift, scale: BIG * size, center };
+      const facing = heading + turn;
+      // Its legs' phase and swing, how far out, its tail's phase; where it was, how far off its
+      // place (createFlight's, null if at it); seconds on its ring.
+      const gait = { phase: 0, swing: 0, out: 0, wag: k, x: ax, z: az, off: null, round: 0 };
+      const foot = BIG * size * kind.foot;
+      return {
+        herd,
+        mesh,
+        neck,
+        kind,
+        turn,
+        k,
+        lift,
+        foot,
+        scale: BIG * size,
+        center,
+        facing,
+        reach,
+        gait,
+      };
     }),
   );
+  const flee = createFlight(animals.length, danger);
+  const herds = [...Map.groupBy(animals, ({ herd }) => herd).values()]; // those of a place
+  // One fleeing pushed by px, pz, off its place, and where it goes with it; whether one is fleeing
+  // clear of its place (further than its reach).
+  const push = ({ gait: { off }, mesh: { position } }, px, pz) => {
+    for (const k of [0, 5]) [off[k], off[k + 1]] = [off[k] + px, off[k + 1] + pz];
+    [position.x, position.z] = [position.x + px, position.z + pz];
+  };
+  const loose = ({ gait: { off }, reach }) => off && Math.hypot(off[0], off[1]) > reach;
   // Per geometry its mesh and the bodies or necks it shows.
   const shown = new Map();
   const show = (geometry, object) =>
     (shown.get(geometry) ?? shown.set(geometry, []).get(geometry)).push(object);
-  for (const { mesh, neck, kind } of animals) {
+  for (const { mesh, neck, kind, gait } of animals) {
+    gait.slot = shown.get(kind.body)?.length ?? 0; // its instance
     show(kind.body, mesh);
     if (neck) show(kind.swing.geometry, neck);
   }
+  // The bodies, moving their parts by their strides and the instance's gait (phase, swing, out,
+  // its tail's phase): a leg turned about its hip by its way times swing radians, as the sine of
+  // the phase, a tucked one drawn out from its hip by out; a tail turned about its base, sideways,
+  // by TAIL radians as the sine of its phase.
+  const legged = material.clone();
+  legged.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("void main() {", "attribute vec4 stride;\nattribute vec4 gait;\nvoid main() {")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        if (stride.x == 2.0) {
+          vec3 base = vec3(0.0, stride.yz);
+          vec3 axis = vec3(0.0, cos(stride.w), sin(stride.w));
+          vec3 v = transformed - base;
+          float a = ${TAIL.toFixed(2)} * sin(gait.w);
+          transformed = base + v * cos(a) + cross(axis, v) * sin(a) + axis * dot(axis, v) * (1.0 - cos(a));
+        } else if (stride.x != 0.0) {
+          vec2 hip = transformed.yz - stride.yz;
+          if (abs(stride.x) > 2.0) hip *= gait.z;
+          float a = sign(stride.x) * gait.y * sin(gait.x);
+          transformed.yz = stride.yz + mat2(cos(a), sin(a), -sin(a), cos(a)) * hip;
+        }`,
+      );
+  };
+  const gaits = new Map(); // per body its instances' gait
   const meshes = [...shown].map(([geometry, objects]) => {
-    const mesh = new THREE.InstancedMesh(geometry, material, objects.length);
+    const body = !!geometry.attributes.stride;
+    const mesh = new THREE.InstancedMesh(geometry, body ? legged : material, objects.length);
     mesh.frustumCulled = false; // spread over the city
+    if (body) {
+      const gait = new THREE.InstancedBufferAttribute(new Float32Array(4 * objects.length), 4);
+      geometry.setAttribute("gait", gait.setUsage(THREE.DynamicDrawUsage));
+      gaits.set(geometry, gait);
+    }
     return [mesh, objects];
   });
   // Their instances where the animals are now.
@@ -779,26 +950,67 @@ export function createZoo(places, ground, clear) {
   write();
   return {
     meshes: meshes.map(([mesh]) => mesh),
-    update(seconds) {
-      for (const { mesh, neck, kind, turn, k, lift, scale, center } of animals) {
-        const { swing, pace, swims } = kind;
-        if (neck)
-          neck.rotation[swing.axis ?? "x"] =
-            (swing.rest ?? 0) + swing.amount * Math.sin(swing.speed * seconds + k);
-        if (kind.hop)
-          mesh.position.y =
-            center.y + lift + scale * kind.hop * Math.abs(Math.sin(Math.PI * 2 * seconds + k));
-        if (!kind.ring) continue;
-        const ring = BIG * kind.ring;
-        const a = turn + (BIG * pace * seconds) / ring;
-        const [x, z] = [center.x + ring * Math.sin(a), center.z + ring * Math.cos(a)];
-        mesh.rotation.y = Math.atan2(Math.cos(a), -Math.sin(a)); // ahead on the ring
-        if (swims) mesh.position.set(x, center.y + lift + 0.1 * Math.sin(2 * seconds + k), z);
-        else {
-          mesh.position.set(x, ground(x, z), z);
-          mesh.rotation.z = 0.2 * Math.sin(6 * seconds + k);
-        }
-      }
+    // Off its place while it flees, on the ground there, facing its way.
+    update(seconds, dt) {
+      animals.forEach(
+        ({ mesh, neck, kind, turn, k, lift, foot, scale, center, facing, reach, gait }, i) => {
+          const { swing, pace, swims } = kind;
+          let [x, z, heading] = [center.x, center.z, facing];
+          // On its ring, which waits while it is off it.
+          if (kind.ring) {
+            if (!gait.off) gait.round += dt;
+            const ring = BIG * kind.ring;
+            const a = turn + (BIG * pace * gait.round) / ring;
+            [x, z] = [center.x + ring * Math.sin(a), center.z + ring * Math.cos(a)];
+            heading = Math.atan2(Math.cos(a), -Math.sin(a)); // ahead on the ring
+            if (!swims) mesh.rotation.z = 0.2 * Math.sin(6 * seconds + k);
+          }
+          const off = flee(i, x, center.y, z, dt, reach);
+          if (off) [x, z, heading] = [x + off[0], z + off[1], off[2]];
+          gait.off = off;
+          if (dt) gait.out += ((off ? 1 : 0) - gait.out) * Math.min(1, EASE * dt);
+          // Raised (or lowered) as placed, out on its feet.
+          const on = off || (kind.ring && !swims) ? ground(x, z) : center.y;
+          let y = on + lift + (-foot - lift) * gait.out;
+          if (kind.hop) y += scale * kind.hop * Math.abs(Math.sin(Math.PI * 2 * seconds + k));
+          if (swims) y += 0.1 * Math.sin(2 * seconds + k) * (1 - gait.out);
+          mesh.position.set(x, y, z);
+          mesh.rotation.y = heading;
+          if (neck)
+            neck.rotation[swing.axis ?? "x"] =
+              ((swing.rest ?? 0) + swing.amount * Math.sin(swing.speed * seconds + k)) *
+              (1 - gait.out);
+          if (!dt) return;
+          const gone = Math.hypot(x - gait.x, z - gait.z) / scale;
+          gait.phase += STEP * gone;
+          const most = Math.min(SWING, (SPEED * gone) / dt);
+          gait.swing += (most - gait.swing) * Math.min(1, EASE * dt);
+          gait.wag += (WAG + (FAST * gait.swing) / SWING) * dt;
+          [gait.x, gait.z] = [x, z];
+          gaits
+            .get(kind.body)
+            .array.set([gait.phase, gait.swing, gait.out, gait.wag], 4 * gait.slot);
+        },
+      );
+      // Of a herd, two fleeing clear of their places pushed apart where they come within each
+      // other's reach (near their places they may, as some stand so).
+      for (const herd of herds)
+        for (let n = 0; n < herd.length; n++)
+          for (let m = n + 1; m < herd.length; m++) {
+            const [a, b] = [herd[n], herd[m]];
+            if (!loose(a) || !loose(b)) continue;
+            const [dx, dz] = [
+              b.mesh.position.x - a.mesh.position.x,
+              b.mesh.position.z - a.mesh.position.z,
+            ];
+            const d = Math.hypot(dx, dz);
+            const overlap = a.reach + b.reach - d;
+            if (overlap <= 0) continue;
+            const [ux, uz] = d ? [dx / d, dz / d] : [1, 0];
+            push(a, (-ux * overlap) / 2, (-uz * overlap) / 2);
+            push(b, (ux * overlap) / 2, (uz * overlap) / 2);
+          }
+      for (const instances of gaits.values()) instances.needsUpdate = true;
       write();
     },
   };
@@ -814,16 +1026,19 @@ const FLY = 1;
 const ARC = 1.5;
 const PECK = 1;
 // Swans at places ({ x, y, z, heading, size, young: grey }), fed bread tossed from a point (a
-// Vector3) every period seconds from first on, to each in turn; each pecks its piece where it
-// lands, ahead of it. Returns { meshes, update(seconds) }.
-export function createSwans(places, from, period, first) {
+// Vector3) every period seconds from first on, to each in turn, while feeding() (none tossed
+// else); each pecks its piece where it lands, ahead of it. Fleeing from danger (createFlight), off
+// its place on its legs on ground(x, z), facing its way, they swinging as it goes. Returns
+// { meshes, update(seconds, dt) }.
+export function createSwans(places, from, period, first, ground, danger, feeding) {
   const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const breadShape = part(box(0.12, 0.07, 0.12), 0xd9b26a, [0, 0.035, 0]);
-  const shapes = [WHITE, 0x8a8278].map((color) => [
-    mergeGeometries(swanBody(color)),
-    mergeGeometries(swanNeck(color, color === WHITE ? ORANGE : 0x4a4545)).translate(
-      ...NECK.map((v) => -v),
-    ),
+  // A leg as swanLegs has it, hanging from its hip.
+  const [W, H, X, AT] = SWAN_LEG;
+  const legShape = part(box(W, H + W / 2, W), BLACK, [0, (W / 2 - H) / 2, 0]);
+  const shapes = [false, true].map((young) => [
+    mergeGeometries(swanBody(young)),
+    mergeGeometries(swanNeck(young)).translate(...NECK.map((v) => -v)),
   ]);
   const swans = places.map(({ x, y, z, heading, size, young }) => {
     const [body, neck] = shapes[young ? 1 : 0].map((g) => new THREE.Mesh(g, material));
@@ -832,23 +1047,46 @@ export function createSwans(places, from, period, first) {
     body.scale.setScalar(size);
     neck.position.fromArray(NECK);
     body.add(neck);
+    const legs = [-1, 1].map((side) => {
+      const leg = new THREE.Mesh(legShape, material);
+      leg.position.set(side * X, AT + H, 0);
+      body.add(leg);
+      return leg;
+    });
     const reach = BEAK * size;
     const target = new THREE.Vector3(
       x + reach * Math.sin(heading),
       y,
       z + reach * Math.cos(heading),
     );
-    return { body, neck, bread: new THREE.Mesh(breadShape, material), target };
+    const bread = new THREE.Mesh(breadShape, material);
+    // Its legs' phase; its last toss and whether it was tossed.
+    return { body, neck, legs, bread, target, x, y, z, heading, size, phase: 0, toss: NaN };
   });
+  const flee = createFlight(swans.length, danger);
   const cycle = period * swans.length;
   return {
     meshes: swans.flatMap(({ body, bread }) => [body, bread]),
-    update(seconds) {
-      swans.forEach(({ neck, bread, target }, k) => {
-        const since = (((seconds - first - k * period) % cycle) + cycle) % cycle; // its last toss
+    update(seconds, dt) {
+      swans.forEach((swan, k) => {
+        const { body, neck, legs, bread, target, x, y, z, heading, size } = swan;
+        const off = flee(k, x, y, z, dt);
+        const [bx, bz] = off ? [x + off[0], z + off[1]] : [x, z];
+        swan.phase += (STEP * Math.hypot(bx - body.position.x, bz - body.position.z)) / size;
+        body.position.set(bx, off ? ground(bx, bz) - AT * size : y, bz);
+        body.rotation.y = off ? off[2] : heading;
+        legs.forEach((leg, side) => {
+          leg.visible = !!off;
+          leg.rotation.x = (side ? SWING : -SWING) * Math.sin(swan.phase);
+        });
+        const at = seconds - first - k * period;
+        const toss = Math.floor(at / cycle);
+        if (toss !== swan.toss) [swan.toss, swan.tossed] = [toss, feeding()];
+        const since = at - toss * cycle; // since its last toss
         const peck = since - FLY;
-        neck.rotation.x = peck > 0 && peck < PECK ? DIP * Math.sin((Math.PI * peck) / PECK) : 0;
-        bread.visible = peck < PECK / 2; // eaten once the beak is down
+        const pecking = swan.tossed && !off && peck > 0 && peck < PECK;
+        neck.rotation.x = pecking ? DIP * Math.sin((Math.PI * peck) / PECK) : 0;
+        bread.visible = swan.tossed && peck < PECK / 2; // eaten once the beak is down
         if (since < FLY) {
           const s = since / FLY;
           bread.position.lerpVectors(from, target, s).y += 4 * ARC * s * (1 - s);

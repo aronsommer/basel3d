@@ -1,5 +1,7 @@
 // A girl on a small pink bike riding to and fro along a path, weaving a little and now and then
-// pulling a wheelie, her little sister on a blue tricycle after her.
+// pulling a wheelie, her little sister on a blue tricycle after her. As people flee
+// (src/people.js), they ride out of traffic's way and wait there till calm; else they brake for it
+// ahead.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part } from "./parts.js";
@@ -15,6 +17,12 @@ export const PEDAL = 2.5; // radians of the bike's pedals per metre
 const WIDE = 1; // metres either side of the path's middle she aims at its ends
 const NEAR = 2; // metres from an end where she turns, and from her where the sister stops
 const LIFT = 0.45; // radians, the front wheel up in a wheelie
+// Metres out of traffic's way at most, metres ahead they look for it (and a second's way more),
+// metres from their way out's end where they are there, seconds calm till they ride on; fleeing,
+// they turn and speed up FLEE times as fast, ride SPRINT times their top speed, CLEAR metres
+// beyond the traffic, keeping ROOM metres round them out of it.
+const [DODGE, LOOK, THERE, CALM, FLEE] = [8, 4, 1, 2, 5];
+const [SPRINT, CLEAR, ROOM] = [1.5, 3, 0.8];
 const LOOKS = [
   // Brown long hair.
   {
@@ -123,9 +131,10 @@ const TRICYCLE = {
   pose: "trike",
 };
 
-// The path from one end to the other ([x, z] each); ground(x, z) the height there. { objects,
-// update(dt) }.
-export function createBike([from, to], ground) {
+// The path from one end to the other ([x, z] each); ground(x, z) the height there; danger(x, y, z,
+// reach, march, clear, turn, room): null if no traffic is there, else the shortest way out of it
+// ([x, z]) within reach metres (src/main.js). { objects, update(dt) }.
+export function createBike([from, to], ground, danger) {
   const random = (a, b) => a + Math.random() * (b - a);
   const towards = (dx, dz) => Math.atan2(dx, dz);
   const turned = (a) => Math.atan2(Math.sin(a), Math.cos(a)); // into -π…π
@@ -150,7 +159,7 @@ export function createBike([from, to], ground) {
       group.add(mesh);
       return [mesh, r];
     });
-    const crowd = createCrowd("woman", 1, false); // she rides, she does not flee
+    const crowd = createCrowd("woman", 1, false); // she flees on the bike (ride), not on foot
     crowd.dress(0, LOOKS[k], pose);
     crowd.mesh.frustumCulled = false; // she moves
     group.add(crowd.mesh);
@@ -171,13 +180,41 @@ export function createBike([from, to], ground) {
       off: 0,
       lift: 0,
       pedals: 0,
+      fast: k ? TRIKE : RIDE, // metres per second at most
+      out: null, // the end of her way out of traffic, [x, z]
+      calm: 0, // seconds out of it
     };
   });
-  // Turns r towards aim (radians) and moves her on at up to top, slowing down to turn.
+  // Turns r towards aim (radians) and moves her on at up to top, slowing down to turn. In traffic
+  // she keeps to a way out of it, sought anew once there or when its end is in danger too, and
+  // sprints along it, not slowing to turn; there she waits, till CALM seconds out of
+  // traffic. Else she stops for traffic ahead.
   function ride(r, aim, top, dt) {
+    const way = danger(r.x, ground(r.x, r.z), r.z, DODGE, false, CLEAR, 0, ROOM);
+    let left = r.out ? Math.hypot(r.out[0] - r.x, r.out[1] - r.z) : 0;
+    if (way) {
+      r.calm = 0;
+      const [ox, oz] = r.out ?? [];
+      const anew = !r.out || left < THERE || danger(ox, ground(ox, oz), oz, 0, false, 0, 0, ROOM);
+      if ((way[0] || way[1]) && anew) {
+        r.out = [r.x + way[0], r.z + way[1]];
+        left = Math.hypot(...way);
+      }
+    } else if (r.out && (r.calm += dt) > CALM) r.out = null;
+    const fleeing = r.out !== null;
+    if (fleeing)
+      [aim, top] =
+        left < THERE ? [r.heading, 0] : [towards(r.out[0] - r.x, r.out[1] - r.z), SPRINT * r.fast];
+    else {
+      const look = LOOK + r.speed;
+      const [ax, az] = [r.x + Math.sin(r.heading) * look, r.z + Math.cos(r.heading) * look];
+      if (way || danger(ax, ground(ax, az), az, 0)) top = 0;
+    }
+    const [steer, rate] = fleeing ? [FLEE * STEER, FLEE * 1.5] : [STEER, 1.5];
     r.off = turned(aim - r.heading);
-    r.heading += THREE.MathUtils.clamp(r.off, -STEER * dt, STEER * dt);
-    r.speed += (top * Math.max(0.35, Math.cos(r.off)) - r.speed) * Math.min(1, 1.5 * dt);
+    r.heading += THREE.MathUtils.clamp(r.off, -steer * dt, steer * dt);
+    const slow = fleeing ? 1 : Math.max(0.35, Math.cos(r.off));
+    r.speed += (top * slow - r.speed) * Math.min(1, rate * dt);
     const step = r.speed * dt;
     r.x += Math.sin(r.heading) * step;
     r.z += Math.cos(r.heading) * step;

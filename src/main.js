@@ -664,6 +664,8 @@ const ferries = createFerries(fromWGS84, heightAt, boost, OPEN ? [FERRY] : []);
 scene.add(ferries.group);
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y
+// Whether one at x, y, z is in the Rhine, not over it on a bridge.
+const inRhine = (x, z, y) => y <= WATER + 0.5 && heightAt(x, z) <= WATER;
 // A fountain within RHINE metres of the Rhine faces it: the water first found, looking every 2 m
 // further out in 36 directions (those found then averaged); others are turned as they may, as
 // the files do not say which way they face.
@@ -687,7 +689,13 @@ const bridgeDecks = () =>
       parts.flatMap(({ positions }) => positions),
     ),
   ));
-const ships = createShips(new Float32Array(shipsBuffer), ferries.ferries, boost, bridgeDecks);
+const ships = createShips(
+  new Float32Array(shipsBuffer),
+  ferries.ferries,
+  boost,
+  bridgeDecks,
+  danger,
+);
 scene.add(...ships.meshes);
 // Cyclists and e-scooter riders (src/runners.js) along the Rhine's Kleinbasel bank
 // (src/rheinweg.js), braking for what the people flee from (danger).
@@ -699,11 +707,11 @@ scene.add(...runners.meshes);
 // Passers-by and joggers who swim down the Rhine (src/swimmers.js) on their round
 // (src/rheinweg.js), waiting for the ferries and swimming aside from them, and swans beside them.
 const rheinrunde = RHEINRUNDE.map(([lat, lon]) => fromWGS84(lat, lon));
-const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries, space);
+const swimmers = createSwimmers(rheinrunde, heightAt, WATER, ferries.ferries, space, danger);
 scene.add(...swimmers.meshes);
 // The museum's, fewer, on its round (src/museum.js), no ferry near.
 const museumSwimmers =
-  OPEN && createSwimmers(SWIM, heightAt, WATER, [], space, { walkers: 6, joggers: 4 });
+  OPEN && createSwimmers(SWIM, heightAt, WATER, [], space, danger, { walkers: 6, joggers: 4 });
 if (OPEN) scene.add(...museumSwimmers.meshes);
 // And cyclists and e-scooter riders on their way up the bank.
 const museumRunners =
@@ -933,9 +941,9 @@ build("S2", { parked, towel, TOWEL });
 build("S3", { parked });
 build("S4", { parked });
 // The animals of the Zoo Basel, the Merian Gärten and the Lange Erlen (src/catalog.js).
-const animals = build("A1", { heightAt, clear: tree.clear });
+const animals = build("A1", { heightAt, clear: tree.clear, danger });
 // The old man feeding swans on the Rhine's bank (src/catalog.js).
-const feeding = build("S1", { heightAt, towel, TOWEL });
+const feeding = build("S1", { heightAt, towel, TOWEL, danger });
 // Pedestrians (src/walkers.js) in the inner city, men and women of all looks, and dogs. They stand
 // as the vehicles do, but also on a deck reaching one of the points AROUND them, so they stay on a
 // bridge whose sidewalk runs along its edge; never on the water: there on the highest deck at or
@@ -1421,7 +1429,7 @@ const badischer = roofAt([2612676.3, 1268528.5]);
 if (badischer) structures.paint(badischer.number, { facade: 1 << 5 });
 // The football training on its pitch, the girl on her bike and her sister (src/catalog.js).
 const training = build("S7", { parked });
-const bike = build("S6", { heightAt });
+const bike = build("S6", { heightAt, danger });
 // "PUMA" mown into the grass (src/lawn.js), reading from WGS84 47.571836, 7.600411 to 47.572127,
 // 7.600549.
 const lawn = createLawn(
@@ -1431,7 +1439,7 @@ const lawn = createLawn(
 );
 scene.add(lawn);
 const tanks = build("V7", { parked, boost, world }).vehicles;
-const dinos = build("V9", { parked, boost, world }).vehicles;
+const dinos = build("V9", { parked, boost, world, danger }).vehicles;
 // The drone flies down to roofs (structures.top) as well.
 const drones = build("V8", {
   heightAt,
@@ -2090,15 +2098,16 @@ const drives = [
 // Water splashing round the wheels of the road vehicles and dinos on the Rhine (src/splash.js).
 const splash = createSplash(
   [police, ambulances, fireTrucks, motorcycles, quads, xrts, tanks, dinos].flat(),
-  (x, z, y) => y <= WATER + 0.5 && heightAt(x, z) <= WATER,
+  inRhine,
   WATER,
 );
 scene.add(splash.points);
-// People and animals of src/people.js flee (dodge) from what moves on the ground or water: the
+// People and animals flee (src/people.js: dodge, createFlight; the girl on her bike, the cyclists
+// ride out of the way) from what moves on the ground or water, in the Rhine swimming: the
 // cars of trams, trains and road vehicles that go and their ways WARN seconds ahead (traffic), and
-// the vehicles above (but the drones) while they move faster than slow, with their ways WARN
-// seconds ahead along their heading; and, but the clique itself, the Fasnacht clique's rows and
-// members (src/fasnacht.js, its zones).
+// the one of the vehicles above ridden (but a drone) while it moves faster than slow, its way WARN
+// seconds ahead along its heading; but the clique itself, the Fasnacht clique's rows and members
+// (src/fasnacht.js, its zones); and in God mode the mouse moving (scare).
 // In danger is one up to margin metres beside the vehicles (steered metres more beside the vehicles
 // above, as they may turn) or in a row's zone, at most level metres above or below.
 const DANGER = { margin: 0.5, steered: 4, level: 3, slow: 0.5 }; // metres, metres per second
@@ -2111,15 +2120,19 @@ const driven = drives
   .flatMap(([vehicles]) => vehicles)
   .filter(({ half }) => half)
   .map((vehicle) => ({ vehicle, ...vehicle.group.position, speed: 0 }));
-// The dangers within SPAN metres of the spot last asked (asked), at most MOST, each back x, z,
-// way x, z (unit), length and half width, with the car or stretch (its first point) or driven
-// vehicle (-1 - its index) or clique row (-1 - driven vehicles - its index) it is of.
+// The dangers within SPAN metres of the spot last asked (asked: x, z and the metres round it one
+// there takes up, added all round), at most MOST, each back x, z, way x, z (unit), length and half
+// width, with the car or stretch (its first point) or driven vehicle (-1 - its index) or clique
+// row (-1 - driven vehicles - its index) or the mouse (MOUSE) it is of.
 const [SPAN, MOST] = [20, 32]; // metres, more than any way out (src/people.js)
+const MOUSE = -(2 ** 30); // the zone of the mouse in God mode (scare), as no other's
 const zones = new Float64Array(6 * MOST);
 const zoneOf = new Int32Array(MOST);
 let zoneCount = 0;
-const asked = [0, 0];
+const asked = [0, 0, 0];
 function zone(of, bx, bz, ux, uz, length, half) {
+  const room = asked[2];
+  [bx, bz, length, half] = [bx - ux * room, bz - uz * room, length + 2 * room, half + room];
   const [dx, dz] = [asked[0] - bx, asked[1] - bz];
   const along = dx * ux + dz * uz;
   if (along < -SPAN || along > length + SPAN || Math.abs(dx * uz - dz * ux) > half + SPAN) return;
@@ -2139,30 +2152,36 @@ const inDanger = (x, z) => {
   return false;
 };
 const [wallFrom, wallTo] = [new THREE.Vector3(), new THREE.Vector3()];
-// Whether one at x, y, z may go straight to tx, tz: ground all the way, at each metre at most STEP
-// up or down from the one before (not off a bridge's edge), and no wall of a building or bridge.
+// Whether one at x, y, z may go straight to tx, tz: in the Rhine, the Rhine all the way; else
+// ground all the way, at each metre at most STEP up or down from the one before (not off a
+// bridge's edge); and no wall of a building or bridge.
 function open(x, y, z, tx, tz) {
   const n = Math.ceil(Math.hypot(tx - x, tz - z));
+  const wet = inRhine(x, z, y);
   let h = walkGround(x, z, y);
   for (let i = 1; i <= n; i++) {
-    const g = walkGround(x + ((tx - x) * i) / n, z + ((tz - z) * i) / n, h);
+    const [px, pz] = [x + ((tx - x) * i) / n, z + ((tz - z) * i) / n];
+    if (wet) {
+      if (heightAt(px, pz) > WATER) return false;
+      continue;
+    }
+    const g = walkGround(px, pz, h);
     if (Math.abs(g - h) > STEP) return false;
     h = g;
   }
   return !structures.wall(wallFrom.set(x, y + 1, z), wallTo.set(tx, y + 1, tz), true);
 }
 const way = [0, 0];
-// Null if x, y, z is in no danger (the clique's zones not counted if march; none under the
-// water's surface, swimming), else the shortest
-// way out ([x, z]) within reach metres, open all the way (open): across one of the dangers there,
-// to either side, turn radians off straight across, CLEAR and clear more metres beyond it and on
+// Null if x, y, z, or room metres round it, is in no danger (the clique's zones not counted if
+// march), else the shortest way out ([x, z]) within reach metres, open all the way (open): across
+// one of the dangers there, to either side, turn radians off straight across (onward: towards
+// where the danger goes, on either side), CLEAR and clear more metres beyond it and on
 // until out of all, rather not across another (CROSS); only if there is none, as far out of one
 // on its own side as it may; [0, 0] if not even that.
 const grids = [traffic.head, traffic.ways]; // the cars' and the stretches' (src/movers.js, note)
-function danger(x, y, z, reach, march, clear = 0, turn = 0) {
-  if (y < WATER - 0.1) return null; // swimming
+function danger(x, y, z, reach, march, clear = 0, turn = 0, room = 0, onward = false) {
   zoneCount = 0;
-  [asked[0], asked[1]] = [x, z];
+  [asked[0], asked[1], asked[2]] = [x, z, room];
   const { xz, y: ys, of, blockers, halves } = traffic;
   for (const head of grids)
     for (let i = -1; i <= 1; i++)
@@ -2194,10 +2213,15 @@ function danger(x, y, z, reach, march, clear = 0, turn = 0) {
         zone(-1 - driven.length - r, c[0], c[1], c[2], c[3], c[4], c[5]);
       r++;
     }
+  if (scare.on && Math.abs(scare.to.y - y) <= DANGER.level) {
+    const { from, to } = scare;
+    const length = Math.hypot(to.x - from.x, to.z - from.z);
+    const [ux, uz] = length ? [(to.x - from.x) / length, (to.z - from.z) / length] : [1, 0];
+    zone(MOUSE, from.x - ux * SCARE, from.z - uz * SCARE, ux, uz, length + 2 * SCARE, SCARE);
+  }
   if (!inDanger(x, z)) return null;
   let best = Infinity;
   way[0] = way[1] = 0;
-  const [cos, sin] = [Math.cos(turn), Math.sin(turn)];
   for (let k = 0; k < 6 * zoneCount; k += 6) {
     const side = beside(k, x, z);
     if (!(Math.abs(side) < zones[k + 5])) continue;
@@ -2205,6 +2229,7 @@ function danger(x, y, z, reach, march, clear = 0, turn = 0) {
     const d = -1 - zoneOf[k / 6];
     const aside = d >= 0 && d < driven.length && Math.abs(side) > zones[k + 5] - DANGER.steered;
     for (const s of [-1, 1]) {
+      const [cos, sin] = [Math.cos(onward ? s * turn : turn), Math.sin(onward ? s * turn : turn)];
       const [ax, az] = [
         s * (zones[k + 3] * cos + zones[k + 2] * sin),
         s * (zones[k + 3] * sin - zones[k + 2] * cos),
@@ -2240,13 +2265,15 @@ function footprints() {
     else keptOff[d].set([p.x - ux * h, p.z - uz * h, ux, uz, 2 * h, (width / 2) * scale.x]);
   });
 }
-// Figures flee after all has moved this frame, from the vehicles above at their speed along
-// their heading.
+// Figures flee after all has moved this frame, from the one of the vehicles above ridden at its
+// speed along its heading (the others, parked or fleeing themselves, none).
 function flee(dt) {
+  const ridden = riding && drives.find(([, ride]) => ride === riding.ride)?.[0][riding.vehicle];
   for (const d of driven) {
     const { position, rotation } = d.vehicle.group;
     const [dx, dz] = [position.x - d.x, position.z - d.z];
-    d.speed = dt && (dx * Math.sin(rotation.y) + dz * Math.cos(rotation.y)) / dt;
+    const moved = dt && (dx * Math.sin(rotation.y) + dz * Math.cos(rotation.y)) / dt;
+    d.speed = d.vehicle === ridden ? moved : 0;
     [d.x, d.z] = [position.x, position.z];
   }
   dodge(dt, danger, walkGround);
@@ -2565,8 +2592,9 @@ const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
 // only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
 // as browsers allow copying only then), else is recorded while recording (src/points.js), else
-// destroys or rebuilds in God mode (godAt), else sets one down (setDown; with a mouse, captures
-// it: mouseLook), else rides what is there, else, walking with a mouse, captures it again;
+// sets one down (setDown; with a mouse, captures it: mouseLook), else destroys or rebuilds in God
+// mode but while walking (godAt; godly), else rides what is there, else, walking with a mouse, captures
+// it again;
 // nothing while steering. While it is captured, rides what the dot in the middle is on, if
 // anything.
 let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
@@ -2589,12 +2617,12 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
   if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
   if (pointsPanel.click(e.clientX, e.clientY)) return;
-  if (god) return godAt(e.clientX, e.clientY);
   if (placing) {
     setDown(e.clientX, e.clientY);
     if (mouse && riding?.ride === footRide) captureMouse();
     return;
   }
+  if (godly()) return godAt(e.clientX, e.clientY);
   if (buttonAt(e.clientX, e.clientY, mouse ? 0 : FINGER)) return switchMuseum();
   const label = labelAt(e.clientX, e.clientY);
   if (label) return press(label);
@@ -2604,8 +2632,23 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 });
 // "God mode" in the Dev panel: a click or tap destroys the building or bridge there; elsewhere it
 // rebuilds the destroyed one there (explosions.removedAt) by storing the others alone and loading
-// the page again, so all comes back as after "Rebuild Basel".
+// the page again, so all comes back as after "Rebuild Basel". Not while setting one down to walk
+// or walking: whether it is on.
 let god = false;
+const godly = () => god && !placing && riding?.ride !== footRide;
+// In God mode the mouse moving over the ground scares people and animals as a vehicle does
+// (danger): SCARE metres round its way since it last moved, for SCARED milliseconds after; on
+// while so (set each frame).
+const [SCARE, SCARED] = [8, 250];
+const scare = { from: new THREE.Vector3(), to: new THREE.Vector3(), until: -Infinity, on: false };
+function scareAt(clientX, clientY) {
+  const point = pointAt(clientX, clientY);
+  if (!point) return;
+  const now = performance.now();
+  scare.from.copy(now < scare.until ? scare.to : point);
+  scare.to.copy(point);
+  scare.until = now + SCARED;
+}
 function godAt(clientX, clientY) {
   const number = structures.at(clientX, clientY);
   if (number >= 0) return destroy(number);
@@ -2808,15 +2851,22 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 function updateHover() {
   if (mouseLook()) hover = { x: innerWidth / 2, y: innerHeight / 2 };
   if (!hover) return;
-  const aiming = placing || god || pointsPanel.recording(); // clicks pick a point, not a vehicle
+  const aiming = placing || godly() || pointsPanel.recording(); // clicks pick a point, not a vehicle
   const free = !pointers.size && !steered() && !aiming;
   // The museum's switch or a label with pins goes before a vehicle, as a click does.
   const clickable =
     free && (buttonAt(hover.x, hover.y) || (!mouseLook() && labelAt(hover.x, hover.y)));
   const found = free && !clickable ? vehicleAt(hover.x, hover.y) : null;
+  if (godly()) scareAt(hover.x, hover.y);
   hover = null;
   for (const ride of rides) ride.highlight(found?.ride === ride ? found.vehicle : -1);
-  renderer.domElement.style.cursor = aiming ? "crosshair" : found || clickable ? "pointer" : "";
+  renderer.domElement.style.cursor = godly() // a bold plus in God mode, as it is special
+    ? "cell"
+    : aiming
+      ? "crosshair"
+      : found || clickable
+        ? "pointer"
+        : "";
 }
 
 // The roof, bridge or ground at a screen point (px), or null.
@@ -3213,6 +3263,7 @@ renderer.setAnimationLoop((time) => {
   }
   writeView(time);
   updateHover();
+  scare.on = godly() && time < scare.until;
   updateTrees();
   updateTerrain();
   water.waterTime.value = time / 1000;
@@ -3254,8 +3305,8 @@ renderer.setAnimationLoop((time) => {
   afloat += dt;
   ferries.update(afloat);
   ships.update(afloat, dt);
-  animals.update(time / 1000);
-  feeding.update(time / 1000);
+  animals.update(time / 1000, dt);
+  feeding.update(time / 1000, dt);
   explosions.update(dt);
   rockets.update(dt);
   planes.update(time / 1000, flier, flown);

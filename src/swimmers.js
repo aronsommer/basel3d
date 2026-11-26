@@ -4,7 +4,7 @@
 // they talk, and dressing again where it comes out. Every NAKED-th has no bag: in swimwear all the
 // way, it swims down crawling. Men swim in trunks, women in swimsuits. Some drift in groups of
 // friends side by side (on land in twos side by side, PAIR metres apart), one behind catching up.
-// On land they flee from traffic as all people do (src/people.js, dodge), not in the water.
+// They flee from traffic as all people do (src/people.js, dodge), in the water swimming.
 // In the water each keeps one of LANES lanes, LANE metres apart from the line towards the river; on
 // land the passers-by keep a little left of the path's middle and the joggers a little right, so
 // joggers pass them; going in or out of the water they go in single file. None comes nearer than
@@ -12,10 +12,10 @@
 // the ferry is near, any in it hurries out, any with a hull near swims on faster, and none swims
 // with its hands against one.
 // Beside them families of swans swim down with the current and back up against it, further out
-// (SWAN), waiting for the ferries as they do.
+// (SWAN), waiting for the ferries as they do, fleeing from traffic as the swimmers do.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { createCrowd, mix } from "./people.js";
+import { createCrowd, createFlight, mix, SWIM_FLEE } from "./people.js";
 import { PATIENCE } from "./space.js";
 import { swan } from "./zoo.js";
 
@@ -86,7 +86,6 @@ const FAMILIES = [
 const [FILE, AWAY, SWAN, UPSTREAM] = [2.2, 60, [7.8, 9.8], 0.6];
 const [SWAN_GAP, BILL, SWAN_DRIFT] = [2, 0.6, 0.2];
 const [JOIN, SWAN_ROOM] = [5, 400];
-const CYGNET = 0x8a8278;
 
 // Metres from x, z to a ferry's hull.
 export function fromHull({ position, rotation }, x, z) {
@@ -115,7 +114,8 @@ function looks(lists, count, swimwear, caps = false) {
 
 // loop: [x, z] points round, in the water where the ground is at most SHALLOW over water;
 // ground(x, z): the height there; ferries: src/ferries.js's (their line from a along r for length, mesh).
-// space: src/space.js's, where they are and keep room on land; walkers (even), joggers: how many.
+// space: src/space.js's, where they are and keep room on land; danger: what the swans flee from
+// (src/people.js, createFlight); walkers (even), joggers: how many.
 // { meshes, update(dt), people: each with x, z, heading, speed and whether gone (in the water) }.
 export function createSwimmers(
   loop,
@@ -123,6 +123,7 @@ export function createSwimmers(
   water,
   ferries,
   space,
+  danger,
   { walkers = WALKERS, joggers = JOGGERS } = {},
 ) {
   // Per point its height and whether it is in the water; the distances along the loop.
@@ -402,17 +403,21 @@ export function createSwimmers(
       speed: back || turn ? UPSTREAM : SWIM,
     };
   }
-  const flock = new THREE.InstancedMesh(
-    mergeGeometries(swan),
-    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-    swans.length,
-  );
-  flock.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  swans.forEach((w, k) => {
-    flock.setColorAt(k, colour.set(w.size < 1 ? CYGNET : 0xffffff));
-    Object.assign(w, { k, x: 0, z: 0, heading: 0 });
+  const flee = createFlight(swans.length, danger, SWIM_FLEE);
+  // The swans (src/zoo.js), and the cygnets (sizes under 1), each a mesh if any, each swan its
+  // slot in its own.
+  const swanMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const flocks = [false, true].flatMap((young) => {
+    const flock = swans.filter(({ size }) => size < 1 === young);
+    if (!flock.length) return [];
+    const mesh = new THREE.InstancedMesh(mergeGeometries(swan(young)), swanMaterial, flock.length);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    flock.forEach((w, slot) => Object.assign(w, { flock: mesh, slot }));
+    return [mesh];
   });
-  // Each in order round the round on as far as the one ahead lets it, then placed.
+  swans.forEach((w, k) => Object.assign(w, { k, x: 0, z: 0, heading: 0 }));
+  // Each in order round the round on as far as the one ahead lets it, then placed, off it while
+  // it flees.
   function paddle(dt) {
     swans.sort((a, b) => a.u - b.u);
     swans.forEach((w, n) => {
@@ -439,10 +444,12 @@ export function createSwimmers(
       const now = round(w.u);
       const spot = at(now.s, now.side + SWAN_DRIFT * Math.sin(clock * 0.2 + w.f));
       [w.x, w.z, w.heading] = [spot.x, spot.z, spot.heading + now.turn];
-      matrix.makeRotationY(w.heading).scale(place.setScalar(w.size));
-      flock.setMatrixAt(w.k, matrix.setPosition(spot.x, spot.y, spot.z));
+      const off = flee(w.k, w.x, spot.y, w.z, dt);
+      matrix.makeRotationY(off ? off[2] : w.heading).scale(place.setScalar(w.size));
+      if (off) [spot.x, spot.z] = [w.x + off[0], w.z + off[1]];
+      w.flock.setMatrixAt(w.slot, matrix.setPosition(spot.x, spot.y, spot.z));
     });
-    flock.instanceMatrix.needsUpdate = true;
+    for (const flock of flocks) flock.instanceMatrix.needsUpdate = true;
   }
 
   // One's way at distance s, metres left of the loop: its lane in the water, its side of the path
@@ -522,16 +529,19 @@ export function createSwimmers(
       const { j, x, z } = spot;
       let heading = spot.heading;
       const lean = m.dressing ? 0 : m.lean; // on land
+      const afloat = swum[j] && !m.dressing;
       // For the cyclists (src/runners.js) and space (src/space.js): gone while in the water or
       // fleeing.
-      const gone = fleeing || (swum[j] && !m.dressing);
-      Object.assign(m, { heading, speed: dt && step / dt, gone });
-      if (swum[j] && !m.dressing) {
+      Object.assign(m, { heading, speed: dt && step / dt, gone: fleeing || afloat });
+      if (afloat) {
         const { y } = spot; // the water's surface
         if (m.bag) {
           heading += SWAY * Math.sin(clock * 0.25 + m.phase);
           m.crowd.place(m.i, x, y - FLOAT, z, heading, m.phase, 1, 0);
-          place.set(x + Math.sin(heading) * HOLD, y + BAG, z + Math.cos(heading) * HOLD);
+          // Fleeing, its bag ahead of it where it swims.
+          const [ox, oz, h] = fleeing ? m.crowd.offset(m.i) : [0, 0, heading];
+          heading = h;
+          place.set(x + ox + Math.sin(h) * HOLD, y + BAG, z + oz + Math.cos(h) * HOLD);
         } else m.crowd.place(m.i, x, y - SINK, z, heading, m.phase, 1, TILT);
       } else {
         const y = ground(x, z);
@@ -546,16 +556,16 @@ export function createSwimmers(
         );
       }
       [m.x, m.z] = [x, z];
-      if (!m.bag || fleeing) place.y = -1000; // none, or hidden while it runs
+      if (!m.bag || (fleeing && !afloat)) place.y = -1000; // none, or hidden while it runs
       matrix.makeRotationY(heading);
-      if (!swum[j] || m.dressing) matrix.multiply(leaning.makeRotationX(lean)).multiply(upright);
+      if (!afloat) matrix.multiply(leaning.makeRotationX(lean)).multiply(upright);
       bags.setMatrixAt(m.k, matrix.setPosition(place));
     }
     bags.instanceMatrix.needsUpdate = true;
     paddle(dt);
   }
   update(0);
-  const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags, flock];
+  const meshes = [...Object.values(crowds).map(({ mesh }) => mesh), bags, ...flocks];
   for (const mesh of meshes) mesh.frustumCulled = false; // they move
   for (const m of people) Object.assign(m, { radius: ROOM, group: m });
   space.add(people);
