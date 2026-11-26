@@ -1,37 +1,30 @@
-// Writes img/favicon.ico and img/apple-touch-icon.png: the black Baselstab (src/baselstab.js) on
-// magenta. Rounded corners for the browser tab; square and edge to edge for the touch icon, which
-// iOS rounds itself and Google's search results can show.
+// Writes img/apple-touch-icon.png (on white), img/favicon.ico and img/loading.png (transparent,
+// edge to edge) from img/icon-1024x1024.png, a transparent design inside the safe area: a circle
+// 80% as wide.
 import { writeFileSync } from "node:fs";
 import sharp from "sharp";
-import { BASELSTAB } from "../src/baselstab.js";
 
 const IMG = new URL("../img/", import.meta.url);
-const MAGENTA = "#ff00ff"; // as --magenta in style.css
-const HIGH = 0.78; // the Baselstab's height, of the icon's
-const RADIUS = 0.2; // favicon only: corner radius, of the icon's size
+const DESIGN = new URL("icon-1024x1024.png", IMG).pathname;
+const small = { palette: true, colours: 256, dither: 1, compressionLevel: 9, effort: 10 };
 
-const xs = BASELSTAB.flat().map(([x]) => x);
-const middle = (Math.min(...xs) + Math.max(...xs)) / 2;
-const paths = BASELSTAB.map(
-  (points) =>
-    `<path d="M${points.map(([x, y]) => `${(0.5 + (x - middle) * HIGH).toFixed(4)} ${(0.5 + (0.5 - y) * HIGH).toFixed(4)}`).join("L")}Z"/>`,
-).join("");
+writeFileSync(
+  new URL("apple-touch-icon.png", IMG),
+  await sharp(DESIGN).resize(180, 180).flatten({ background: "#ffffff" }).png(small).toBuffer(),
+);
 
-// The icon as a PNG, size px wide; when square, without transparency and in a palette (smaller).
-const png = (size, radius) => {
-  const icon = sharp(
-    Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1 1">` +
-        `<rect width="1" height="1" rx="${radius}" fill="${MAGENTA}"/><g>${paths}</g></svg>`,
-    ),
-  );
-  return (radius ? icon.png() : icon.removeAlpha().png({ palette: true })).toBuffer();
-};
+const trimmed = await sharp(DESIGN).trim().toBuffer();
+const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
+const square = (size) =>
+  sharp(trimmed)
+    .resize(size, size, { fit: "contain", background: transparent })
+    .png(small)
+    .toBuffer();
 
-writeFileSync(new URL("apple-touch-icon.png", IMG), await png(180, 0));
+writeFileSync(new URL("loading.png", IMG), await square(192)); // shown at 96 px
 
 // An ICO of PNGs: a 6-byte header, a 16-byte entry per image, then the images.
-const images = await Promise.all([48, 32, 16].map((size) => png(size, RADIUS)));
+const images = await Promise.all([48, 32, 16].map(square));
 const head = Buffer.alloc(6 + 16 * images.length);
 head.writeUInt16LE(1, 2);
 head.writeUInt16LE(images.length, 4);

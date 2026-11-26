@@ -64,6 +64,16 @@ p {
   width: 141px;
   height: 18px;
   border: 2px solid #fff;
+  transform: translateY(32px); /* with the basilisk, 24px above the middle */
+}
+/* The basilisk 16px above the bar. */
+#loading-icon {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: 96px;
+  height: 96px;
+  transform: translateY(-41px);
 }
 #progress {
   height: 100%;
@@ -817,6 +827,7 @@ p {
   fill: currentColor;
 }
 body:not([data-mode="loading"]) #loading,
+body:not([data-mode="loading"]) #loading-icon,
 body[data-mode="loading"] #menu,
 body:not([data-mode="ride"]) #off,
 body:not([data-mode="orbit"]) #walk,
