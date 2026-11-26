@@ -1,15 +1,14 @@
-// "Dev" in the menu, remembered in this browser: while ticked, a panel at the left shows, below
-// Copy stats, which copies it all, over a second (but at once after ticking it), the frames per
-// second; the ms to draw a frame (so it shows the cost even where the screen's refresh rate caps
-// the frames), split into the CPU's part (render, handing the work to the GPU) and the wait for the
-// GPU to finish, timed every SAMPLE-th frame only, so the others run as usual; the triangles
-// drawn and the draw calls. Below, a button steps through the SCALES of the resolution; a box per
-// part hides and shows it, to see what it costs; then "Aerial" shows the aerial photo as the
-// ground, "Riders", "Graffiti" (showing the graffiti editor's own panel at the bottom right while
-// ticked), "God mode" (src/main.js, godAt) and, while the museum is open, at the bottom "Move
-// labels", none ticked at first. All of it lives here, the menu entry in index.html and the
-// styles in style.css (#dev-box, #dev), so it can be taken out whole (but godAt, showRiders,
-// moveLabels and src/sprayer.js).
+// "Dev" in the menu, remembered in this browser: while ticked, a panel at the left shows two tabs,
+// "View" at first. "View" shows, below Copy stats, which copies it all, over a second (but at once
+// after ticking it), the frames per second; the ms to draw a frame (so it shows the cost even
+// where the screen's refresh rate caps the frames), split into the CPU's part (render, handing the
+// work to the GPU) and the wait for the GPU to finish, timed every SAMPLE-th frame only, so the
+// others run as usual; the triangles drawn and the draw calls. Below, a button steps through the
+// SCALES of the resolution; a box per part hides and shows it, to see what it costs; then "Aerial"
+// shows the aerial photo as the ground and "Riders". "Tools" holds the Move tool (src/placer.js)
+// and the click modes Select, Graffiti and God mode. All of it lives here, the menu entry in
+// index.html and the styles in style.css (#dev-box, #dev), so it can be taken out whole (but
+// godAt, showRiders, src/sprayer.js and src/placer.js).
 import { copy } from "./copy.js";
 
 const KEY = "basel3d.devPanel"; // "1" (on) or "0"
@@ -19,9 +18,9 @@ const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 // A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
 // aerial(on): shows the aerial photo or the map again, its promise done when it does; god(on):
 // turns God mode on or off; riders(on): shows the riders on all vehicles or only on the one ridden;
-// labels(on), if given: lets the museum's labels be moved or not; graffiti(on, box): turns the
-// graffiti editor on or off, its panel in box (an element).
-export function createDev(renderer, render, parts, aerial, god, riders, labels, graffiti) {
+// graffiti(on, box): turns the graffiti editor on or off, its panel in box (an element); placer:
+// src/placer.js's.
+export function createDev(renderer, render, parts, aerial, god, riders, graffiti, placer) {
   const box = document.getElementById("dev-box");
   try {
     box.checked = localStorage.getItem(KEY) === "1";
@@ -31,7 +30,29 @@ export function createDev(renderer, render, parts, aerial, god, riders, labels, 
   const element = (tag, properties) => Object.assign(document.createElement(tag), properties);
   const panel = element("div", { id: "dev", hidden: !box.checked });
   document.getElementById("panels").prepend(panel); // above the Points panel (src/points.js)
-  const add = (tag, properties) => panel.appendChild(element(tag, properties));
+  const tabs = panel.appendChild(element("div", { className: "row tabs" }));
+  const pages = Object.fromEntries(
+    ["View", "Tools"].map((name) => [
+      name,
+      panel.appendChild(element("div", { className: "page" })),
+    ]),
+  );
+  let mode = 0; // MODES' index
+  const placing = () => placer.enable(box.checked && !pages.Tools.hidden && mode === 0);
+  const show = (name) => {
+    for (const [n, page] of Object.entries(pages)) page.hidden = n !== name;
+    for (const tab of tabs.children) tab.ariaPressed = tab.textContent === name;
+    placing();
+  };
+  for (const name of Object.keys(pages))
+    tabs.appendChild(element("button", { textContent: name })).addEventListener("click", () => {
+      const entered = pages[name].hidden;
+      show(name);
+      if (entered) choose(0);
+    });
+  show("View");
+  let page = pages.View;
+  const add = (tag, properties) => page.appendChild(element(tag, properties));
   const stats = add("div", { className: "stats" }); // a name and a value per row
   let shown = []; // the rows' text, for Copy
   const ratio = renderer.getPixelRatio();
@@ -71,16 +92,31 @@ export function createDev(renderer, render, parts, aerial, god, riders, labels, 
     editor.hidden = !on;
     graffiti(on, editor);
   };
-  // Unticked again with the Dev panel: what shows (Riders), then the tools.
-  const modes = [
-    [toggle("Riders", riders), riders],
-    [toggle("Graffiti", spraying), spraying],
-    [toggle("God mode", god), god],
-    ...(labels ? [[toggle("Move labels", labels), labels]] : []),
+  const riding = toggle("Riders", riders);
+  page = pages.Tools;
+  placer.mount(page);
+  // What a click in the scene does, one at a time.
+  const MODES = [
+    ["Select", () => {}],
+    ["Graffiti", spraying],
+    ["God mode", god],
   ];
+  const buttons = MODES.map(([textContent], k) => {
+    const button = element("button", { textContent, className: "tool" });
+    button.addEventListener("click", () => choose(k));
+    return page.insertBefore(button, page.lastElementChild);
+  });
+  const choose = (k) => {
+    MODES[mode][1](false);
+    mode = k;
+    MODES[k][1](true);
+    buttons.forEach((b, i) => (b.ariaPressed = i === k));
+    placing();
+  };
+  choose(0);
   // At the top, copies the numbers and settings (src/copy.js); where it cannot, selects the
   // numbers to copy by hand.
-  const button = panel.insertBefore(element("button", { textContent: "Copy stats" }), stats);
+  const button = pages.View.insertBefore(element("button", { textContent: "Copy stats" }), stats);
   button.addEventListener("click", () => {
     const settings = parts.map(([name], i) => `${name} ${boxes[i].checked ? "on" : "off"}`);
     const text = [...shown, ...settings, `Resolution ${SCALES[scale] * 100}%`];
@@ -103,7 +139,8 @@ export function createDev(renderer, render, parts, aerial, god, riders, labels, 
     renderer.info.autoReset = !box.checked;
     panel.hidden = !box.checked;
     for (const input of boxes) input.checked = true;
-    for (const [input, change] of modes) change((input.checked = false));
+    riders((riding.checked = false));
+    choose(0);
     for (const [, objects] of parts) for (const object of objects) object.visible = true;
     rescale(0);
     [frames, timed, cpu, gpu, since, fresh] = [0, 0, 0, 0, performance.now(), true];

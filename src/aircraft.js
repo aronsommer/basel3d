@@ -350,56 +350,50 @@ export function createHelicopter(cx, cz, radius, height, scale, flight) {
   };
 }
 
-// Flying the helicopter or the UFO while riding it (input { climb, turn, stop }, climb and turn
-// each -1, 0 or 1, from steering()), at most HIGH, over the terrain's area; nothing keeps it off
-// the ground (see fly). Holding climb tilts the nose by TILT
-// radians per second, and it stays when let go. Flying, it goes craft.speed (metres per second)
-// along the nose, from UP above level to DOWN below; tilting through level, it stops there until
-// pressed anew, and it levels out at HIGH. Stopped, it hovers and the nose only aims, from
+// Flying what one flies while riding it (input { climb, turn, stop }, climb and turn each -1, 0 or
+// 1, from steering()), at most HIGH, over the terrain's area; nothing keeps it off the ground (see
+// fly). Holding climb tilts the nose by TILT radians per second, and it stays when let go. Flying,
+// it goes craft.speed (metres per second) along the nose, from UP above level to DOWN below; at
+// HIGH the nose tilts no further up than level. Stopped, it hovers and the nose only aims, from
 // level to AIM down. Speed, nose and turning (up to craft.turn radians per second) are eased. A
-// craft with lift (metres) first rises straight up that far at half its speed, then goes on from a
-// standstill. The state, flown: { x, y, z, heading, speed (0 to 1, times craft.speed), aim (where
-// the nose goes, radians down), nose, turn, levelled (the climb input that last reached level,
-// while still held), lift (metres still to rise) }.
+// craft with lift (metres) first rises straight up that far at half its speed, turning as steered,
+// then goes on from a standstill; climbing ends the rise at once. The state, flown: { x, y, z,
+// heading, speed (0 to 1, times craft.speed), aim (where the nose goes, radians down), nose, turn,
+// lift (metres still to rise) }.
 export function createFlight(intoArea) {
   const LEVEL = 0.12; // the nose down when flying level (radians)
-  const UP = 0.35; // radians, about 20°
-  const DOWN = 0.8; // radians, about 45°
+  // Radians above and below level the nose goes at most, about 50°, as in arcade games.
+  const [UP, DOWN] = [0.87, 0.87];
   const AIM = 1.2; // radians, about 70°
   const TILT = 1.2;
   const HIGH = 1000; // scene y
   return {
     LEVEL,
-    // The state to fly a craft ({ group, lift }) on from where it is.
-    start: ({ group, lift = 0 }) => ({
+    // The state to fly a craft ({ group, lift, climb (radians it sets off climbing) }) on from
+    // where it is.
+    start: ({ group, lift = 0, climb = 0 }) => ({
       ...group.position,
       heading: group.rotation.y,
       speed: lift ? 0 : 1,
-      aim: LEVEL,
-      nose: LEVEL,
+      aim: LEVEL - climb,
+      nose: LEVEL - climb,
       turn: 0,
-      levelled: 0,
       lift,
     }),
     step(flown, input, dt, craft) {
+      const ease = (value, to, rate) => value + (to - value) * Math.min(1, dt * rate);
+      if (input.climb > 0) flown.lift = 0; // climbing ends the rise (sinking would hit the ground)
       if (flown.lift > 0) {
         const rise = Math.min(flown.lift, (craft.speed / 2) * dt, HIGH - flown.y);
         flown.y += rise;
         flown.lift = rise > 0 ? flown.lift - rise : 0;
+        // Turning while it rises.
+        flown.turn = ease(flown.turn, input.turn, 4);
+        flown.heading += flown.turn * craft.turn * dt;
         return;
       }
-      const ease = (value, to, rate) => value + (to - value) * Math.min(1, dt * rate);
-      if (input.climb !== flown.levelled) flown.levelled = 0;
-      if (input.climb && !flown.levelled) {
-        const next = flown.aim - input.climb * TILT * dt;
-        // Already at HIGH, flying, the nose does not tilt on towards it, so it does not rise for
-        // a moment before levelling out again.
-        const bound = next < LEVEL && flown.y >= HIGH;
-        if (!input.stop && ((next - LEVEL) * (flown.aim - LEVEL) < 0 || bound)) {
-          flown.aim = LEVEL;
-          flown.levelled = input.climb;
-        } else flown.aim = next;
-      }
+      flown.aim -= input.climb * TILT * dt;
+      if (flown.y >= HIGH) flown.aim = Math.max(flown.aim, LEVEL); // no further up
       flown.aim = input.stop
         ? THREE.MathUtils.clamp(flown.aim, 0, AIM)
         : THREE.MathUtils.clamp(flown.aim, LEVEL - UP, LEVEL + DOWN);
@@ -413,12 +407,7 @@ export function createFlight(intoArea) {
         flown.x + Math.sin(flown.heading) * Math.cos(down) * step,
         flown.z + Math.cos(flown.heading) * Math.cos(down) * step,
       );
-      const y = flown.y - Math.sin(down) * step;
-      if (!input.stop && y > HIGH && down < 0) {
-        flown.aim = LEVEL;
-        flown.levelled = input.climb;
-      }
-      flown.y = Math.min(y, HIGH);
+      flown.y = Math.min(flown.y - Math.sin(down) * step, HIGH);
     },
   };
 }

@@ -22,6 +22,17 @@ export function audio() {
   return { context, noise };
 }
 
+// Plays a recorded sound (an AudioBuffer) once at gain.
+export function play(buffer, gain) {
+  const { context } = audio();
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const node = context.createGain();
+  node.gain.value = gain;
+  source.connect(node).connect(output);
+  source.start();
+}
+
 // A gain node to the speakers: from silence up to gain within 10 ms, so it does not click, then
 // fading out until seconds after now.
 export function fade(gain, until) {

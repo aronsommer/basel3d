@@ -59,6 +59,8 @@ import {
   wholeCar,
 } from "./graffiti.js";
 import { createSprayer } from "./sprayer.js";
+import { createPlacer } from "./placer.js";
+import PLACEMENTS from "./placement-data.js";
 import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
 import { TIP, createPoints } from "./points.js";
@@ -120,12 +122,57 @@ renderer.toneMappingExposure = 1.2; // a bright, friendly day
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-// Builds the catalog's kind with this id (src/catalog.js) at its places and in the museum
-// (src/museum.js), with what its maker takes from here, into the scene; what it returns.
+// Builds a catalog kind (src/catalog.js) in the city and the museum and returns what make
+// returns. Each place with its own object, else the whole kind, goes in a group the Move tool
+// (src/placer.js) moves, placed as src/placement-data.js says.
+const figures = [];
 function build(id, city) {
   const { name, places, make } = CATALOG[id];
-  const built = make([...places, ...exhibitsOf(id, name, places)], city);
-  scene.add(...built.objects);
+  const all = [...places, ...exhibitsOf(id, name, places)];
+  const built = make(all, city);
+  const { objects } = built;
+  const parts =
+    all.length > 1 && objects.length === all.length
+      ? objects.map((object, k) => ({ place: all[k], objects: [object] }))
+      : [{ place: all.length === 1 ? all[0] : undefined, objects }];
+  for (const { place, objects } of parts) {
+    if (!objects.length) continue;
+    const box = new THREE.Box3();
+    for (const object of objects) box.expandByObject(object);
+    const middle = box.getCenter(new THREE.Vector3());
+    const [x, z] = place?.x === undefined ? [middle.x, middle.z] : [place.x, place.z];
+    const y = Number.isFinite(box.min.y) ? Math.max(heightAt(x, z), box.min.y) : heightAt(x, z);
+    const heading = place?.heading ?? 0;
+    const from = place?.x === undefined ? undefined : toWGS84(place.x, place.z);
+    const key = { figure: id, ...(from && { from: from.map((v) => +v.toFixed(6)) }) };
+    const group = new THREE.Group();
+    group.rotation.order = "YXZ";
+    group.position.set(x, y, z);
+    group.rotation.y = heading;
+    const inner = new THREE.Group();
+    group.add(inner);
+    inner.rotation.y = -heading;
+    inner.position.set(-x, -y, -z).applyAxisAngle(new THREE.Vector3(0, 1, 0), -heading);
+    inner.add(...objects);
+    const moved = PLACEMENTS.find((e) => e.figure === id && e.to && `${e.from}` === `${key.from}`);
+    if (moved) {
+      const [lat, lon, altitude] = moved.to;
+      const [mx, mz] = fromWGS84(lat, lon);
+      group.position.set(mx, altitude - 250, mz);
+      group.rotation.set(moved.x ?? 0, moved.heading, moved.z ?? 0);
+    }
+    // One size per kind, city and museum.
+    const sized = PLACEMENTS.find((e) => e.figure === id && !e.to);
+    if (sized) group.scale.setScalar(sized.size);
+    scene.add(group);
+    const { position, quaternion, scale } = group;
+    const made = {
+      position: position.clone(),
+      quaternion: quaternion.clone(),
+      scale: scale.clone(),
+    };
+    figures.push({ key, object: group, made });
+  }
   return built;
 }
 // The plates of the kinds it builds otherwise (no make).
@@ -516,7 +563,7 @@ function deckOf(triangles) {
 function destroy(number) {
   const [deck] = decksOf([number]);
   if (!explosions.explode(number)) return;
-  scene.remove(...(onRoofs.get(number) ?? []));
+  for (const object of onRoofs.get(number) ?? []) object.removeFromParent();
   for (const land of grounding.get(number) ?? []) land();
   if (number === mittlere) destroy(joch);
   if (deck) for (const mover of movers) mover.cut(deck);
@@ -536,7 +583,9 @@ function save(numbers) {
     return false; // storage blocked
   }
 }
-const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy);
+// The basilisk's fire shot sound.
+const fireSound = load(["fireball.mp3"], () => {}).then(([bytes]) => bytes);
+const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy, fireSound);
 
 // Shows the map or the aerial photo ("Aerial" in the Dev panel, src/dev.js) as the ground; the
 // photo is loaded on first use. Only the shown textures stay in GPU memory: the photo's are
@@ -561,6 +610,7 @@ const tree = createTrees(treePositions, canopyTrees, terrainInfo, heightAt);
 scene.add(...tree.meshes);
 const { serpents } = build("A3", { heightAt }); // src/catalog.js
 const flight = createFlight(intoArea);
+const { basilisks } = build("A5", { heightAt, flight }); // src/catalog.js
 const helicopters = build("V14", { heightAt, flight }).vehicles; // src/catalog.js
 // The check lines, drawn over the scene in a pass of their own (render).
 const overlay = new THREE.Scene();
@@ -1998,10 +2048,20 @@ const flownFrom = new THREE.Vector3();
 const flownTo = new THREE.Vector3();
 const front = new THREE.Vector3();
 const bottom = new THREE.Vector3();
+let home = null; // [group, parent] of the craft flown
 function fly(dt) {
   const craft = pilot();
+  // Flown in scene space, outside its placement group; put back when no longer flown.
+  if (home && (home[0] !== craft?.group || !flown)) {
+    home[1].attach(home[0]);
+    home = null;
+  }
   if (!craft) return;
-  flown ??= flight.start(craft);
+  if (!flown) {
+    home = [craft.group, craft.group.parent];
+    scene.attach(craft.group);
+    flown = flight.start(craft);
+  }
   const rising = flown.lift > 0;
   flownFrom.copy(flown);
   flight.step(flown, steering(), dt, craft);
@@ -2304,6 +2364,7 @@ const rides = [
   ...planes.crafts.map(({ ride }) => ride),
   ...helicopters.map(({ ride }) => ride),
   ...serpents.map(({ ride }) => ride),
+  ...basilisks.map(({ ride }) => ride),
   ...ufoRides,
   ...jetRides,
   ...regaRides,
@@ -2311,22 +2372,24 @@ const rides = [
 ];
 let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
-// The helicopter, the UFO, the jet, a Rega helicopter or a plane, each { group, speed, turn, low,
-// nose, lift?, unarmed?, launchers? (it fires rockets from them), dip? (radians it fires below its
-// body), plane? (it does not hover) }, while riding and so steering it.
+// The helicopter, the UFO, the jet, a Rega helicopter, a plane or the basilisk, each { group,
+// speed, turn, low, nose, lift?, unarmed?, launchers? (it fires rockets from them), fireballs?
+// (fireballs instead), dip? (radians it fires below its body), plane? (it does
+// not hover) }, while riding and so steering it.
 const pilots = new Map([
   ...helicopters.map((helicopter) => [helicopter.ride, helicopter]),
   ...ufoRides.map((ride, k) => [ride, ufos[k]]),
   ...jetRides.map((ride, k) => [ride, jets[k]]),
   ...regaRides.map((ride, k) => [ride, regas[k]]),
   ...planes.crafts.map((craft) => [craft.ride, craft]),
+  ...basilisks.map((basilisk) => [basilisk.ride, basilisk]),
 ]);
 const pilot = () => pilots.get(riding?.ride);
 // Each kind one drives or flies oneself (drives, and those flown as listed here), with one at the
 // museum (src/museum.js): checked once all are placed, after the first frame, warning of any not.
 const kinds = [
   ...drives.map(([, ride]) => ride.objects),
-  ...[helicopters, ufos, jets, regas].map((list) => list.map(({ group }) => group)),
+  ...[helicopters, ufos, jets, regas, basilisks].map((list) => list.map(({ group }) => group)),
   planes.meshes,
 ];
 let museumChecked = false;
@@ -2482,7 +2545,8 @@ function steering() {
 // the scene ("Mouse" in keys) aims, from the camera through a point AHEAD metres along the nose
 // or the tank's gun, to where that line first meets something, as far as the terrain's area goes
 // (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every FIRE_GAP
-// seconds, the jet every MISSILE_GAP, from their launchers in turn. The UFO sends a laser bolt
+// seconds, the jet every MISSILE_GAP, the basilisk a fireball every BREATH_GAP, from their
+// launchers in turn. The UFO sends a laser bolt
 // there every BOLT_GAP seconds, from its cannons in turn, which destroys what it meets: a
 // building or bridge (destroy) or the ground (a small blast). The tank fires a shell there every
 // SHELL_GAP seconds. With "Mouse aim" ticked, all aim along the line from the camera through the
@@ -2490,6 +2554,7 @@ function steering() {
 // turret turns towards it as far as it goes.
 const FIRE_GAP = 0.1; // seconds
 const MISSILE_GAP = 0.8; // seconds
+const BREATH_GAP = 0.3; // seconds
 const BOLT_GAP = 0.12; // seconds
 const SHELL_GAP = 1; // seconds
 const AHEAD = 900; // metres along a craft's nose, the point its crosshair is aimed through
@@ -2565,12 +2630,12 @@ function shoot(seconds) {
   if (tank) {
     nextShot = seconds + SHELL_GAP;
     tank.fire();
-    rockets.fire(muzzle, target, true);
+    rockets.fire(muzzle, target, { shell: true });
     return;
   }
   const { group } = flier;
   if (flier.launchers) {
-    nextShot = seconds + (flier.plane ? MISSILE_GAP : FIRE_GAP);
+    nextShot = seconds + (flier.fireballs ? BREATH_GAP : flier.plane ? MISSILE_GAP : FIRE_GAP);
     side = 1 - side;
     // A plane's rockets drop from it at its velocity first (src/rockets.js).
     const down = flown.nose - flight.LEVEL;
@@ -2582,12 +2647,11 @@ function shoot(seconds) {
       )
       .multiplyScalar(flown.speed * flier.speed);
     if (flown.lift > 0) carried.set(0, flier.speed / 2, 0); // still rising after boarding
-    rockets.fire(
-      group.localToWorld(launcher.copy(flier.launchers[side])),
-      target,
-      false,
-      flier.plane ? carried : null,
-    );
+    rockets.fire(group.localToWorld(launcher.copy(flier.launchers[side])), target, {
+      carried: flier.plane && !flier.fireballs ? carried : null,
+      ball: flier.fireballs,
+    });
+    flier.breathe?.();
     return;
   }
   nextShot = seconds + BOLT_GAP;
@@ -2612,7 +2676,7 @@ renderer.domElement.addEventListener(
   (e) => (down = { x: e.clientX, y: e.clientY, time: e.timeStamp }),
 );
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0 || stoppedGlide || steered() || movingLabels || sprayer.active()) return;
+  if (e.button !== 0 || stoppedGlide || steered() || sprayer.active() || placer.active()) return;
   if (mouseLook()) {
     if (buttonAt(innerWidth / 2, innerHeight / 2)) return switchMuseum();
     // Gets on what the dot in the middle is on, freeing the mouse, if anything.
@@ -2861,7 +2925,7 @@ function updateHover() {
   if (mouseLook()) hover = { x: innerWidth / 2, y: innerHeight / 2 };
   if (!hover) return;
   const aiming = placing || godly() || pointsPanel.recording(); // clicks pick a point, not a vehicle
-  const free = !pointers.size && !steered() && !aiming;
+  const free = !pointers.size && !steered() && !aiming && !placer.active();
   // The museum's switch or a label with pins goes before a vehicle, as a click does.
   const clickable =
     free && (buttonAt(hover.x, hover.y) || (!mouseLook() && labelAt(hover.x, hover.y)));
@@ -3103,6 +3167,17 @@ const sprayer = createSprayer({
   surfaces: [buildings.scene, bridges.scene, terrain],
   meshes: () => graffitiMeshes,
 });
+const placer = createPlacer({
+  renderer,
+  camera,
+  orbit,
+  scene,
+  figures,
+  labels: {
+    list: () => (museumLabels ? museumLabels.children : []),
+    settle: (mesh) => settle(mesh, labelGround),
+  },
+});
 // Draws a frame, with the Dev panel (src/dev.js) while it is ticked.
 const drawFrame = createDev(
   renderer,
@@ -3115,8 +3190,8 @@ const drawFrame = createDev(
   (on) => showGround(on ? "photo" : "map"),
   (on) => (god = on),
   (on) => (showRiders = on),
-  OPEN && moveLabels,
   sprayer.move,
+  placer,
 );
 // Moves the view over the middle of scene points, looking the same way, out as far as shows them
 // all with FIT around them (as seen from above), but not nearer.
@@ -3162,24 +3237,12 @@ nightBox.addEventListener("change", () => {
 
 let last = performance.now();
 let afloat = 0; // seconds the ferries and ships have moved
-// The museum's labels on the ground (src/museum.js), once all is built. "Move labels" in the Dev
-// panel (src/dev.js): while ticked, a label dragged follows the pointer over the ground and clicks
-// do nothing else; unticked, every label's place is copied (src/copy.js), "text: latitude,
-// longitude, altitude" a line, to be set so in src/museum.js. Over the Rhine they lie over its
-// water, not its bed.
+// The museum's labels (src/museum.js), on the water over the Rhine.
 const labelGround = (x, z) => Math.max(heightAt(x, z), WATER);
 const museumLabels = OPEN && createLabels(labelGround, renderer.capabilities.getMaxAnisotropy());
-if (museumLabels) scene.add(museumLabels);
-let movingLabels = false;
-let draggedLabel = null; // { mesh, orbit: whether the view's controls were on }
-const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const dragHit = new THREE.Vector3();
-function moveLabels(on) {
-  const was = movingLabels;
-  movingLabels = on;
-  if (on || !was) return; // copied only after moving
-  const lines = museumLabels.children.map((m) => `${m.userData.text}: ${toText(m.position)}`);
-  copy(lines.join("\n"));
+if (museumLabels) {
+  scene.add(museumLabels);
+  for (const label of museumLabels.children) label.userData.made = label.position.clone();
 }
 function pointerRay({ clientX, clientY }) {
   const at = new THREE.Vector2((clientX / innerWidth) * 2 - 1, -(clientY / innerHeight) * 2 + 1);
@@ -3242,27 +3305,6 @@ function updatePins() {
       mark.at = [x, y]; // for the names to keep clear of (updateNames)
     }
 }
-renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (!movingLabels) return;
-  pointerRay(e);
-  const hit = raycaster.intersectObjects(museumLabels.children)[0];
-  if (!hit) return;
-  draggedLabel = { mesh: hit.object, orbit: orbit.enabled };
-  orbit.enabled = false;
-  dragPlane.constant = -hit.object.position.y;
-});
-renderer.domElement.addEventListener("pointermove", (e) => {
-  if (!draggedLabel) return;
-  pointerRay(e);
-  if (!raycaster.ray.intersectPlane(dragPlane, dragHit)) return;
-  draggedLabel.mesh.position.set(dragHit.x, 0, dragHit.z);
-  settle(draggedLabel.mesh, labelGround);
-});
-addEventListener("pointerup", () => {
-  if (!draggedLabel) return;
-  orbit.enabled = draggedLabel.orbit;
-  draggedLabel = null;
-});
 renderer.setAnimationLoop((time) => {
   // The first frame's time can be before last.
   const dt = THREE.MathUtils.clamp((time - last) / 1000, 0, 0.1);
@@ -3298,6 +3340,7 @@ renderer.setAnimationLoop((time) => {
   for (const helicopter of helicopters)
     helicopter.update(time / 1000, flier === helicopter ? flown : null);
   for (const jet of jets) jet.update(time / 1000, flier === jet ? flown : null);
+  for (const basilisk of basilisks) basilisk.update(time / 1000, flier === basilisk ? flown : null);
   for (const rega of regas) rega.update(time / 1000, flier === rega ? flown : null);
   for (const ufo of ufos) ufo.update(time / 1000, dt, flier === ufo ? flown : null);
   for (const [vehicles, ride] of drives)

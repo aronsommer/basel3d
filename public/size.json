@@ -43,6 +43,10 @@
   "size": 13330,
   "hash": "a1716bc0"
  },
+ "fireball.mp3": {
+  "size": 3943,
+  "hash": "4899c214"
+ },
  "ground/map.bin": {
   "size": 884723,
   "hash": "6b84933d"
@@ -317,7 +321,7 @@
  },
  "ships.bin": {
   "size": 30672,
-  "hash": "b156a9a5"
+  "hash": "7f3dcc4f"
  },
  "terrain/terrain.bin": {
   "size": 749842,

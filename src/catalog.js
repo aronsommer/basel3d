@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { createHelicopter, createPlanes } from "./aircraft.js";
 import { createAmbulances } from "./ambulance.js";
+import { createBasilisk } from "./basilisk.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
 import { createBike } from "./bike.js";
 import { FLOCKS, createBirds } from "./birds.js";
@@ -563,7 +564,7 @@ export const CATALOG = {
     name: "Sea serpent",
     places: [{ x: 1717, z: 68, look: [1739, -196] }],
     make(places, { heightAt }) {
-      const serpents = places.map(({ x, z, look }) => createSerpent(x, z, 8.5, ...look, heightAt));
+      const serpents = places.map(({ x, z, look }) => createSerpent(x, z, 4.9, ...look, heightAt));
       return { objects: serpents.map(({ group }) => group), serpents };
     },
   },
@@ -577,6 +578,18 @@ export const CATALOG = {
         places.map(({ x, z }) => [x, z]),
       );
       return { objects: [birds.mesh], update: birds.update };
+    },
+  },
+  A5: {
+    // In the park at the Wettsteinbrücke's Grossbasel end, facing the Rhine, size times as big
+    // as made, to fit in it.
+    name: "Basilisk",
+    places: [{ ...at(47.555162, 7.595545), heading: 2.01, size: 0.15 }],
+    make(places, { heightAt, flight }) {
+      const basilisks = places.map(({ x, z, heading, size }) =>
+        createBasilisk(x, heightAt(x, z), z, heading, size, flight.LEVEL),
+      );
+      return { objects: basilisks.map(({ group }) => group), basilisks };
     },
   },
   V1: {
@@ -716,12 +729,11 @@ export const CATALOG = {
     },
   },
   V14: {
-    // Circling over the monster and the Roche towers (around the point between them), CIRCLE
-    // metres round, HELICOPTER times life size. At 300 m ± 25 m its lowest point (about 12 m below
-    // its centre when banking) stays 40 m above the monster's horns (221 m) and 50 m above the
-    // taller tower (213 m). In the museum as wide, 300 m over the ground there.
+    // Circling round the taller Roche tower (Bau 2, TOWERS[0]), CIRCLE metres round, HELICOPTER
+    // times life size. At 300 m ± 25 m its lowest point (about 12 m below its centre when banking)
+    // stays 50 m above that tower (213 m). In the museum as wide, 300 m over the ground there.
     name: "Attack helicopter",
-    places: [{ x: 1728, z: -64 }],
+    places: [lv95(TOWERS[0])],
     make(places, { heightAt, flight }) {
       const helicopters = places.map(({ x, z, museum }) =>
         createHelicopter(x, z, CIRCLE, (museum ? heightAt(x, z) : 0) + 300, HELICOPTER, flight),

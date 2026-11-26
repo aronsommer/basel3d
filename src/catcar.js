@@ -1,8 +1,7 @@
-// The cat car, measured from its Unity model (CatCar.fbx): a golden body on four wide black
-// tyres, each with grey blocks across its tread and a grey hub outside, big yellow eyes with
-// black pupils and a magenta nose, both unlit as there, two ears and a long tail that curls up
-// and back every TAIL_LOOP seconds (its "Tail" clip); driven as in src/drive.js,
-// low and nimble, the front wheels steering.
+// The cat car: a golden body on four wide black tyres, each with grey blocks across its tread
+// and a grey hub outside, big yellow eyes with black pupils and a magenta nose, both unlit, two
+// ears and a long tail that curls up and back every TAIL_LOOP seconds (its "Tail" clip); driven
+// as in src/drive.js, low and nimble, the front wheels steering.
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { MAGENTA } from "./lines.js";
@@ -96,7 +95,7 @@ const ear = (side) =>
     .rotateX(0.175)
     .translate(0, 0.75, 0.5);
 
-// A part's normals: smooth across its shared corners (as in Unity) or flat.
+// A part's normals: smooth across its shared corners or flat.
 const smooth = (g) => {
   const merged = mergeVertices(g);
   merged.computeVertexNormals();

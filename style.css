@@ -55,8 +55,7 @@ p {
   -webkit-backdrop-filter: blur(32px) saturate(200%); /* Safari before 18 */
   backdrop-filter: blur(32px) saturate(200%);
 }
-/* A white outlined bar on black, in the middle, as Unity's loader; #progress fills it
-   (src/main.js). */
+/* A white outlined bar on black, in the middle; #progress fills it (src/main.js). */
 #loading {
   position: fixed;
   inset: 0;
@@ -218,6 +217,36 @@ p {
 #dev .stats span:nth-child(even) {
   text-align: right;
 }
+/* Buttons side by side across the panel: its tabs, a tool's; the one in use lighter. */
+#dev .row {
+  align-self: stretch;
+  display: flex;
+  gap: 2px;
+}
+#dev .row button {
+  flex: 1;
+}
+#dev .row svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* A tab's page, its rows one below the other. */
+#dev .page {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+#dev .page[hidden] {
+  display: none;
+}
 #dev label {
   display: flex;
   align-items: center;
@@ -345,10 +374,34 @@ p {
 #spray .row {
   white-space: nowrap;
 }
+#dev button:disabled,
 #points button:disabled,
 #reset:disabled {
   opacity: 0.4;
   cursor: default;
+}
+/* In the Dev panel: tabs across its top, to its edges and in its corners, the one shown of the
+   panel itself, its text white; the others darker, their text dimmed. A mode or tool in use
+   blue. */
+#dev .tabs {
+  gap: 0;
+  margin: -6px -6px 4px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  overflow: hidden;
+}
+#dev .tabs button {
+  min-height: 28px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 0;
+}
+#dev .tabs [aria-pressed="true"] {
+  color: #fff;
+  background: none;
+}
+#dev .tools [aria-pressed="true"],
+#dev .tool[aria-pressed="true"] {
+  background: #1e90ff;
 }
 #credits a,
 #about a {

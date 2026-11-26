@@ -1,14 +1,18 @@
 // Rockets flying straight with a whoosh and a smoke trail, until they hit a building or bridge
 // (structures.hit, then onHit(number)), the ground (a small blast) or are PAST where they were
 // aimed (a shell: ACROSS). Those of a plane first drop from it for DROP seconds, going along with
-// it, then light and fly towards where they were aimed.
+// it, then light and fly towards where they were aimed. The basilisk's fire shots fly so too.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { audio, fade } from "./sound.js";
+import { audio, fade, play } from "./sound.js";
 
 // Metres per second each kind starts at, the metres per second² it speeds up by and the speed it
-// reaches: a rocket; a shell, fast from the gun; a plane's, from the speed it drops at.
+// reaches: a rocket; a shell, fast from the gun; a plane's, from the speed it drops at; a fireball.
 const ROCKET = [350, 400, 700];
+const FIREBALL = [1000, 0, 1000];
+const BURST = 40; // metres to a fire shot's full size
+const STREAK = 90; // metres of flame behind it at most
+const COOL = 500; // metres from yellow to orange
 const SHELL_FLIGHT = [1000, 0, 1000];
 const DROPPED = [0, 2000, 1000];
 const ACROSS = 12000; // metres a shell flies at most: further than across the terrain's area
@@ -23,8 +27,9 @@ const MAX = 256; // rockets in flight at most
 const SHELL = 0.35; // a shell's size, of a rocket's
 
 // structures: from buildings.js; explosions: from explosions.js; heightAt(x, z): the terrain
-// height; camera: where the whoosh is heard.
-export function createRockets(scene, structures, explosions, heightAt, camera, onHit) {
+// height; camera: where the whoosh is heard; fireSound: a promise of the fire shot's sound file
+// (its bytes).
+export function createRockets(scene, structures, explosions, heightAt, camera, onHit, fireSound) {
   // A dark body with a glowing tail, and a fading smoke trail behind, the nose along +z; metres.
   // All rockets are instances of these two, in two draw calls.
   const colored = (geometry, color) => {
@@ -53,14 +58,38 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
     }),
     MAX,
   );
-  for (const mesh of [bodies, trails]) {
+  // Fire shots: a core and a flame behind it, additive, coloured per instance.
+  const flame = () =>
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+  const balls = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(1.6).scale(1, 1, 4),
+    flame(),
+    MAX,
+  );
+  const tails = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(1, 1, 6).rotateX(-Math.PI / 2).translate(0, 0, -0.5),
+    flame(),
+    MAX,
+  );
+  const [HOT, BURNING] = [0xfff0a0, 0xff7a18].map((c) => new THREE.Color(c));
+  const glow = new THREE.Color();
+  // Colours set from the start, so the first shot does not compile new shaders.
+  for (const mesh of [balls, tails]) mesh.setColorAt(0, HOT);
+  const spin = new THREE.Quaternion();
+  const meshes = [bodies, trails, balls, tails];
+  for (const mesh of meshes) {
     mesh.count = 0;
     mesh.frustumCulled = false; // they fly all over
     scene.add(mesh);
   }
   // { position, direction (unit), speed, thrust, top, turn (from +z), size, travelled, range, to
-  // (where it is aimed at) }; a plane's also { wait (seconds it still drops), carried (the
-  // plane's velocity) }.
+  // (where it is aimed at), ball (a fireball) }; a plane's also { wait (seconds it still drops),
+  // carried (the plane's velocity) }.
   const flying = new Set();
   const before = new THREE.Vector3();
   const matrix = new THREE.Matrix4();
@@ -86,13 +115,29 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
     sound.buffer = noise;
     const filter = context.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(long ? 300 : 900, now);
+    filter.frequency.setValueAtTime(long ? 300 : 700, now);
     if (long) filter.frequency.exponentialRampToValueAtTime(2500, now + 0.25);
     filter.frequency.exponentialRampToValueAtTime(150, now + length);
-    const volume = 0.2 * THREE.MathUtils.clamp(200 / Math.max(distance, 1), 0.05, 1);
+    const volume = 0.15 * THREE.MathUtils.clamp(200 / Math.max(distance, 1), 0.05, 1);
     sound.connect(filter).connect(fade(volume, length));
     sound.start(now, Math.random() * 2); // from somewhere in the noise, so each is a bit different
     sound.stop(now + length);
+  }
+
+  // A fire shot's sound, quieter far away, at most VOICES at once.
+  const VOICES = 3;
+  let decoded = null;
+  let ends = []; // when those playing end (seconds)
+  function roar(distance) {
+    const { context } = audio();
+    decoded ??= fireSound.then((bytes) => context.decodeAudioData(bytes.slice(0)));
+    const volume = 0.15 * THREE.MathUtils.clamp(200 / Math.max(distance, 1), 0.05, 1);
+    decoded.then((buffer) => {
+      ends = ends.filter((end) => end > context.currentTime);
+      if (ends.length >= VOICES) return;
+      ends.push(context.currentTime + buffer.duration);
+      play(buffer, volume);
+    });
   }
 
   return {
@@ -121,11 +166,18 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
       return to;
     },
     // A rocket from a scene point towards another, unless MAX are flying; or a shell, smaller and
-    // silent (its bang is the gun's); or a plane's, dropped at the plane's velocity (carried).
-    fire(from, to, shell = false, carried = null) {
+    // silent (its bang is the gun's); or a plane's, dropped at the plane's velocity (carried); or
+    // a fireball (ball).
+    fire(from, to, { shell = false, carried = null, ball = false } = {}) {
       if (flying.size >= MAX) return;
       const direction = to.clone().sub(from).normalize();
-      const [speed, thrust, top] = shell ? SHELL_FLIGHT : carried ? DROPPED : ROCKET;
+      const [speed, thrust, top] = shell
+        ? SHELL_FLIGHT
+        : carried
+          ? DROPPED
+          : ball
+            ? FIREBALL
+            : ROCKET;
       flying.add({
         position: from.clone(),
         direction,
@@ -139,11 +191,13 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
         to: to.clone(),
         wait: carried ? DROP : 0,
         carried: carried?.clone(),
+        ball,
       });
-      if (!shell && !carried) whoosh(camera.position.distanceTo(from));
+      if (ball) roar(camera.position.distanceTo(from));
+      else if (!shell && !carried) whoosh(camera.position.distanceTo(from));
     },
     update(dt) {
-      let n = 0;
+      let [n, b] = [0, 0]; // rockets and fireballs drawn
       for (const rocket of flying) {
         const { position, carried } = rocket;
         const dropping = rocket.wait > 0;
@@ -166,23 +220,45 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
         }
         const met = meets(before, position);
         if (met === null && rocket.travelled < rocket.range) {
+          if (rocket.ball) {
+            // Growing out of the mouth and cooling as it goes, flickering.
+            const age = Math.min(1, rocket.travelled / COOL);
+            const out = Math.min(1, 0.15 + rocket.travelled / BURST);
+            const size = out * (1 + 0.5 * age) * (0.8 + 0.4 * Math.random());
+            spin.setFromAxisAngle(FORWARD, Math.random() * 7).premultiply(rocket.turn);
+            balls.setMatrixAt(b, matrix.compose(position, spin, scale.setScalar(size)));
+            const back = Math.min(rocket.travelled, STREAK * (0.8 + 0.4 * Math.random()));
+            tails.setMatrixAt(
+              b,
+              matrix.compose(position, rocket.turn, scale.set(2 * size, 2 * size, back)),
+            );
+            balls.setColorAt(b, glow.lerpColors(HOT, BURNING, age));
+            tails.setColorAt(b++, glow.copy(BURNING).multiplyScalar(0.7));
+            continue;
+          }
           matrix.compose(position, rocket.turn, scale.setScalar(rocket.size));
           bodies.setMatrixAt(n, matrix);
-          trails.setMatrixAt(n, dropping ? none : matrix);
-          n++;
+          trails.setMatrixAt(n++, dropping ? none : matrix);
           continue;
         }
         if (met === "ground") explosions.burst(position);
         else if (met !== null) onHit(met);
         flying.delete(rocket);
       }
-      for (const mesh of [bodies, trails]) {
-        mesh.count = n;
-        if (!n) continue; // nothing drawn, nothing to send
-        mesh.instanceMatrix.clearUpdateRanges();
-        mesh.instanceMatrix.addUpdateRange(0, 16 * n);
-        mesh.instanceMatrix.needsUpdate = true;
-      }
+      meshes.forEach((mesh, k) => {
+        const count = k < 2 ? n : b; // the rockets', then the fireballs'
+        mesh.count = count;
+        if (!count) return; // nothing drawn, nothing to send
+        for (const [attribute, size] of [
+          [mesh.instanceMatrix, 16],
+          [mesh.instanceColor, 3],
+        ]) {
+          if (!attribute) continue; // the rockets' have no colours
+          attribute.clearUpdateRanges();
+          attribute.addUpdateRange(0, size * count);
+          attribute.needsUpdate = true;
+        }
+      });
     },
   };
 }

@@ -9,6 +9,8 @@ import { N_MAX, PUBLIC, toX, toZ } from "./area.mjs";
 import { osmElements, toLV95 } from "./osm.mjs";
 import { BRIDGES_FILE } from "./bsbridges.mjs";
 import { heightAt } from "./heights.mjs";
+import { fromWGS84, toWGS84 } from "../src/geo.js";
+import PLACEMENTS from "../src/placement-data.js";
 
 const STEP = 5; // metres between points
 const LANE = 25; // metres from the centre line
@@ -18,8 +20,16 @@ const SMOOTH = 16; // points averaged on each side, so the lanes swing gently ar
 const PIER = 4; // metres: bridge parts this low above the water are obstacles
 const CELL = 2; // metres of the obstacle grid
 const TURN_EAST = toX(2613850); // turn before the power station (E 2614070)
-// The sea monster in src/main.js (createSerpent): its neck is about 19 m thick at the water.
-const MONSTER = { x: 1717, z: 68, radius: 30 };
+// The sea serpent (A3), where src/placement-data.js puts it; about 23 m round at the water.
+const SERPENT = { x: 1717, z: 68 };
+const moved = PLACEMENTS.find(
+  ({ figure, from, to }) =>
+    figure === "A3" &&
+    to &&
+    `${from}` === `${toWGS84(SERPENT.x, SERPENT.z).map((v) => +v.toFixed(6))}`,
+)?.to;
+const [mx, mz] = moved ? fromWGS84(moved[0], moved[1]) : [SERPENT.x, SERPENT.z];
+const MONSTER = { x: mx, z: mz, radius: 30 };
 
 // --- The Rhine's centre line downstream (OSM ways point downstream), from below the power
 // station to the north edge of the area.

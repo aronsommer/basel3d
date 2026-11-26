@@ -42,16 +42,17 @@ place in the museum too.
 
 ## Animals
 
-| Id  | What                                                                                                                                                                                          | Where                         | File                       |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | -------------------------- |
-| A1  | Zoo: giraffes, elephants, zebras, rhinos, penguins, hippos, seals, flamingos (by the hippos and amid the seals)                                                                               | Zoo Basel                     | `zoo.js`, `catalog.js`     |
-| A1  | A crocodile                                                                                                                                                                                   | Merian Gärten                 | `zoo.js`, `catalog.js`     |
-| A1  | Wild boars, foxes, a wildcat, red deer, chamois, swans with cygnets, ducks, geese, goats (twice), small monkeys, a lynx, donkeys, wolves (twice), a howling wolf, wisents with a calf (twice) | Lange Erlen                   | `zoo.js`, `catalog.js`     |
-| S1  | A swan family, fed by the old man                                                                                                                                                             | Rhine bank, St. Johann        | `zoo.js` (createSwans)     |
-| A4  | 12 flocks of birds                                                                                                                                                                            | bridges, parks, squares       | `birds.js`, `catalog.js`   |
-| A2  | Whale families among the ships                                                                                                                                                                | Rhine                         | `ships.js`                 |
-| A3  | The sea serpent                                                                                                                                                                               | Rhine before the Roche towers | `serpent.js`, `catalog.js` |
-| P2  | Swan families beside the Rhine swimmers                                                                                                                                                       | Rheinweg round                | `swimmers.js`              |
+| Id  | What                                                                                                                                                                                          | Where                           | File                        |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | --------------------------- |
+| A1  | Zoo: giraffes, elephants, zebras, rhinos, penguins, hippos, seals, flamingos (by the hippos and amid the seals)                                                                               | Zoo Basel                       | `zoo.js`, `catalog.js`      |
+| A1  | A crocodile                                                                                                                                                                                   | Merian Gärten                   | `zoo.js`, `catalog.js`      |
+| A1  | Wild boars, foxes, a wildcat, red deer, chamois, swans with cygnets, ducks, geese, goats (twice), small monkeys, a lynx, donkeys, wolves (twice), a howling wolf, wisents with a calf (twice) | Lange Erlen                     | `zoo.js`, `catalog.js`      |
+| S1  | A swan family, fed by the old man                                                                                                                                                             | Rhine bank, St. Johann          | `zoo.js` (createSwans)      |
+| A4  | 12 flocks of birds                                                                                                                                                                            | bridges, parks, squares         | `birds.js`, `catalog.js`    |
+| A2  | Whale families among the ships                                                                                                                                                                | Rhine                           | `ships.js`                  |
+| A3  | The sea serpent                                                                                                                                                                               | Rhine before the Roche towers   | `serpent.js`, `catalog.js`  |
+| A5  | The basilisk, flown as a plane                                                                                                                                                                | Wettsteinbrücke, Grossbasel end | `basilisk.js`, `catalog.js` |
+| P2  | Swan families beside the Rhine swimmers                                                                                                                                                       | Rheinweg round                  | `swimmers.js`               |
 
 ## People in scenes
 
@@ -76,26 +77,26 @@ place in the museum too.
 
 ## Vehicles one drives or flies
 
-| Id  | What                               | Where                                 | File                          |
-| --- | ---------------------------------- | ------------------------------------- | ----------------------------- |
-| V1  | Police vans (one unmarked)         | St. Johann, Klybeck, Claraplatz       | `police.js`, `catalog.js`     |
-| V2  | Ambulance                          | WGS84 47.5613, 7.5854                 | `ambulance.js`, `catalog.js`  |
-| V3  | Turntable ladder fire truck        | fire station                          | `firetruck.js`, `catalog.js`  |
-| V4  | Motorcycles (one poison green)     | Claraplatz                            | `motorcycle.js`, `catalog.js` |
-| V5  | A quad                             | Claraplatz                            | `quad.js`, `catalog.js`       |
-| V6  | Traxxas XRT                        | St. Johanns-Park                      | `xrt.js`, `catalog.js`        |
-| V7  | Tank                               | Kaserne                               | `tank.js`, `catalog.js`       |
-| V8  | Drone                              | over the Münster's roof               | `drone.js`, `catalog.js`      |
-| V9  | Dinosaur                           | Merian Gärten                         | `dino.js`, `catalog.js`       |
-| V10 | Rega H145 and AW109 on helipads    | Universitätsspital roof               | `rega.js`, `catalog.js`       |
-| V11 | Fighter jet                        | BIZ tower roof                        | `jet.js`, `catalog.js`        |
-| V12 | UFO                                | Novartis Campus                       | `ufo.js`, `catalog.js`        |
-| V13 | Two airliners, circling            | over the city                         | `aircraft.js`, `catalog.js`   |
-| V14 | Yellow attack helicopter, circling | over the serpent and the Roche towers | `aircraft.js`, `catalog.js`   |
-| V15 | Fireboat                           | Rhine                                 | `boats.js`, `catalog.js`      |
-| V16 | Police speedboat                   | Rhine                                 | `boats.js`, `catalog.js`      |
-| V17 | Traxxas DCB M41 and its crew       | Rhine off the Novartis Campus         | `m41.js`, `catalog.js`        |
-| V18 | Cat Car                            | Kaserne                               | `catcar.js`, `catalog.js`     |
+| Id  | What                               | Where                           | File                          |
+| --- | ---------------------------------- | ------------------------------- | ----------------------------- |
+| V1  | Police vans (one unmarked)         | St. Johann, Klybeck, Claraplatz | `police.js`, `catalog.js`     |
+| V2  | Ambulance                          | WGS84 47.5613, 7.5854           | `ambulance.js`, `catalog.js`  |
+| V3  | Turntable ladder fire truck        | fire station                    | `firetruck.js`, `catalog.js`  |
+| V4  | Motorcycles (one poison green)     | Claraplatz                      | `motorcycle.js`, `catalog.js` |
+| V5  | A quad                             | Claraplatz                      | `quad.js`, `catalog.js`       |
+| V6  | Traxxas XRT                        | St. Johanns-Park                | `xrt.js`, `catalog.js`        |
+| V7  | Tank                               | Kaserne                         | `tank.js`, `catalog.js`       |
+| V8  | Drone                              | over the Münster's roof         | `drone.js`, `catalog.js`      |
+| V9  | Dinosaur                           | Merian Gärten                   | `dino.js`, `catalog.js`       |
+| V10 | Rega H145 and AW109 on helipads    | Universitätsspital roof         | `rega.js`, `catalog.js`       |
+| V11 | Fighter jet                        | BIZ tower roof                  | `jet.js`, `catalog.js`        |
+| V12 | UFO                                | Novartis Campus                 | `ufo.js`, `catalog.js`        |
+| V13 | Two airliners, circling            | over the city                   | `aircraft.js`, `catalog.js`   |
+| V14 | Yellow attack helicopter, circling | round the taller Roche tower    | `aircraft.js`, `catalog.js`   |
+| V15 | Fireboat                           | Rhine                           | `boats.js`, `catalog.js`      |
+| V16 | Police speedboat                   | Rhine                           | `boats.js`, `catalog.js`      |
+| V17 | Traxxas DCB M41 and its crew       | Rhine off the Novartis Campus   | `m41.js`, `catalog.js`        |
+| V18 | Cat Car                            | Kaserne                         | `catcar.js`, `catalog.js`     |
 
 ## Traffic one rides along
 
@@ -164,6 +165,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | A2    | Whales (passing with the ships)                          |
 | A3    | Sea serpent                                              |
 | A4    | Birds                                                    |
+| A5    | Basilisk                                                 |
 | V1-1  | Police van                                               |
 | V1-2  | Police van, unmarked                                     |
 | V2    | Ambulance                                                |

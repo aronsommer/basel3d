@@ -456,28 +456,35 @@ export function createExplosions(scene, structures, heightAt, camera, unburnt) {
       );
   }
 
-  // A bang: a low thump and a dull rumble fading out, at most half as loud as the speakers allow,
-  // quieter far away and by loudness (0 to 1); each a little different in pitch and length.
+  // A bang, dull, not a shot's crack: a low thump and a deep rumble swelling up within SWELL
+  // seconds and fading out, about 0.32 as loud as the speakers allow (the thump a third louder),
+  // quieter far away and by loudness (0 to 1); each different: louder or softer (± 20 %), in its
+  // thump's pitch, its rumble duller or clearer (± 30 %), and a little in length (± 15 %).
+  const SWELL = 0.09;
   function bang(distance, scale, loudness = 1) {
     const { context, noise } = audio();
     const now = context.currentTime;
-    const vary = () => 0.85 + Math.random() * 0.3;
-    const volume = 0.5 * loudness * THREE.MathUtils.clamp(500 / Math.max(distance, 1), 0.05, 1);
+    const vary = (by = 0.15) => 1 - by + Math.random() * 2 * by; // 1 ± by
+    const volume =
+      0.32 * vary(0.2) * loudness * THREE.MathUtils.clamp(500 / Math.max(distance, 1), 0.05, 1);
     const length = (1.3 + scale) * vary();
     const rumble = context.createBufferSource();
     rumble.buffer = noise;
     rumble.loop = true; // the rumble can be longer than the noise
     const filter = context.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(500 * vary(), now);
-    filter.frequency.exponentialRampToValueAtTime(60, now + length);
-    rumble.connect(filter).connect(fade(volume, length));
+    filter.frequency.setValueAtTime(250 * vary(0.3), now);
+    filter.frequency.exponentialRampToValueAtTime(50, now + length);
+    const swell = context.createGain();
+    swell.gain.setValueAtTime(0, now);
+    swell.gain.linearRampToValueAtTime(1, now + SWELL);
+    rumble.connect(filter).connect(swell).connect(fade(volume, length));
     rumble.start(now, Math.random()); // from somewhere in the noise
     rumble.stop(now + length);
     const thump = context.createOscillator();
-    thump.frequency.setValueAtTime(90 * vary(), now);
+    thump.frequency.setValueAtTime(70 * vary(0.3), now);
     thump.frequency.exponentialRampToValueAtTime(30, now + 0.6);
-    thump.connect(fade(volume, 0.7));
+    thump.connect(fade(volume * 1.3, 0.7));
     thump.start(now);
     thump.stop(now + 0.7);
   }
