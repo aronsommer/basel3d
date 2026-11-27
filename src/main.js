@@ -3146,11 +3146,12 @@ const lighten = new FullScreenQuad(
   }),
 );
 function render(grey = tramLinesShown()) {
+  const shown = tramMesh.visible; // as it is, hidden only for the grey pass
   if (grey) [renderer.toneMappingExposure, tramMesh.visible] = [-EXPOSURE, false];
   renderer.render(scene, camera);
   renderer.autoClear = false; // over the scene
   if (grey) {
-    [renderer.toneMappingExposure, tramMesh.visible] = [EXPOSURE, true];
+    [renderer.toneMappingExposure, tramMesh.visible] = [EXPOSURE, shown];
     lighten.render(renderer);
     camera.layers.set(TRAMS);
     scene.matrixWorldAutoUpdate = false; // updated by the pass before
@@ -3257,9 +3258,20 @@ const drawFrame = createDev(
   renderer,
   render,
   [
-    ["Buildings", [buildings.scene, bridges.scene]],
-    ["Trees", tree.meshes],
-    ["Terrain", [terrain]],
+    ["Sky", () => [sky]],
+    ["Terrain", () => [terrain]],
+    ["Buildings", () => [buildings.scene, bridges.scene]],
+    ["Trees", () => tree.meshes],
+    // All other 3D models in the scene now, but the lights; not what the menu shows over it.
+    [
+      "Objects",
+      () =>
+        scene.children.filter(
+          (o) =>
+            !o.isLight &&
+            ![buildings.scene, bridges.scene, terrain, sky, ...tree.meshes].includes(o),
+        ),
+    ],
   ],
   (on) => showGround(on ? "photo" : "map"),
   (on) => (god = on),

@@ -15,7 +15,7 @@ const KEY = "basel3d.devPanel"; // "1" (on) or "0"
 const SAMPLE = 5;
 const SCALES = [1, 0.75, 0.5]; // of the pixel ratio
 
-// A function drawing a frame with render(), timed while ticked; parts: [[name, objects], …];
+// A function drawing a frame with render(), timed while ticked; parts: [[name, objects()], …];
 // aerial(on): shows the aerial photo or the map again, its promise done when it does; god(on):
 // turns God mode on or off; riders(on): shows the riders on all vehicles or only on the one ridden;
 // graffiti(on, box): turns the graffiti editor on or off, its panel in box (an element); placer:
@@ -64,15 +64,21 @@ export function createDev(renderer, render, parts, aerial, god, riders, graffiti
   };
   rescale(0);
   resolution.addEventListener("click", () => rescale((scale + 1) % SCALES.length));
-  const boxes = parts.map(([name, objects]) => {
+  const boxes = parts.map(([name]) => {
     const label = add("label");
     const input = label.appendChild(element("input", { type: "checkbox", checked: true }));
     label.append(name);
-    input.addEventListener("change", () => {
-      for (const object of objects) object.visible = input.checked;
-    });
     return input;
   });
+  // render() with the parts whose boxes are unticked hidden, as they are this frame, and shown
+  // again after.
+  const draw = () => {
+    const off = parts.flatMap(([, objects], i) => (boxes[i].checked ? [] : objects()));
+    const hidden = off.filter((object) => object.visible);
+    for (const object of hidden) object.visible = false;
+    render();
+    for (const object of hidden) object.visible = true;
+  };
   // A box below, not ticked, calling change(ticked) when ticked or unticked.
   const toggle = (name, change) => {
     const label = add("label");
@@ -141,7 +147,6 @@ export function createDev(renderer, render, parts, aerial, god, riders, graffiti
     for (const input of boxes) input.checked = true;
     riders((riding.checked = false));
     choose(0);
-    for (const [, objects] of parts) for (const object of objects) object.visible = true;
     rescale(0);
     [frames, timed, cpu, gpu, since, fresh] = [0, 0, 0, 0, performance.now(), true];
   });
@@ -149,11 +154,11 @@ export function createDev(renderer, render, parts, aerial, god, riders, graffiti
   return () => {
     if (!box.checked) return render();
     renderer.info.reset();
-    if (frames++ % SAMPLE) render();
+    if (frames++ % SAMPLE) draw();
     else {
       finish(); // the frames before, so only this one is timed
       const begin = performance.now();
-      render();
+      draw();
       const handed = performance.now();
       finish();
       timed++;
