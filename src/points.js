@@ -54,8 +54,8 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   // After each change: the panel while ticked; its buttons: Delete last while recording, else
   // Paste points; Delete last, Copy and Clear points disabled without marks; the marks hidden while
   // unticked (update shows them), their numbers smaller from 100 marks on (style.css); the tick and
-  // the marks stored.
-  const sync = () => {
+  // the marks stored, unless store is false.
+  const sync = (store = true) => {
     panel.hidden = !box.checked;
     layer.classList.toggle("long", points.length >= 100);
     if (panel.hidden) for (const { mark } of points) mark.hidden = true;
@@ -63,14 +63,15 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
     deleteLast.hidden = !on;
     paste.hidden = on;
     deleteLast.disabled = copyAll.disabled = clearAll.disabled = !points.length;
+    if (!store) return;
     try {
       localStorage.setItem(PANEL_KEY, box.checked ? "1" : "0");
       localStorage.setItem(POINTS_KEY, lines());
     } catch {} // storage blocked
   };
-  sync();
+  sync(false); // nothing stored before a change
 
-  box.addEventListener("change", sync);
+  box.addEventListener("change", () => sync());
   record.addEventListener("click", () => {
     on = !on;
     sync();
