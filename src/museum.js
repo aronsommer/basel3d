@@ -174,7 +174,7 @@ const AT = {
   A5: [{ ...point(47.579, 7.5768), heading: 0 }],
 };
 // Kinds the museum shows where they are in the city, by id: metres ahead of each its label lies.
-const IN_PLACE = { V17: 12 };
+const IN_PLACE = { V17: 12, L2: 70 };
 // The catalog's kinds (src/catalog.js) in the museum: where it shows the kind with this id and
 // name, placed in the city at places: one of each variant (places differing but in x, z and
 // heading; one if it keeps to no place), each marked museum (for makers laying it out otherwise

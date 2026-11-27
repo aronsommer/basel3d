@@ -20,16 +20,17 @@ import { LANDINGS, createFerries } from "./ferries.js";
 import { createFireTrucks } from "./firetruck.js";
 import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
-import { FERRY } from "./museum.js";
 import { createJet } from "./jet.js";
 import { createM41s } from "./m41.js";
 import { createMotorcycles } from "./motorcycle.js";
+import { FERRY } from "./museum.js";
 import { TOSS, TOSS_HAND, createCrowd, createPeople, mix } from "./people.js";
 import { createPolice } from "./police.js";
 import { createQuads } from "./quad.js";
 import { createRega } from "./rega.js";
 import { createSerpent } from "./serpent.js";
 import { createTanks } from "./tank.js";
+import { createTripoint } from "./tripoint.js";
 import { PLACE as UFO, createUfo } from "./ufo.js";
 import { createXrts } from "./xrt.js";
 import { createSwans, createZoo } from "./zoo.js";
@@ -484,6 +485,15 @@ export const CATALOG = {
       });
       return { objects: createBasilisks(list) };
     },
+  },
+  L2: {
+    // The tetrahedron over the tip of the Hafen Kleinhüningen, its base 1 m under the Rhine's
+    // surface (water); heading towards the tip's land, where the museum's label lies (IN_PLACE).
+    name: "Dreiländereck",
+    places: [{ ...at(47.588392, 7.589732), heading: (3 * Math.PI) / 4 }],
+    make: (places, { water }) => ({
+      objects: places.map(({ x, z }) => createTripoint(x, water - 1, z)),
+    }),
   },
   S1: {
     name: "Old man feeding swans",

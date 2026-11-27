@@ -26,6 +26,7 @@ place in the museum too.
 | Id  | What                                      | Where                 | File                                 |
 | --- | ----------------------------------------- | --------------------- | ------------------------------------ |
 | L1  | 31 Basiliskbrunnen                        | all over the city     | `basilisks.js`, `catalog.js`         |
+| L2  | Tetrahedron in the three countries' flags | Dreiländereck         | `tripoint.js`, `catalog.js`          |
 |     | St. Jakob-Park in FC Basel's colours      | St. Jakob             | `main.js`                            |
 |     | Roche's buildings, a green roof grey      | Roche site            | `main.js`                            |
 |     | Basel SBB: platform roofs, front, clocks  | Basel SBB             | `main.js`, `station.js`, `clocks.js` |
@@ -33,7 +34,6 @@ place in the museum too.
 |     | Fire station: grey, gates, name           | WGS84 47.5562, 7.5824 | `firestation.js`                     |
 |     | Rainbow flags on the Münster's towers     | Münster               | `pride.js`                           |
 |     | Elisabethenkirche in rainbow stripes      | Elisabethenkirche     | `main.js`, `pride.js`                |
-|     | Tetrahedron in the three countries' flags | Dreiländereck         | `tripoint.js`                        |
 |     | A building with old-town windows          |                       | `main.js`, `facade.js`               |
 |     | Novartis Pavillon's light show            | Novartis Campus       | `pavilion.js`                        |
 |     | "PUMA" mown into a lawn                   | Erlenmatt             | `lawn.js`                            |
@@ -129,6 +129,7 @@ the bigger plate "Pins" pins or unpins all at once, below the biggest, "Museum".
 | Id    | Plate                                                    |
 | ----- | -------------------------------------------------------- |
 | L1    | Basiliskbrunnen                                          |
+| L2    | Dreiländereck                                            |
 | S1    | Old man feeding swans                                    |
 | S2    | Sunbathing, yoga and dancing                             |
 | S3    | Men in Kleinbasel (all 30)                               |
