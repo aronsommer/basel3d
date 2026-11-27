@@ -53,6 +53,7 @@ import {
   WHOLE_CARS,
   WHOLE_TRAMS,
   createGraffiti,
+  homesOf,
   startPainter,
   wholeCar,
 } from "./graffiti.js";
@@ -490,6 +491,7 @@ saved = saved.filter(Number.isInteger);
 // The decks of all destroyed bridges, taken before they are hidden; cut into the ways and rails
 // once these exist.
 const brokenDecks = decksOf(saved);
+const graffitiHomes = homesOf(structures); // before any is hidden
 const destroyed = new Set(explosions.ruin(saved));
 const resetButton = document.getElementById("reset");
 resetButton.addEventListener("click", () => {
@@ -1326,11 +1328,12 @@ load(
       ["Crafty Girls", crafty],
     ],
   );
-  const { meshes, marks } = await createGraffiti((at) => roofOver(at, true));
+  const { meshes, marks } = await createGraffiti(graffitiHomes);
   scene.add(...meshes);
   graffitiMeshes = meshes;
   for (const [number, hide] of marks)
-    grounding.set(number, [...(grounding.get(number) ?? []), hide]);
+    if (destroyed.has(number)) hide();
+    else grounding.set(number, [...(grounding.get(number) ?? []), hide]);
   // Each part of a design once per text and size of car, with the cars it is on (on) and its
   // group, the parts of one design's side, the longest first: the others' letters no bigger than
   // its.

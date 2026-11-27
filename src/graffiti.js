@@ -275,11 +275,23 @@ export function placeOf(mesh) {
   return { at, n, up, width, tilt };
 }
 
-// roofAt({ x, z }): the topmost roof or bridge there, { number, y }, if any. Resolves to { meshes,
-// marks: per graffito on a building or bridge [its number, a function hiding it] }, all painted at
-// once by the painter, each mesh's userData { graffito: its entry in src/graffiti-data.js, aspect,
-// tilt } (lay).
-export async function createGraffiti(roofAt) {
+// A graffito's middle (location: its entry's) in the scene.
+function middleOf(location) {
+  const [x, z] = fromWGS84(location[0], location[1]);
+  return new THREE.Vector3(x, location[2] - 250, z);
+}
+// Per graffito the building or bridge it lies on, as structures.hit finds it from just before its
+// middle to 4 m behind (it may stand before a bay of its wall); -1 if none. Before any is hidden.
+export const homesOf = (structures) =>
+  PLACED.map(({ location, facing, lean }) => {
+    const at = middleOf(location);
+    const { n } = surface(facing, lean);
+    return structures.hit(at.clone().addScaledVector(n, 0.1), at.addScaledVector(n, -4));
+  });
+// homes: homesOf's. Resolves to { meshes, marks: per graffito on a building or bridge [its number,
+// a function hiding it] }, all painted at once by the painter, each mesh's userData { graffito: its
+// entry in src/graffiti-data.js, aspect, tilt } (lay).
+export async function createGraffiti(homes) {
   const [meshes, marks] = [[], []];
   const painted = await Promise.all(
     PLACED.map(({ style, location, facing, lean, width, tilt, ...own }) =>
@@ -291,16 +303,10 @@ export async function createGraffiti(roofAt) {
     const mesh = painted[k];
     mesh.userData.graffito = graffito;
     mesh.renderOrder = meshes.length + 1; // a later one over an earlier one (paintOn)
-    const [x, z] = fromWGS84(location[0], location[1]);
     const { n, up } = surface(facing, lean);
-    lay(mesh, mesh.userData.aspect, new THREE.Vector3(x, location[2] - 250, z), n, up, width, tilt);
+    lay(mesh, mesh.userData.aspect, middleOf(location), n, up, width, tilt);
     meshes.push(mesh);
-    // Its building or bridge: the roof behind its middle, looked for up to 4 m back (it may stand
-    // before a bay of its wall).
-    let behind = null;
-    for (let d = 0.3; !behind && d < 4; d += 0.5)
-      behind = roofAt({ x: x - n.x * d, z: z - n.z * d });
-    if (behind) marks.push([behind.number, () => (mesh.visible = false)]);
+    if (homes[k] >= 0) marks.push([homes[k], () => (mesh.visible = false)]);
   }
   return { meshes, marks };
 }
