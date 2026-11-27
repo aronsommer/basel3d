@@ -27,11 +27,13 @@ import {
   styled,
 } from "./graffiti.js";
 
-const NUDGE = 8; // px of the screen a key moves the one picked, SHIFT times as far with Shift
-const SHIFT = 5; // times as far or round with Shift
+// Also the Transform tool's (src/placer.js).
+export const NUDGE = 8; // px of the screen a key moves the one picked, SHIFT times with Shift
+export const SHIFT = 5; // times as far or round with Shift
 const SAMPLE = "STYLE"; // a new one's text, and the style tiles'
-// Keys moving the one picked: sideways and up as it lies, not turned.
-const MOVES = {
+// Keys moving the one picked: sideways and up as it lies, not turned; turning it, a degree to the
+// left or right.
+export const MOVES = {
   ArrowUp: [0, 1],
   KeyW: [0, 1],
   ArrowDown: [0, -1],
@@ -41,6 +43,7 @@ const MOVES = {
   ArrowRight: [1, 0],
   KeyD: [1, 0],
 };
+export const TURNS = { KeyQ: 1, KeyE: -1 };
 const FLAT = 0.999; // of a face's normal's height: as flat as that, it counts as level
 const WALL = 0.3; // of a face's normal's height: below that, a wall, a graffito on it upright
 const GRAB = 14; // px from a corner's dot, pressing turns the one picked
@@ -524,7 +527,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
     if (e.code === "Escape" || e.code === "Enter" || e.code === "NumpadEnter") return pick(null);
     const { place } = state;
     const [x, y] = MOVES[e.code] ?? [0, 0];
-    const turn = { KeyQ: 1, KeyE: -1 }[e.code];
+    const turn = TURNS[e.code];
     const times = e.shiftKey ? SHIFT : 1;
     if (x || y) {
       // Its own way as it lies, not turned (tilt): on a wall sideways and straight up, elsewhere as

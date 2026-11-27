@@ -4,6 +4,7 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { toWGS84 } from "./geo.js";
 import { MAGENTA } from "./lines.js";
 import PLACEMENTS from "./placement-data.js";
+import { MOVES, NUDGE, SHIFT, TURNS } from "./sprayer.js";
 
 const CLICK = 5; // px
 const AREA = 200; // metres, the widest figure picked by its box (a flock is up to 180)
@@ -13,21 +14,11 @@ const HEAD = `// Written by the Transform tool (src/placer.js). Figures: { figur
 // longitude, metres above sea], heading, x, z }; a kind's one size: { figure, size }; labels:
 // { label, at }.
 `;
-// [name, key, mode, SVG icon path]
+// [name, mode, SVG icon path]
 const TOOLS = [
-  [
-    "Move",
-    "KeyW",
-    "translate",
-    "M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3",
-  ],
-  [
-    "Rotate",
-    "KeyE",
-    "rotate",
-    "M19 9A8 8 0 0 0 5 8M5 3.5V8h4.5M5 15a8 8 0 0 0 14 1M19 20.5V16h-4.5",
-  ],
-  ["Scale", "KeyR", "scale", "M4 4h16v16H4zM8 16l8-8M11 8h5v5"],
+  ["Move", "translate", "M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"],
+  ["Rotate", "rotate", "M19 9A8 8 0 0 0 5 8M5 3.5V8h4.5M5 15a8 8 0 0 0 14 1M19 20.5V16h-4.5"],
+  ["Scale", "scale", "M4 4h16v16H4zM8 16l8-8M11 8h5v5"],
 ];
 
 // fixedAt(raycaster): what it names but does not move, the first a ray meets ({ tag, box, mark }:
@@ -148,7 +139,7 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels, 
   }
   function show() {
     if (!buttons) return;
-    TOOLS.forEach(([, , m], k) => {
+    TOOLS.forEach(([, m], k) => {
       const usable = picked && !picked.fixed && (!picked.label || m === "translate");
       buttons.children[k].disabled = !usable;
       buttons.children[k].ariaPressed = usable && (picked.label || m === mode);
@@ -270,11 +261,30 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels, 
     }
     down = null;
   });
+  // Keys as the graffiti editor's (src/sprayer.js): moving the one picked over the ground as it is
+  // seen, NUDGE px of the screen where it is; turning a figure; SHIFT times as far with Shift.
+  const [ahead, aside, UP] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(0, 1, 0)];
   addEventListener("keydown", (e) => {
     if (!picked) return;
     if (e.code === "Escape") return pick(null);
-    const tool = TOOLS.find(([, key]) => key === e.code);
-    if (tool) use(tool[2]);
+    if (picked.fixed) return;
+    const { object } = picked;
+    const [x, y] = MOVES[e.code] ?? [0, 0];
+    const turn = picked.label ? 0 : TURNS[e.code];
+    const times = e.shiftKey ? SHIFT : 1;
+    if (x || y) {
+      // The screen's right over the ground, and away from it (also looking straight down).
+      aside.setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize();
+      ahead.crossVectors(UP, aside);
+      const far = camera.position.distanceTo(object.position);
+      const step =
+        (NUDGE * times * 2 * far * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) /
+        innerHeight;
+      object.position.addScaledVector(aside, x * step).addScaledVector(ahead, y * step);
+      if (picked.label) labels.settle(object);
+    } else if (turn) object.rotation.y += THREE.MathUtils.degToRad(turn * times);
+    else return;
+    e.preventDefault();
   });
 
   return {
@@ -287,8 +297,8 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels, 
       buttons = box.appendChild(
         Object.assign(document.createElement("div"), { className: "row tools" }),
       );
-      for (const [name, key, m, icon] of TOOLS)
-        button(buttons, `${name} (${key.slice(3)})`, () => use(m)).innerHTML =
+      for (const [name, m, icon] of TOOLS)
+        button(buttons, name, () => use(m)).innerHTML =
           `<svg viewBox="0 0 24 24"><path d="${icon}"/></svg>`;
       const row = box.appendChild(
         Object.assign(document.createElement("div"), { className: "row" }),
