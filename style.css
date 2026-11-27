@@ -47,7 +47,7 @@ p {
 #dev,
 #points,
 #spray,
-#copied,
+#badges .spot span,
 #where,
 #esc,
 #steer button {
@@ -89,7 +89,8 @@ p {
 #menu,
 #dev,
 #points,
-#spray {
+#spray,
+#badges .spot span {
   box-sizing: border-box;
   padding: 8px 14px;
   font: inherit;
@@ -638,16 +639,18 @@ p {
 #badges .pin::before {
   background: var(--magenta);
 }
-/* Above the mouse for a moment after C copied the coordinates there (src/main.js). */
-#copied {
+/* The quick copy's pin (src/points.js): its text above it, unless empty. */
+#badges .spot span {
   position: absolute;
-  top: 0;
-  left: 0;
-  padding: 4px 10px;
-  line-height: 20px;
-  text-align: center;
-  border-radius: var(--radius);
-  pointer-events: none;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+#badges .spot span:empty {
+  display: none;
 }
 /* Over the Move tool's pick (src/placer.js): which one it is, as the names' plates, smaller, in
    magenta. */

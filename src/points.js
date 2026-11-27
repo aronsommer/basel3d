@@ -6,12 +6,22 @@
 // on localhost), marks them instead, numbered in their order, and moves the view to show them;
 // other lines are skipped, and a clipboard without any keeps the marks. Copy points copies the
 // marks as such lines. Unticking hides the marks. The tick and the marks are remembered in this
-// browser.
+// browser. Apart from the panel, the quick copy (src/main.js: C, a right click, a held finger)
+// copies one such line and pins its spot with a mark without a number, "Coordinates copied" above
+// it ("Release to copy" while a finger is held), until the next press.
 import { copy } from "./copy.js";
 
 const PANEL_KEY = "basel3d.pointsPanel"; // "1" (on) or "0"
 const POINTS_KEY = "basel3d.points"; // the marks' lines, as Copy points copies them
 export const TIP = 11 * Math.SQRT2; // px from a mark's middle down to its tip, on its point (style.css)
+
+// Shows a mark with its tip at x, y while inside (onScreen), else hides it.
+export function moveMark(mark, { x, y, inside }) {
+  if (mark.hidden === inside) mark.hidden = !inside;
+  if (!inside) return;
+  mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
+  mark.at = [x, y]; // for the names to keep clear of (src/main.js, updateNames)
+}
 
 // pointAt(x, y): the scene point at a screen point (px), or null; toText(point): its line;
 // fromText(line): its point, or null; onScreen(point): { x, y, inside }; show(points): moves the
@@ -43,6 +53,30 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       ),
     });
   const lines = () => points.map(({ point }) => toText(point)).join("\n");
+  // The quick copy's pin, its text above it.
+  const spot = layer.appendChild(
+    Object.assign(document.createElement("div"), { className: "mark spot", hidden: true }),
+  );
+  const said = spot.appendChild(document.createElement("span"));
+  let spotPoint = null; // the point pinned
+  const pin = (point, text = "") => {
+    spotPoint = point;
+    said.textContent = text;
+    moveMark(spot, onScreen(point));
+    return point;
+  };
+  const unpin = () => {
+    spotPoint = null;
+    spot.hidden = true;
+  };
+  const copyPoint = (point) => {
+    if (spotPoint !== point) pin(point);
+    copy(toText(point)).then((done) => {
+      if (spotPoint !== point) return; // unpinned or pinned elsewhere meanwhile
+      if (done) said.textContent = "Coordinates copied";
+      else unpin(); // not allowed: nothing to show
+    });
+  };
   try {
     box.checked = localStorage.getItem(PANEL_KEY) === "1";
     (localStorage.getItem(POINTS_KEY) ?? "")
@@ -117,17 +151,26 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
       sync();
       return true;
     },
-    // Moves the marks to their points, after the camera's updateMatrixWorld; nothing while
-    // unticked.
+    // Pins the point at a screen point (px) without copying, saying "Release to copy"; it, or
+    // null.
+    pinAt(x, y) {
+      const point = pointAt(x, y);
+      return point && pin(point, "Release to copy");
+    },
+    // Copies the point's line and pins it, if not pinned already.
+    copyPoint,
+    // Copies the line of the point at a screen point (px) and pins it, if any.
+    copyAt(x, y) {
+      const point = pointAt(x, y);
+      if (point) copyPoint(point);
+    },
+    unpin,
+    // Moves the pin and the marks to their points, after the camera's updateMatrixWorld; the
+    // marks not while unticked.
     update() {
+      if (spotPoint) moveMark(spot, onScreen(spotPoint));
       if (panel.hidden) return;
-      for (const { point, mark } of points) {
-        const { x, y, inside } = onScreen(point);
-        if (mark.hidden === inside) mark.hidden = !inside;
-        if (!inside) continue;
-        mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
-        mark.at = [x, y]; // for the names to keep clear of (src/main.js, updateNames)
-      }
+      for (const { point, mark } of points) moveMark(mark, onScreen(point));
     },
   };
 }

@@ -62,8 +62,7 @@ import { createPlacer } from "./placer.js";
 import PLACEMENTS from "./placement-data.js";
 import { createSplash } from "./splash.js";
 import { createDev } from "./dev.js";
-import { TIP, createPoints } from "./points.js";
-import { copy } from "./copy.js";
+import { TIP, createPoints, moveMark } from "./points.js";
 import { LV95, fromWGS84, toWGS84 } from "./geo.js";
 import { MAGENTA, checkLines } from "./lines.js";
 import { riders } from "./riders.js";
@@ -2680,20 +2679,22 @@ function shoot(seconds) {
 
 const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
-// only stopped the gliding map, copies where a finger was held for HOLD (copyAt; on letting go,
-// as browsers allow copying only then), else is recorded while recording (src/points.js), else
-// sets one down (setDown; with a mouse, captures it: mouseLook), else destroys or rebuilds in God
-// mode but while walking (godAt; godly), else rides what is there, else, walking with a mouse, captures
-// it again;
-// nothing while steering. While it is captured, rides what the dot in the middle is on, if
-// anything.
-let down = { x: 0, y: 0, time: 0 }; // where and when the last button or finger went down
-renderer.domElement.addEventListener(
-  "pointerdown",
-  (e) => (down = { x: e.clientX, y: e.clientY, time: e.timeStamp }),
-);
+// only stopped the gliding map, a right one (or Ctrl + left, as on a Mac) copies the coordinates
+// there (pointsPanel.copyAt), as letting go of a finger held for HOLD does of its pin (held), else
+// is recorded while recording (src/points.js), else sets one down (setDown; with a mouse,
+// captures it: mouseLook), else destroys or rebuilds in God mode but while walking (godAt;
+// godly), else rides what is there, else, walking with a mouse, captures it again; nothing while
+// steering. While it is captured, rides what the dot in the middle is on, if anything.
+let down = { x: 0, y: 0 }; // where the last button or finger went down
+renderer.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
 renderer.domElement.addEventListener("pointerup", (e) => {
-  if (e.button !== 0 || stoppedGlide || steered() || sprayer.active() || placer.active()) return;
+  if (stoppedGlide || steered() || sprayer.active() || placer.active()) return;
+  if (e.button === 2 || (e.button === 0 && e.ctrlKey)) {
+    if (!mouseLook() && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5)
+      pointsPanel.copyAt(e.clientX, e.clientY);
+    return;
+  }
+  if (e.button !== 0) return;
   if (mouseLook()) {
     if (buttonAt(innerWidth / 2, innerHeight / 2)) return switchMuseum();
     // Gets on what the dot in the middle is on, freeing the mouse, if anything.
@@ -2705,7 +2706,11 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   }
   const mouse = e.pointerType === "mouse";
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= (mouse ? 5 : 10)) return;
-  if (!mouse && e.timeStamp - down.time >= HOLD) return copyAt(e.clientX, e.clientY);
+  if (held) {
+    if (held.point) pointsPanel.copyPoint(held.point);
+    held = null;
+    return;
+  }
   if (pointsPanel.click(e.clientX, e.clientY)) return;
   if (placing) {
     setDown(e.clientX, e.clientY);
@@ -2793,10 +2798,9 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
   if (riding && (!steered() || ladderView()) && e.isPrimary)
     dragged = { x: e.clientX, y: e.clientY };
 });
-// Dragging with the right button turns it without spraying (the left one sprays: steering's fire).
-renderer.domElement.addEventListener("contextmenu", (e) => {
-  if (ladderView()) e.preventDefault();
-});
+// Never the browser's menu: a right click copies the coordinates there, dragging with the right
+// button turns (the ladder's too, without spraying: the left one sprays).
+renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 renderer.domElement.addEventListener("wheel", (e) => {
   const view = ladderView();
   if (view) view.distance *= Math.exp(e.deltaY * 0.001);
@@ -2981,33 +2985,6 @@ function fromText(text) {
   const [x, z] = fromWGS84(lat, lon);
   return new THREE.Vector3(x, altitude - 250, z);
 }
-// C copies the coordinates (toText) of what is under the mouse, as holding a finger still for HOLD
-// does of what is under it (the tap handler above), and shows "Coordinates copied" there for a
-// moment.
-const HOLD = 2000; // ms
-let mouseAt = null; // { x, y } of the mouse while over the scene
-renderer.domElement.addEventListener("pointermove", (e) => {
-  if (e.pointerType === "mouse") mouseAt = { x: e.clientX, y: e.clientY };
-});
-renderer.domElement.addEventListener("pointerleave", () => (mouseAt = null));
-const copied = document.getElementById("copied");
-let hideCopied = 0; // timeout
-addEventListener("keydown", (e) => {
-  if (e.code !== "KeyC" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !mouseAt) return;
-  copyAt(mouseAt.x, mouseAt.y);
-});
-function copyAt(x, y) {
-  const point = pointAt(x, y);
-  if (!point) return;
-  copy(toText(point)).then((done) => {
-    if (!done) return; // not allowed: nothing to show
-    copied.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
-    copied.hidden = false;
-    clearTimeout(hideCopied);
-    hideCopied = setTimeout(() => (copied.hidden = true), 1200);
-  });
-}
-
 // While dragging, measure how fast the view moves; after letting go, keep gliding and slow down.
 const lastTarget = new THREE.Vector3();
 const velocity = new THREE.Vector3();
@@ -3297,6 +3274,40 @@ function showPoints(points) {
   fling.set(0, 0, 0);
 }
 const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints);
+// C, a right click (the tap handler above) or letting go of a lone finger held still for HOLD
+// copies the coordinates there (pointsPanel's quick copy); the held finger's spot is pinned when
+// HOLD has passed. The next press unpins it.
+const HOLD = 500; // ms
+let held = null; // once a finger is held for HOLD: { point } pinned there (null off the scene)
+let holding = 0; // timeout
+// Ends holding, unpinning what was pinned but not copied.
+function unhold() {
+  clearTimeout(holding);
+  if (held) pointsPanel.unpin();
+  held = null;
+}
+addEventListener("pointerdown", () => pointsPanel.unpin(), { capture: true });
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  unhold();
+  if (e.pointerType === "mouse" || fingers.size !== 1) return;
+  holding = setTimeout(() => {
+    if (stoppedGlide || steered() || sprayer.active() || placer.active()) return;
+    held = { point: pointsPanel.pinAt(down.x, down.y) };
+  }, HOLD);
+});
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 10) unhold();
+});
+for (const type of ["pointerup", "pointercancel"]) addEventListener(type, unhold);
+let mouseAt = null; // { x, y } of the mouse while over the scene
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "mouse") mouseAt = { x: e.clientX, y: e.clientY };
+});
+renderer.domElement.addEventListener("pointerleave", () => (mouseAt = null));
+addEventListener("keydown", (e) => {
+  if (e.code !== "KeyC" || e.repeat || e.metaKey || e.ctrlKey || e.altKey || !mouseAt) return;
+  pointsPanel.copyAt(mouseAt.x, mouseAt.y);
+});
 
 // Day or night (src/daylight.js) by "Night" in the menu, as last chosen in this browser, else day;
 // the mown lawn darkening with the light, as no light shines on it.
@@ -3382,13 +3393,7 @@ function toggle(label) {
 // Moves the pins to their points, after the camera's updateMatrixWorld.
 function updatePins() {
   for (const list of pins.values())
-    for (const { point, mark } of list) {
-      const { x, y, inside } = onScreen(point);
-      if (mark.hidden === inside) mark.hidden = !inside;
-      if (!inside) continue;
-      mark.style.transform = `translate(${x}px, ${y - TIP}px) translate(-50%, -50%)`;
-      mark.at = [x, y]; // for the names to keep clear of (updateNames)
-    }
+    for (const { point, mark } of list) moveMark(mark, onScreen(point));
 }
 renderer.setAnimationLoop((time) => {
   // The first frame's time can be before last.
