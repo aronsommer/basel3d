@@ -122,7 +122,7 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 // Builds a catalog kind (src/catalog.js) in the city and the museum and returns what make
-// returns. Each place with its own object or array of them goes in a group the Move tool
+// returns. Each place with its own object or array of them goes in a group the Transform tool
 // (src/placer.js) moves, placed as src/placement-data.js says.
 const figures = [];
 function build(id, city) {
@@ -173,8 +173,8 @@ function build(id, city) {
       quaternion: quaternion.clone(),
       scale: scale.clone(),
     };
-    // anchor: the place in the group's frame, where it is saved (the Move tool moves the middle);
-    // tag: which one it is (the museum has one of each variant, in their order).
+    // anchor: the place in the group's frame, where it is saved (the Transform tool moves the
+    // middle); tag: which one it is (the museum has one of each variant, in their order).
     let tag = `${plate(k - places.length)} museum`;
     if (k < places.length) {
       const same = variants.filter((v) => v === variants[k]);
@@ -186,7 +186,7 @@ function build(id, city) {
   return built;
 }
 // The plates of the kinds it builds otherwise (no make), those keeping to no place: one with
-// places is built by build, so the Move tool picks each.
+// places is built by build, so the Transform tool picks each.
 for (const [id, { name, places, make }] of Object.entries(CATALOG)) {
   if (make) continue;
   if (places.length) throw new Error(`${id}: places need make`);
@@ -445,13 +445,15 @@ scene.add(terrain);
 const structures = createBuildings(buildings.scene, bridges.scene, [terrain], renderer, camera);
 {
   // Facades on the walls (src/facade.js), the Novartis Pavillon's lights on walls and roofs
-  // (src/pavilion.js), a building dressed in the rainbow's stripes (src/pride.js), before the
-  // highlight createBuildings set. Their own cache keys, as the functions read the same.
+  // (src/pavilion.js), a building dressed in the rainbow's stripes (src/pride.js), after the
+  // highlight createBuildings set: each puts its code right after a chunk, so the highlight's,
+  // put first, runs last and shows over theirs. Their own cache keys, as the functions read the
+  // same.
   const extend = (material, ...shaders) => {
     const highlight = material.onBeforeCompile;
     material.onBeforeCompile = (shader, renderer) => {
-      for (const add of shaders) add(shader);
       highlight(shader, renderer);
+      for (const add of shaders) add(shader);
     };
     material.customProgramCacheKey = () => shaders.map((add) => add.name).join();
   };
@@ -3183,6 +3185,17 @@ const sprayer = createSprayer({
   surfaces: [buildings.scene, bridges.scene, terrain],
   meshes: () => graffitiMeshes,
 });
+// Shows an object's meshes in PICKED (on) or their own materials again.
+const PICKED = new THREE.MeshLambertMaterial({ color: MAGENTA });
+const untinted = new Map(); // mesh → its own material while tinted
+function tint(object, on) {
+  object.traverse((o) => {
+    if (!o.isMesh) return;
+    if (on && !untinted.has(o)) untinted.set(o, o.material);
+    o.material = on ? PICKED : (untinted.get(o) ?? o.material);
+    if (!on) untinted.delete(o);
+  });
+}
 const placer = createPlacer({
   renderer,
   camera,
@@ -3192,6 +3205,51 @@ const placer = createPlacer({
   labels: {
     list: () => (museumLabels ? museumLabels.children : []),
     settle: (mesh) => settle(mesh, labelGround),
+  },
+  // The building, bridge or tree a ray meets first, shown, as { tag, box, mark }; null if the
+  // terrain or nothing. A building or bridge shows itself (mark), being more than its box, with
+  // what goes with it (onRoofs) but exemplars, which are their own.
+  fixedAt(ray) {
+    const shown = ({ object }) => {
+      let o = object;
+      for (; o.parent; o = o.parent) if (!o.visible) return false;
+      return o === scene; // not gone with its building
+    };
+    const exemplars = new Set(figures.map(({ object }) => object));
+    const own = (o) => {
+      for (; o; o = o.parent) if (exemplars.has(o)) return false;
+      return true;
+    };
+    const parts = new Map(); // what goes with a building → its number
+    for (const [n, objects] of onRoofs) for (const o of objects) if (own(o)) parts.set(o, n);
+    const hit = ray
+      .intersectObjects([buildings.scene, bridges.scene, terrain, ...tree.meshes, ...parts.keys()])
+      .find(shown);
+    if (!hit) return null;
+    const { object, face, instanceId } = hit;
+    let part = object;
+    while (part && !parts.has(part)) part = part.parent;
+    const numbers = object.geometry.attributes._building;
+    if (part || numbers) {
+      const number = part ? parts.get(part) : numbers.getX(face.a);
+      const along = [...parts].filter(([, n]) => n === number).map(([o]) => o);
+      return {
+        tag: structures.name(number),
+        box: new THREE.Box3().setFromArray(structures.boxOf(number)),
+        mark(on) {
+          structures.highlight(on ? number : -1);
+          for (const o of along) tint(o, on);
+        },
+      };
+    }
+    if (!tree.meshes.includes(object)) return null; // the terrain
+    object.geometry.computeBoundingBox();
+    const matrix = new THREE.Matrix4();
+    object.getMatrixAt(instanceId, matrix);
+    const box = object.geometry.boundingBox
+      .clone()
+      .applyMatrix4(matrix.premultiply(object.matrixWorld));
+    return { tag: `Tree ${tree.numberOf(object, instanceId)}`, box };
   },
 });
 // Draws a frame, with the Dev panel (src/dev.js) while it is ticked.

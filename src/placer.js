@@ -1,4 +1,4 @@
-// The Dev panel's Move, Rotate and Scale tools for figures and museum labels.
+// The Dev panel's Transform tool: Move, Rotate and Scale for figures and museum labels.
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { toWGS84 } from "./geo.js";
@@ -9,8 +9,9 @@ const CLICK = 5; // px
 const AREA = 200; // metres, the widest figure picked by its box (a flock is up to 180)
 const ABOVE = 0.7; // the tag's bottom up the green arrow, in the gizmo's size (its tip at 0.6)
 const WIDTH = 100; // .prettierrc's printWidth
-const HEAD = `// Written by the Move tool (src/placer.js). Figures: { figure, from, to: [latitude, longitude,
-// metres above sea], heading, x, z }; a kind's one size: { figure, size }; labels: { label, at }.
+const HEAD = `// Written by the Transform tool (src/placer.js). Figures: { figure, from, to: [latitude,
+// longitude, metres above sea], heading, x, z }; a kind's one size: { figure, size }; labels:
+// { label, at }.
 `;
 // [name, key, mode, SVG icon path]
 const TOOLS = [
@@ -29,7 +30,9 @@ const TOOLS = [
   ["Scale", "KeyR", "scale", "M4 4h16v16H4zM8 16l8-8M11 8h5v5"],
 ];
 
-export function createPlacer({ renderer, camera, orbit, scene, figures, labels }) {
+// fixedAt(raycaster): what it names but does not move, the first a ray meets ({ tag, box, mark }:
+// mark(on) shows it itself, in place of the frame round its box), or null.
+export function createPlacer({ renderer, camera, orbit, scene, figures, labels, fixedAt }) {
   const canvas = renderer.domElement;
   const raycaster = new THREE.Raycaster();
   const [box, part, size, spot, top] = [
@@ -124,18 +127,19 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
   });
 
   function pick(item) {
+    picked?.mark?.(false);
     picked = item;
+    picked?.mark?.(true);
     show();
     tag.hidden = !picked?.tag; // a label is its own
     if (picked?.tag) tag.textContent = picked.tag;
-    if (!picked) {
-      gizmo.detach();
-      gizmo.getHelper().removeFromParent();
-      frame.removeFromParent();
-      return;
-    }
+    gizmo.detach();
+    gizmo.getHelper().removeFromParent();
+    frame.removeFromParent();
+    if (!picked) return;
+    if (!picked.mark) scene.add(frame);
+    if (picked.fixed) return; // named, not moved
     if (!picked.label) centre(picked);
-    scene.add(frame);
     gizmo.setMode(picked.label ? "translate" : mode);
     gizmo.setSpace(picked.label ? "world" : "local");
     gizmo.showY = !picked.label;
@@ -145,13 +149,13 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
   function show() {
     if (!buttons) return;
     TOOLS.forEach(([, , m], k) => {
-      const usable = picked && (!picked.label || m === "translate");
+      const usable = picked && !picked.fixed && (!picked.label || m === "translate");
       buttons.children[k].disabled = !usable;
       buttons.children[k].ariaPressed = usable && (picked.label || m === mode);
     });
   }
   function use(m) {
-    if (!picked || (picked.label && m !== "translate")) return;
+    if (!picked || picked.fixed || (picked.label && m !== "translate")) return;
     mode = m;
     pick(picked);
   }
@@ -228,7 +232,7 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
     }
     return best;
   }
-  // Pressing a figure or label picks it and drags it over the ground; a click beside lets go.
+  // Pressing a figure or label picks it and drags it over the ground.
   const level = new THREE.Plane();
   const onLevel = new THREE.Vector3();
   let drag = null;
@@ -258,7 +262,12 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
   addEventListener("pointerup", (e) => {
     if (drag) orbit.enabled = drag.orbit;
     drag = null;
-    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) <= CLICK) pick(null);
+    // A click beside picks the building, bridge or tree there, else lets go.
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) <= CLICK) {
+      pointAt(down.x, down.y);
+      const fixed = fixedAt(raycaster);
+      pick(fixed && { ...fixed, fixed: true });
+    }
     down = null;
   });
   addEventListener("keydown", (e) => {
@@ -300,16 +309,22 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
     // The frame round the picked one where it is now; after all that moves.
     update() {
       if (!picked) return;
-      frame.visible = !boxOf(picked.object).isEmpty();
+      if (picked.fixed) box.copy(picked.box);
+      frame.visible = !(picked.fixed ? box : boxOf(picked.object)).isEmpty();
       frame.position.copy(box.min);
       frame.scale.copy(box.getSize(size));
       if (!picked.tag) return;
-      // Its tag, which one it is, just above the green arrow, the gizmo sized as it sizes itself.
-      const position = spot.setFromMatrixPosition(picked.object.matrixWorld);
-      const eye = top.setFromMatrixPosition(camera.matrixWorld).distanceTo(position);
-      const fov = Math.min((1.9 * Math.tan((Math.PI * camera.fov) / 360)) / camera.zoom, 7);
-      top.set(0, (ABOVE * eye * fov * gizmo.size) / 4, 0).applyQuaternion(picked.object.quaternion);
-      top.add(position).project(camera);
+      if (picked.fixed)
+        box.getCenter(top).setY(box.max.y); // over its box's top middle
+      else {
+        // Just above the green arrow, the gizmo sized as it sizes itself.
+        const position = spot.setFromMatrixPosition(picked.object.matrixWorld);
+        const eye = top.setFromMatrixPosition(camera.matrixWorld).distanceTo(position);
+        const fov = Math.min((1.9 * Math.tan((Math.PI * camera.fov) / 360)) / camera.zoom, 7);
+        top.set(0, (ABOVE * eye * fov * gizmo.size) / 4, 0);
+        top.applyQuaternion(picked.object.quaternion).add(position);
+      }
+      top.project(camera);
       tag.hidden = top.z > 1;
       const [x, y] = [((top.x + 1) / 2) * innerWidth, ((1 - top.y) / 2) * innerHeight];
       tag.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;

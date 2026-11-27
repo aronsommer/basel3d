@@ -1,5 +1,6 @@
-// Written by the Move tool (src/placer.js). Figures: { figure, from, to: [latitude, longitude,
-// metres above sea], heading, x, z }; a kind's one size: { figure, size }; labels: { label, at }.
+// Written by the Transform tool (src/placer.js). Figures: { figure, from, to: [latitude,
+// longitude, metres above sea], heading, x, z }; a kind's one size: { figure, size }; labels:
+// { label, at }.
 export default [
   { label: "V2", at: [47.581312, 7.581217] },
   { label: "V3", at: [47.581278, 7.581653] },

@@ -76,6 +76,7 @@ export function createTrees(positions, canopy, terrainInfo, heightAt) {
   const position = new THREE.Vector3();
   const tint = new THREE.Color();
   const up = new THREE.Vector3(0, 1, 0);
+  const numbers = new Map(); // per mesh its trees' numbers (in trees), by instance
   const meshes = [...chunks.values()].map((indices) => {
     // In random order, so drawing only the first ones (updateTrees) thins them out evenly.
     for (let k = indices.length - 1; k > 0; k--) {
@@ -84,6 +85,7 @@ export function createTrees(positions, canopy, terrainInfo, heightAt) {
     }
     // Bounds are computed once, from the larger near model.
     const mesh = new THREE.InstancedMesh(near, material, indices.length);
+    numbers.set(mesh, indices);
     indices.forEach((i, n) => {
       // Stable per tree: brightness, hue (yellow to blue green), width against height.
       const { x, z, random, height, width } = treeAt(i);
@@ -108,5 +110,7 @@ export function createTrees(positions, canopy, terrainInfo, heightAt) {
       }
     return list;
   };
-  return { meshes, near, middle, far, clear, trunks };
+  // The number of a mesh's instance: single trees first, then the photo's.
+  const numberOf = (mesh, instance) => numbers.get(mesh)[instance];
+  return { meshes, near, middle, far, clear, trunks, numberOf };
 }

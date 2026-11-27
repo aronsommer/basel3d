@@ -262,8 +262,8 @@ const ZOO = Object.fromEntries(
 );
 const [SCENES_ROW, SCENE_FROM, SCENE] = [40, -20, -8];
 let scenes = 0;
-// Where the labels lie, by number (WGS84), as the Move tool put them (src/placement-data.js); any
-// other where it is laid out below.
+// Where the labels lie, by number (WGS84), as the Transform tool put them
+// (src/placement-data.js); any other where it is laid out below.
 const LABEL_AT = Object.fromEntries(
   PLACEMENTS.filter(({ label }) => label).map(({ label, at }) => [label, at]),
 );

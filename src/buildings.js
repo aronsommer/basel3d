@@ -1,8 +1,11 @@
 // Buildings and bridges as single objects, by number: which one is at a screen point or in the way
-// of a line, showing one in HIGHLIGHT, their triangles, and hiding them. What is done with them is
+// of a line, showing one in PICKED, their triangles, and hiding them. What is done with them is
 // up to the caller.
 import * as THREE from "three";
 import { highlightShader } from "./highlight.js";
+import { MAGENTA } from "./lines.js";
+
+const PICKED = new THREE.Color(MAGENTA); // the Transform tool's pick (src/placer.js)
 
 // buildings, bridges: the loaded models, with Lambert materials; hiders: models that hide them
 // (the terrain).
@@ -291,7 +294,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
   const looked = new Uint32Array(meshesOf.length); // per number, the look (between) that tested it
   let look = 0;
 
-  // The one shown in HIGHLIGHT (its number; -1 for none).
+  // The one shown in PICKED (its number; -1 for none).
   const highlighted = { value: -1 };
   const highlightNumber = (shader) => {
     shader.uniforms.highlighted = highlighted;
@@ -299,6 +302,16 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       shader,
       "_building == highlighted",
       "attribute float _building;\nuniform float highlighted;",
+      PICKED,
+    );
+    // Also over what facades and the Pavillon draw and light later, put first (src/main.js).
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <emissivemap_fragment>",
+      `#include <emissivemap_fragment>
+      if (vHighlight > 0.5) {
+        diffuseColor.rgb = highlightColor;
+        totalEmissiveRadiance = vec3(0.0);
+      }`,
     );
   };
   for (const model of [buildings, bridges])
@@ -387,13 +400,20 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       renderer.readRenderTargetPixels(pickTarget, 0, 0, 1, 1, pickPixel);
       return pickPixel[0] * 256 + pickPixel[1] - 1;
     },
-    // Shows the one with this number in HIGHLIGHT; -1: none.
+    // Shows the one with this number in PICKED; -1: none.
     highlight(number) {
       highlighted.value = number;
     },
     total,
     bridgeNumbers,
     isBridge: (number) => number >= count,
+    // Its name, by its number in its model: "Building 12", "Bridge 3".
+    name: (number) => (number < count ? `Building ${number}` : `Bridge ${number - count}`),
+    // Its bounding box (min x, y, z, max x, y, z), as hit has it.
+    boxOf(number) {
+      if (!boxes) measure();
+      return boxes.subarray(6 * number, 6 * number + 6);
+    },
     // The number of the building or bridge the segment from → to (scene points, short against
     // GRID) meets first, or -1; hidden ones are left out. Exact: by its triangles, else by its
     // bounding box. Where (0 to 1) along the segment is kept in along.
