@@ -11,7 +11,6 @@ const ABOVE = 7; // metres between its underside and what is below its place
 const NEAR = 60; // metres from its place within which it is drawn life size
 const GREEN = 0x39ff14; // neon green: the bolts, the guns' tips, strips and muzzle flashes
 const BOLT_SPEED = 900; // metres per second
-const PAST = 20; // metres a bolt flies on past where it was aimed, into what is there
 const MAX_BOLTS = 128; // in flight at most, and as many flashes
 const FLASH = 0.25; // seconds a flash lasts where a bolt ends
 
@@ -141,8 +140,7 @@ export function createUfo(boost, roof, [cx, cz] = PLACE) {
     mesh.count = 0;
     mesh.frustumCulled = false; // all over
   }
-  const flying = new Set(); // { position, velocity, turn (from +z), left (seconds), meets, arrive }
-  const before = new THREE.Vector3();
+  const flying = new Set(); // { position, velocity, turn (from +z), left (seconds), target, arrive }
   const ending = new Set(); // flashes { position, age }
   const matrix = new THREE.Matrix4();
   const one = new THREE.Vector3(1, 1, 1);
@@ -182,13 +180,11 @@ export function createUfo(boost, roof, [cx, cz] = PLACE) {
     let n = 0;
     for (const bolt of flying) {
       bolt.left -= dt;
-      before.copy(bolt.position);
       bolt.position.addScaledVector(bolt.velocity, dt);
-      const met = bolt.meets(before, bolt.position);
-      if (met !== null || bolt.left <= 0) {
+      if (bolt.left <= 0) {
         flying.delete(bolt);
-        ending.add({ position: bolt.position, age: 0 });
-        bolt.arrive(met, bolt.position);
+        ending.add({ position: bolt.target, age: 0 });
+        bolt.arrive();
         continue;
       }
       bolts.setMatrixAt(n++, matrix.compose(bolt.position, bolt.turn, one));
@@ -221,10 +217,9 @@ export function createUfo(boost, roof, [cx, cz] = PLACE) {
     dip: 0.14, // radians it fires below its tilt, so its crosshair shows just above its rim
     material,
     update,
-    // A bolt from the next cannon towards a scene point, with a zap. It ends where
-    // meets(from, to) is not null for a step of its flight, or PAST the point; then arrive(what
-    // it met, where) is called. None while MAX_BOLTS are flying.
-    fire(target, meets, arrive) {
+    // A bolt from the next cannon to a scene point, with a zap; there arrive() is called. None
+    // while MAX_BOLTS are flying.
+    fire(target, arrive) {
       if (flying.size >= MAX_BOLTS) return;
       const cannon = cannons[side];
       side = 1 - side;
@@ -239,8 +234,8 @@ export function createUfo(boost, roof, [cx, cz] = PLACE) {
         position,
         velocity,
         turn,
-        left: (position.distanceTo(target) + PAST) / BOLT_SPEED,
-        meets,
+        left: position.distanceTo(target) / BOLT_SPEED,
+        target: target.clone(),
         arrive,
       });
       cannon.muzzle.scale.setScalar(2);

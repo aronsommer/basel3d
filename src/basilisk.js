@@ -1,4 +1,4 @@
-// The basilisk, standing or flown as a plane (src/main.js). Facing +z, in metres.
+// The basilisk, standing or flown, hovering when stopped (src/main.js). Facing +z, in metres.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { part, profile } from "./parts.js";
@@ -501,6 +501,8 @@ const GLOWING = mergeGeometries(
   EYES.map((eye) => part(new THREE.IcosahedronGeometry(1.5, 1), 0xffffff, eye.toArray())),
 ).translate(-HEAD_AT.x, -HEAD_AT.y, -HEAD_AT.z);
 const JAW_AT = v(0, 63.6, 28);
+// Where fireballs leave, in the head's frame: ahead of the mouth, past the snout's tip.
+const MOUTH = v(0, -0.8, 32);
 const LOWER = [
   [0, 63.04, 28, 3, 1.6],
   [0, 63.4, 33, 2.7, 1.4],
@@ -644,10 +646,18 @@ export function createBasilisk(x, y, z, heading, size, level) {
     { object: group, materials: [skin], eye: [0, 420, -420], ahead: [0, -153, 300] },
   ]);
 
+  const mouth = new THREE.Vector3(); // MOUTH as the head is now, in the group's frame
+  const DIP = 0.59; // radians it fires below its body
+  // Radians neck and head turn together at most towards what it looks at: sideways, up or down.
+  const [YAW, PITCH] = [0.9, 0.6];
+  let looking = null; // the scene point it looks at while flown (look), or null
+  const turned = { yaw: 0, pitch: 0 }; // how far they are turned to it, eased
+  const toward = new THREE.Vector3();
   let [last, air] = [0, 0];
   let breathed = -1;
   const update = (seconds, flown) => {
-    air = flown ? air + (1 - air) * Math.min(1, 1.5 * (seconds - last)) : 0;
+    const dt = seconds - last;
+    air = flown ? air + (1 - air) * Math.min(1, 1.5 * dt) : 0;
     last = seconds;
     if (flown) {
       group.position.set(flown.x, flown.y, flown.z);
@@ -675,6 +685,21 @@ export function createBasilisk(x, y, z, heading, size, level) {
       (0.4 * Math.sin(0.37 * seconds) + 0.15 * Math.sin(1.1 * seconds)) * (1 - roar) * stand,
       0,
     );
+    // Neck and head turned towards what it looks at, half each, from where it fires unturned.
+    let [yaw, pitch] = [0, 0];
+    if (flown && looking) {
+      group.updateMatrixWorld();
+      group.worldToLocal(toward.copy(looking)).sub(NECK_AT);
+      yaw = THREE.MathUtils.clamp(Math.atan2(toward.x, toward.z), -YAW, YAW);
+      const down = Math.atan2(-toward.y, Math.hypot(toward.x, toward.z)) - DIP;
+      pitch = THREE.MathUtils.clamp(down, -PITCH, PITCH);
+    }
+    turned.yaw += (yaw - turned.yaw) * Math.min(1, 8 * dt);
+    turned.pitch += (pitch - turned.pitch) * Math.min(1, 8 * dt);
+    for (const o of [neck, head]) {
+      o.rotation.x += turned.pitch / 2;
+      o.rotation.y += turned.yaw / 2;
+    }
     const since = seconds - breathed;
     jaw.rotation.x =
       0.1 +
@@ -696,6 +721,9 @@ export function createBasilisk(x, y, z, heading, size, level) {
       stand * (0.08 * Math.sin(0.7 * seconds) + roar * (0.2 + 0.1 * Math.sin(8.8 * (t - 5)))) +
       air * (-0.35 + 0.7 * Math.sin(BEAT * seconds));
     for (const { side, wing } of wings) wing.quaternion.setFromAxisAngle(WING_AXIS, -side * lift);
+    for (const o of [body, made, neck, head]) o.updateMatrix();
+    mouth.copy(MOUTH).applyMatrix4(head.matrix).applyMatrix4(neck.matrix);
+    mouth.applyMatrix4(made.matrix).applyMatrix4(body.matrix);
   };
   update(0, null);
   return {
@@ -708,10 +736,13 @@ export function createBasilisk(x, y, z, heading, size, level) {
     climb: 0.35,
     low: 0,
     nose: 60, // metres
-    plane: true,
     breathe: () => (breathed = last),
-    launchers: [v(0, 45, 75), v(0, 45, 75)],
+    launchers: [mouth, mouth],
     fireballs: true,
-    dip: 0.59,
+    dip: DIP,
+    // While flown with Mouse aim, it turns neck and head towards this scene point; null: ahead.
+    look: (point) => (looking = point),
+    // Its stopped aim raised, so its shots go from about level to 70° down, as the helicopter's.
+    raise: 0.4,
   };
 }

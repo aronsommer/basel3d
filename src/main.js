@@ -585,7 +585,10 @@ function save(numbers) {
 }
 // The basilisk's fire shot sound.
 const fireSound = load(["fireball.mp3"], () => {}).then(([bytes]) => bytes);
-const rockets = createRockets(scene, structures, explosions, heightAt, camera, destroy, fireSound);
+// What a shot does where it arrives, by what it was aimed at (rockets.aim): a building or bridge
+// is destroyed, the ground gets a small blast.
+const strike = (met, at) => (met === "ground" ? explosions.burst(at) : destroy(met));
+const rockets = createRockets(scene, structures, heightAt, camera, strike, fireSound);
 
 // Shows the map or the aerial photo ("Aerial" in the Dev panel, src/dev.js) as the ground; the
 // photo is loaded on first use. Only the shown textures stay in GPU memory: the photo's are
@@ -2085,7 +2088,7 @@ function fly(dt) {
   if (rising || !met) return craft;
   const velocity = flownTo.clone().sub(flownFrom).setY(0);
   explosions.crash(flownTo, craft.group, velocity.divideScalar(dt || 1));
-  if (built) destroy(structures.hit(bottom.set(x, under, z), front));
+  if (built) destroy(structures.hit(bottom.set(x, under, z), front, false));
   camera.getWorldDirection(looking);
   looking.y = Math.min(
     looking.y,
@@ -2374,8 +2377,9 @@ let riding = null; // { ride, vehicle } the camera rides in
 let before = null; // { position, target } of the camera before riding
 // The helicopter, the UFO, the jet, a Rega helicopter, a plane or the basilisk, each { group,
 // speed, turn, low, nose, lift?, unarmed?, launchers? (it fires rockets from them), fireballs?
-// (fireballs instead), dip? (radians it fires below its body), plane? (it does
-// not hover) }, while riding and so steering it.
+// (fireballs instead), dip? (radians it fires below its body), raise? (radians its stopped aim
+// is raised, createFlight), look? (what it turns its head to with Mouse aim), plane? (it does not
+// hover) }, while riding and so steering it.
 const pilots = new Map([
   ...helicopters.map((helicopter) => [helicopter.ride, helicopter]),
   ...ufoRides.map((ride, k) => [ride, ufos[k]]),
@@ -2546,11 +2550,10 @@ function steering() {
 // or the tank's gun, to where that line first meets something, as far as the terrain's area goes
 // (rockets.aim), which the crosshair shows. The helicopter sends a rocket there every FIRE_GAP
 // seconds, the jet every MISSILE_GAP, the basilisk a fireball every BREATH_GAP, from their
-// launchers in turn. The UFO sends a laser bolt
-// there every BOLT_GAP seconds, from its cannons in turn, which destroys what it meets: a
-// building or bridge (destroy) or the ground (a small blast). The tank fires a shell there every
-// SHELL_GAP seconds. With "Mouse aim" ticked, all aim along the line from the camera through the
-// mouse instead, while it is over the scene: the craft fire at what it first meets, the tank's
+// launchers in turn; the UFO a laser bolt every BOLT_GAP seconds, from its cannons in turn; the
+// tank a shell every SHELL_GAP seconds. Each hits what was met there when fired (strike),
+// whatever is on its way. With "Mouse aim" ticked, all aim along the line from the camera through
+// the mouse instead, while it is over the scene: the craft fire at what it first meets, the tank's
 // turret turns towards it as far as it goes.
 const FIRE_GAP = 0.1; // seconds
 const MISSILE_GAP = 0.8; // seconds
@@ -2621,7 +2624,8 @@ function shoot(seconds) {
   else through.copy(muzzle).addScaledVector(nose, AHEAD).sub(camera.position).normalize();
   const abreast = start.copy(muzzle).sub(camera.position).dot(through); // metres along it
   start.copy(camera.position).addScaledVector(through, abreast);
-  const target = rockets.aim(start, through, within(start, through));
+  const [target, met] = rockets.aim(start, through, within(start, through));
+  flier?.look?.(ray ? target : null);
   const { x, y, front } = onScreen(target);
   crosshair.hidden = !front;
   crosshair.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
@@ -2630,7 +2634,7 @@ function shoot(seconds) {
   if (tank) {
     nextShot = seconds + SHELL_GAP;
     tank.fire();
-    rockets.fire(muzzle, target, { shell: true });
+    rockets.fire(muzzle, target, { met, shell: true });
     return;
   }
   const { group } = flier;
@@ -2648,6 +2652,7 @@ function shoot(seconds) {
       .multiplyScalar(flown.speed * flier.speed);
     if (flown.lift > 0) carried.set(0, flier.speed / 2, 0); // still rising after boarding
     rockets.fire(group.localToWorld(launcher.copy(flier.launchers[side])), target, {
+      met,
       carried: flier.plane && !flier.fireballs ? carried : null,
       ball: flier.fireballs,
     });
@@ -2655,10 +2660,7 @@ function shoot(seconds) {
     return;
   }
   nextShot = seconds + BOLT_GAP;
-  flier.fire(target, rockets.meets, (met, at) => {
-    if (met === "ground") explosions.burst(at);
-    else if (met !== null) destroy(met);
-  });
+  flier.fire(target, () => met !== null && strike(met, target));
 }
 
 const raycaster = new THREE.Raycaster();

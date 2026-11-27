@@ -1,7 +1,7 @@
-// Rockets flying straight with a whoosh and a smoke trail, until they hit a building or bridge
-// (structures.hit, then onHit(number)), the ground (a small blast) or are PAST where they were
-// aimed (a shell: ACROSS). Those of a plane first drop from it for DROP seconds, going along with
-// it, then light and fly towards where they were aimed. The basilisk's fire shots fly so too.
+// Rockets flying straight with a whoosh and a smoke trail to where they were aimed (aim), there
+// hitting what was aimed at (onHit(met, where)); with nothing aimed at, they end PAST it (a shell:
+// ACROSS). Those of a plane first drop from it for DROP seconds, going along with it, then light
+// and fly towards where they were aimed. The basilisk's fire shots fly so too.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { audio, fade, play } from "./sound.js";
@@ -16,7 +16,7 @@ const COOL = 500; // metres from yellow to orange
 const SHELL_FLIGHT = [1000, 0, 1000];
 const DROPPED = [0, 2000, 1000];
 const ACROSS = 12000; // metres a shell flies at most: further than across the terrain's area
-const PAST = 20; // metres a rocket flies on past where it was aimed, into what is there
+const PAST = 20; // metres a rocket flies on past where it was aimed at nothing
 const DROP = 0.25; // seconds
 const FALL = 12; // metres per second while dropping
 // Metres between the points tested along the line of fire, and how fast they grow with the
@@ -26,10 +26,9 @@ const AIM_GROWTH = 1 / 50;
 const MAX = 256; // rockets in flight at most
 const SHELL = 0.35; // a shell's size, of a rocket's
 
-// structures: from buildings.js; explosions: from explosions.js; heightAt(x, z): the terrain
-// height; camera: where the whoosh is heard; fireSound: a promise of the fire shot's sound file
-// (its bytes).
-export function createRockets(scene, structures, explosions, heightAt, camera, onHit, fireSound) {
+// structures: from buildings.js; heightAt(x, z): the terrain height; camera: where the whoosh is
+// heard; fireSound: a promise of the fire shot's sound file (its bytes).
+export function createRockets(scene, structures, heightAt, camera, onHit, fireSound) {
   // A dark body with a glowing tail, and a fading smoke trail behind, the nose along +z; metres.
   // All rockets are instances of these two, in two draw calls.
   const colored = (geometry, color) => {
@@ -88,22 +87,13 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
     scene.add(mesh);
   }
   // { position, direction (unit), speed, thrust, top, turn (from +z), size, travelled, range, to
-  // (where it is aimed at), ball (a fireball) }; a plane's also { wait (seconds it still drops),
-  // carried (the plane's velocity) }.
+  // (where it is aimed at), met (what is aimed at there), ball (a fireball) }; a plane's also
+  // { wait (seconds it still drops), carried (the plane's velocity) }.
   const flying = new Set();
-  const before = new THREE.Vector3();
   const matrix = new THREE.Matrix4();
   const scale = new THREE.Vector3();
   const none = new THREE.Matrix4().makeScale(0, 0, 0); // no trail while dropping
   const FORWARD = new THREE.Vector3(0, 0, 1);
-
-  // Whether the segment from → to meets the ground or a building or bridge: "ground", the
-  // number of the building or bridge, or null.
-  const meets = (from, to) => {
-    const number = structures.hit(from, to);
-    if (number >= 0) return number;
-    return to.y < heightAt(to.x, to.z) ? "ground" : null;
-  };
 
   // A whoosh: noise through a low-pass sweeping down, dull rather than hissing, quieter far away;
   // a plane's rocket lighting (long): longer, first sweeping up, as it rushes off.
@@ -141,34 +131,40 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
   }
 
   return {
-    meets,
-    // The first point on the line from origin along direction (unit) that meets the ground or a
-    // building or bridge, to within AIM_STEP / 64 by halving the step there, so it does not jump;
-    // else the point range metres along it.
+    // The first point on the line from origin along direction (unit) that meets a building or
+    // bridge, or the ground to within AIM_STEP / 64 by halving the step there, so it does not
+    // jump; else the point range metres along it. With what it met: the number of the building
+    // or bridge, "ground" or null.
     aim(origin, direction, range) {
       const from = origin.clone();
       const to = origin.clone();
       const half = new THREE.Vector3();
+      const under = (at) => at.y < heightAt(at.x, at.z);
       for (let d = 0; d < range;) {
         const step = Math.max(AIM_STEP, d * AIM_GROWTH);
         d = Math.min(d + step, range);
         to.copy(origin).addScaledVector(direction, d);
-        if (meets(from, to) !== null) {
-          for (let part = step; part > AIM_STEP / 64; part /= 2) {
-            half.lerpVectors(from, to, 0.5);
-            if (meets(from, half) !== null) to.copy(half);
-            else from.copy(half);
-          }
-          return to;
+        const number = structures.hit(from, to);
+        if (number >= 0) to.lerpVectors(from, to, structures.along);
+        if (!under(to)) {
+          if (number >= 0) return [to, number];
+          from.copy(to);
+          continue;
         }
-        from.copy(to);
+        for (let part = step; part > AIM_STEP / 64; part /= 2) {
+          half.lerpVectors(from, to, 0.5);
+          if (under(half)) to.copy(half);
+          else from.copy(half);
+        }
+        return [to, "ground"];
       }
-      return to;
+      return [to, null];
     },
     // A rocket from a scene point towards another, unless MAX are flying; or a shell, smaller and
     // silent (its bang is the gun's); or a plane's, dropped at the plane's velocity (carried); or
-    // a fireball (ball).
-    fire(from, to, { shell = false, carried = null, ball = false } = {}) {
+    // a fireball (ball). It hits what was aimed at there (met, from aim) when it gets there,
+    // whatever is on its way; with nothing aimed at, it flies on past.
+    fire(from, to, { met = null, shell = false, carried = null, ball = false } = {}) {
       if (flying.size >= MAX) return;
       const direction = to.clone().sub(from).normalize();
       const [speed, thrust, top] = shell
@@ -187,8 +183,9 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
         turn: new THREE.Quaternion().setFromUnitVectors(FORWARD, direction),
         size: shell ? SHELL : 1,
         travelled: 0,
-        range: shell ? ACROSS : from.distanceTo(to) + PAST,
+        range: met !== null ? from.distanceTo(to) : shell ? ACROSS : from.distanceTo(to) + PAST,
         to: to.clone(),
+        met,
         wait: carried ? DROP : 0,
         carried: carried?.clone(),
         ball,
@@ -201,7 +198,6 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
       for (const rocket of flying) {
         const { position, carried } = rocket;
         const dropping = rocket.wait > 0;
-        before.copy(position);
         if (dropping) {
           rocket.wait -= dt;
           position.addScaledVector(carried, dt).y -= FALL * dt;
@@ -210,7 +206,7 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
             rocket.direction.copy(rocket.to).sub(position).normalize();
             rocket.turn.setFromUnitVectors(FORWARD, rocket.direction);
             rocket.speed = carried.length();
-            rocket.range = position.distanceTo(rocket.to) + PAST;
+            rocket.range = position.distanceTo(rocket.to) + (rocket.met !== null ? 0 : PAST);
             whoosh(camera.position.distanceTo(position), true);
           }
         } else {
@@ -218,8 +214,7 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
           position.addScaledVector(rocket.direction, rocket.speed * dt);
           rocket.travelled += rocket.speed * dt;
         }
-        const met = meets(before, position);
-        if (met === null && rocket.travelled < rocket.range) {
+        if (rocket.travelled < rocket.range) {
           if (rocket.ball) {
             // Growing out of the mouth and cooling as it goes, flickering.
             const age = Math.min(1, rocket.travelled / COOL);
@@ -241,8 +236,7 @@ export function createRockets(scene, structures, explosions, heightAt, camera, o
           trails.setMatrixAt(n++, dropping ? none : matrix);
           continue;
         }
-        if (met === "ground") explosions.burst(position);
-        else if (met !== null) onHit(met);
+        if (rocket.met !== null) onHit(rocket.met, rocket.to);
         flying.delete(rocket);
       }
       meshes.forEach((mesh, k) => {

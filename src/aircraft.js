@@ -355,11 +355,11 @@ export function createHelicopter(cx, cz, radius, height, scale, flight) {
 // fly). Holding climb tilts the nose by TILT radians per second, and it stays when let go. Flying,
 // it goes craft.speed (metres per second) along the nose, from UP above level to DOWN below; at
 // HIGH the nose tilts no further up than level. Stopped, it hovers and the nose only aims, from
-// level to AIM down. Speed, nose and turning (up to craft.turn radians per second) are eased. A
-// craft with lift (metres) first rises straight up that far at half its speed, turning as steered,
-// then goes on from a standstill; climbing ends the rise at once. The state, flown: { x, y, z,
-// heading, speed (0 to 1, times craft.speed), aim (where the nose goes, radians down), nose, turn,
-// lift (metres still to rise) }.
+// level to AIM down, both raised by craft.raise (radians) if it has one. Speed, nose and turning
+// (up to craft.turn radians per second) are eased. A craft with lift (metres) first rises straight
+// up that far at half its speed, turning as steered, then goes on from a standstill; climbing ends
+// the rise at once. The state, flown: { x, y, z, heading, speed (0 to 1, times craft.speed), aim
+// (where the nose goes, radians down), nose, turn, lift (metres still to rise) }.
 export function createFlight(intoArea) {
   const LEVEL = 0.12; // the nose down when flying level (radians)
   // Radians above and below level the nose goes at most, about 50°, as in arcade games.
@@ -394,8 +394,9 @@ export function createFlight(intoArea) {
       }
       flown.aim -= input.climb * TILT * dt;
       if (flown.y >= HIGH) flown.aim = Math.max(flown.aim, LEVEL); // no further up
+      const raise = craft.raise ?? 0;
       flown.aim = input.stop
-        ? THREE.MathUtils.clamp(flown.aim, 0, AIM)
+        ? THREE.MathUtils.clamp(flown.aim, -raise, AIM - raise)
         : THREE.MathUtils.clamp(flown.aim, LEVEL - UP, LEVEL + DOWN);
       flown.speed = ease(flown.speed, input.stop ? 0 : 1, 6);
       flown.nose = ease(flown.nose, flown.aim, 8);

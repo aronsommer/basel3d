@@ -51,16 +51,17 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     [Int16Array, 32767],
     [Int8Array, 127],
   ]);
+  // An attribute's values straight from its array (interleaved or not), as getX reads them: its
+  // array, the step per vertex and the offset.
+  const values = (a) =>
+    a.isInterleavedBufferAttribute
+      ? [a.data.array, a.data.stride, a.offset]
+      : [a.array, a.itemSize, 0];
   function measure() {
     boxes = new Float32Array(meshesOf.length * 6);
     for (let i = 0; i < boxes.length; i++) boxes[i] = i % 6 < 3 ? Infinity : -Infinity;
-    // An attribute's values straight from its array (interleaved or not), as getX reads them, and
-    // each vertex moved as applyMatrix4 does: the same numbers, without a call per value (it runs
+    // Each vertex moved as applyMatrix4 does: the same numbers, without a call per value (it runs
     // for every vertex of the city).
-    const values = (a) =>
-      a.isInterleavedBufferAttribute
-        ? [a.data.array, a.data.stride, a.offset]
-        : [a.array, a.itemSize, 0];
     for (const model of [buildings, bridges])
       model.traverse((o) => {
         if (!o.isMesh) return;
@@ -101,15 +102,16 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         }
     }
   }
-  // Where (0 to 1) the segment from → to enters the box of number n; Infinity if it misses it.
-  const enter = (from, to, n) => {
+  // Where (0 to 1) the segment from → to enters the box at `at` in box (min x, y, z, max x, y, z);
+  // Infinity if it misses it.
+  const slab = (from, to, box, at) => {
     let t0 = 0;
     let t1 = 1;
     for (let d = 0; d < 3; d++) {
       const a = d === 0 ? from.x : d === 1 ? from.y : from.z;
       const delta = (d === 0 ? to.x : d === 1 ? to.y : to.z) - a;
-      const low = boxes[6 * n + d];
-      const high = boxes[6 * n + 3 + d];
+      const low = box[at + d];
+      const high = box[at + 3 + d];
       if (delta === 0) {
         if (a < low || a > high) return Infinity;
         continue;
@@ -122,6 +124,8 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     }
     return t0;
   };
+  // The same for the bounding box of number n.
+  const enter = (from, to, n) => slab(from, to, boxes, 6 * n);
 
   // Per number { walls, roofs }: its steep triangles as [x0, z0, x1, z1, bottom, top] each (the
   // two of its corners furthest apart seen from above and its height range), and those not
@@ -190,33 +194,99 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     return surfaces.get(n);
   }
 
-  // Whether the ray (as long as length, in scene coordinates) meets a triangle of number n, as a
-  // raycast does: a building's only from outside.
-  const ray = new THREE.Ray();
-  const local = new THREE.Ray();
+  // A mesh's positions straight from their array: read(i), the i-th value as getX/Y/Z read it,
+  // and at(k), where corner k's x is.
+  function positionsOf(mesh) {
+    const { index, attributes } = mesh.geometry;
+    const [p, step, offset] = values(attributes.position);
+    const unit = attributes.position.normalized ? (UNITS.get(p.constructor) ?? 0) : 0;
+    const corner = index ? index.array : null;
+    return [
+      (i) => (unit ? Math.max(p[i] / unit, -1) : p[i]),
+      (k) => (corner ? corner[k] : k) * step + offset,
+    ];
+  }
+  // Per mesh, per number, its triangles in chunks of up to CHUNK in a run (runsOf), each as its
+  // box in the mesh's own space and where its triangles are: [min x, y, z, max x, y, z, from, to].
+  // Made when first needed, so crossed tests only the triangles near a segment.
+  const CHUNK = 32;
+  const chunks = new Map(); // mesh → Map(number → chunks)
+  function chunksOf(mesh, n) {
+    if (!chunks.has(mesh)) chunks.set(mesh, new Map());
+    const found = chunks.get(mesh);
+    if (found.has(n)) return found.get(n);
+    const [read, at] = positionsOf(mesh);
+    const list = runsOf(mesh).get(n) ?? NONE;
+    const all = [];
+    for (let r = 0; r < list.length; r += 2)
+      for (let t = list[r]; t < list[r + 1]; t += 3 * CHUNK) {
+        const end = Math.min(t + 3 * CHUNK, list[r + 1]);
+        const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity, t, end];
+        for (let k = t; k < end; k++)
+          for (let d = 0; d < 3; d++) {
+            const v = read(at(k) + d);
+            box[d] = Math.min(box[d], v);
+            box[d + 3] = Math.max(box[d + 3], v);
+          }
+        all.push(...box);
+      }
+    found.set(n, new Float64Array(all));
+    return found.get(n);
+  }
+  // Where (0 to 1) the segment from → to first meets a triangle of number n, as a raycast would:
+  // a building's only from outside; Infinity if it does not. Tested in each mesh's own space, as
+  // it runs for every shot.
   const inverse = new THREE.Matrix4();
-  const [pa, pb, pc, met] = [...Array(4)].map(() => new THREE.Vector3());
-  function crossed(n, length) {
+  const [origin, end] = [new THREE.Vector3(), new THREE.Vector3()];
+  function crossed(n, from, to) {
+    let first = Infinity;
     for (const mesh of meshesOf[n]) {
-      const { index, attributes } = mesh.geometry;
-      const { position } = attributes;
-      const at = (i) => (index ? index.getX(i) : i);
-      const outside = [mesh.material].flat()[0].side === THREE.FrontSide;
-      local.copy(ray).applyMatrix4(inverse.copy(mesh.matrixWorld).invert());
-      const list = runsOf(mesh).get(n) ?? NONE;
-      for (let r = 0; r < list.length; r += 2)
-        for (let t = list[r]; t < list[r + 1]; t += 3) {
-          pa.fromBufferAttribute(position, at(t));
-          pb.fromBufferAttribute(position, at(t + 1));
-          pc.fromBufferAttribute(position, at(t + 2));
-          if (
-            local.intersectTriangle(pa, pb, pc, outside, met) &&
-            met.applyMatrix4(mesh.matrixWorld).distanceTo(ray.origin) < length
-          )
-            return true;
+      const [read, at] = positionsOf(mesh);
+      const cull = [mesh.material].flat()[0].side === THREE.FrontSide;
+      inverse.copy(mesh.matrixWorld).invert();
+      origin.copy(from).applyMatrix4(inverse);
+      end.copy(to).applyMatrix4(inverse);
+      const { x: ox, y: oy, z: oz } = origin;
+      const [sx, sy, sz] = [end.x - ox, end.y - oy, end.z - oz];
+      const list = chunksOf(mesh, n);
+      for (let k = 0; k < list.length; k += 8) {
+        if (slab(origin, end, list, k) === Infinity) continue;
+        for (let t = list[k + 6]; t < list[k + 7]; t += 3) {
+          const a = at(t);
+          const b = at(t + 1);
+          const c = at(t + 2);
+          const ax = read(a);
+          const ay = read(a + 1);
+          const az = read(a + 2);
+          const ux = read(b) - ax;
+          const uy = read(b + 1) - ay;
+          const uz = read(b + 2) - az;
+          const vx = read(c) - ax;
+          const vy = read(c + 1) - ay;
+          const vz = read(c + 2) - az;
+          // Möller–Trumbore, as Ray.intersectTriangle, with s as long as the segment.
+          const nx = uy * vz - uz * vy;
+          const ny = uz * vx - ux * vz;
+          const nz = ux * vy - uy * vx;
+          let dn = sx * nx + sy * ny + sz * nz;
+          if (!dn || (dn > 0 && cull)) continue;
+          const sign = dn > 0 ? 1 : -1;
+          dn *= sign;
+          const wx = ox - ax;
+          const wy = oy - ay;
+          const wz = oz - az;
+          const s1 =
+            sign * (sx * (wy * vz - wz * vy) + sy * (wz * vx - wx * vz) + sz * (wx * vy - wy * vx));
+          if (s1 < 0) continue;
+          const s2 =
+            sign * (sx * (uy * wz - uz * wy) + sy * (uz * wx - ux * wz) + sz * (ux * wy - uy * wx));
+          if (s2 < 0 || s1 + s2 > dn) continue;
+          const along = (-sign * (wx * nx + wy * ny + wz * nz)) / dn;
+          if (along >= 0 && along <= 1 && along < first) first = along;
         }
+      }
     }
-    return false;
+    return first;
   }
   const looked = new Uint32Array(meshesOf.length); // per number, the look (between) that tested it
   let look = 0;
@@ -324,9 +394,11 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
     total,
     bridgeNumbers,
     isBridge: (number) => number >= count,
-    // The number of the building or bridge whose bounding box the segment from → to (scene points,
-    // short against GRID) enters first, or -1; hidden ones are left out.
-    hit(from, to) {
+    // The number of the building or bridge the segment from → to (scene points, short against
+    // GRID) meets first, or -1; hidden ones are left out. Exact: by its triangles, else by its
+    // bounding box. Where (0 to 1) along the segment is kept in along.
+    along: Infinity,
+    hit(from, to, exact = true) {
       if (!boxes) measure();
       let best = -1;
       let first = Infinity;
@@ -337,12 +409,14 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
         for (let z = z0; z <= z1; z++)
           for (const n of cells.get(cellKey(x, z)) ?? NONE) {
             if (!meshesOf[n].length) continue;
-            const t = enter(from, to, n);
+            let t = enter(from, to, n);
+            if (exact && t < first) t = crossed(n, from, to);
             if (t < first) {
               best = n;
               first = t;
             }
           }
+      this.along = first;
       return best;
     },
     // Whether a building or bridge is between two scene points, as a raycast finds it; hidden
@@ -352,8 +426,6 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
       if (!boxes) measure();
       const length = from.distanceTo(to);
       if (!length) return false;
-      ray.origin.copy(from);
-      ray.direction.subVectors(to, from).divideScalar(length);
       look++;
       for (let d = 0; d < length + GRID / 2; d += GRID / 2) {
         const part = Math.min(d / length, 1);
@@ -364,7 +436,7 @@ export function createBuildings(buildings, bridges, hiders, renderer, camera) {
             for (const n of cells.get(cellKey(x, z)) ?? NONE) {
               if (looked[n] === look || !meshesOf[n].length) continue;
               looked[n] = look;
-              if (enter(from, to, n) < Infinity && crossed(n, length)) return true;
+              if (enter(from, to, n) < Infinity && crossed(n, from, to) < Infinity) return true;
             }
       }
       return false;
