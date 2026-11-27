@@ -1,12 +1,11 @@
 // The catalog: what is placed in the city (INVENTORY.md), each kind once, under an id given to no
 // other, ever (L landmarks, A animals, S scenes, P people moving, V what one drives or flies, T
 // traffic): its name, its places in the city (scene x, z, …) and make(places, city), which builds
-// it there and returns { objects: for the scene, one per place (an object or an array of them)
-// where they are apart, … what else others need of it }; city: what the maker takes from
-// src/main.js. src/main.js builds each at its places (build); those without make
-// it builds itself (see below).
+// it there and returns { objects: for the scene, one per place (an object or an array of them),
+// … what else others need of it }; city: what the maker takes from src/main.js. src/main.js
+// builds each at its places (build); those without make it builds itself (see below).
 import * as THREE from "three";
-import { createHelicopter, createPlanes } from "./aircraft.js";
+import { AIRLINERS, createHelicopter, createPlanes } from "./aircraft.js";
 import { createAmbulances } from "./ambulance.js";
 import { createBasilisk } from "./basilisk.js";
 import { BASILISKS, createBasilisks } from "./basilisks.js";
@@ -17,10 +16,11 @@ import { createCatCars } from "./catcar.js";
 import { createDinos } from "./dino.js";
 import { createDrones } from "./drone.js";
 import { createClique } from "./fasnacht.js";
-import { LANDINGS } from "./ferries.js";
+import { LANDINGS, createFerries } from "./ferries.js";
 import { createFireTrucks } from "./firetruck.js";
 import { createTraining } from "./football.js";
 import { LV95, fromWGS84 } from "./geo.js";
+import { FERRY } from "./museum.js";
 import { createJet } from "./jet.js";
 import { createM41s } from "./m41.js";
 import { createMotorcycles } from "./motorcycle.js";
@@ -482,7 +482,7 @@ export const CATALOG = {
         const heading = towardsRhine(x, z) ?? k * 2.4;
         return { x, y: heightAt(x, z), z, heading };
       });
-      return { objects: [createBasilisks(list)] };
+      return { objects: createBasilisks(list) };
     },
   },
   S1: {
@@ -581,7 +581,7 @@ export const CATALOG = {
         heightAt,
         places.map(({ x, z }) => [x, z]),
       );
-      return { objects: [birds.mesh], update: birds.update };
+      return { objects: birds.meshes, update: birds.update };
     },
   },
   A5: {
@@ -720,14 +720,14 @@ export const CATALOG = {
     },
   },
   V13: {
-    // Circling over the city (src/aircraft.js), keeping to no place; parked in the museum.
+    // Circling over the city from their places (src/aircraft.js); parked in the museum.
     name: "Airliner",
-    places: [],
+    places: AIRLINERS,
     make(places, { heightAt, boost, flight }) {
       const planes = createPlanes(
         boost,
         flight,
-        places.map((p) => ({ ...p, y: heightAt(p.x, p.z) })),
+        places.map((p) => (p.museum ? { ...p, y: heightAt(p.x, p.z) } : p)),
       );
       return { objects: planes.meshes, planes };
     },
@@ -785,10 +785,15 @@ export const CATALOG = {
   T2: { name: ["Tram, BVB green", "Tram, BLT yellow"], places: [] },
   T3: { name: ["Passenger train", "Goods train"], places: [] },
   T4: { name: ["Tanker", "Container ship", "Passenger ship", "Speedboat"], places: [] },
-  // Each ferry midway between its landings.
+  // Each ferry midway between its landings (src/ferries.js); the museum's its own (src/museum.js).
   T5: {
     name: "Ferry",
     places: LANDINGS.map(([, a, b]) => at((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)),
+    make(places, { heightAt, boost }) {
+      const landings = places.map((p, k) => (p.museum ? FERRY : LANDINGS[k]));
+      const ferries = createFerries(fromWGS84, heightAt, boost, landings);
+      return { objects: ferries.ferries.map(({ objects }) => objects), ...ferries };
+    },
   },
   A2: { name: "Whales", places: [] }, // passing with the ships
   P1: { name: "Pedestrians", places: [] },

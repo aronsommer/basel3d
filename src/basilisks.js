@@ -236,17 +236,13 @@ const FOUNTAIN = mergeGeometries([
   ),
 ]);
 
-// All in one mesh, each at its place ({ x, y, z } on the ground) facing heading (radians from
-// +z towards +x).
+// A mesh per place ({ x, y, z } on the ground), facing heading (radians from +z towards +x).
 export function createBasilisks(places) {
-  const mesh = new THREE.InstancedMesh(
-    FOUNTAIN,
-    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-    places.length,
-  );
-  const matrix = new THREE.Matrix4();
-  places.forEach(({ x, y, z, heading }, k) =>
-    mesh.setMatrixAt(k, matrix.makeRotationY(heading).setPosition(x, y, z)),
-  );
-  return mesh;
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  return places.map(({ x, y, z, heading }) => {
+    const mesh = new THREE.Mesh(FOUNTAIN, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = heading;
+    return mesh;
+  });
 }

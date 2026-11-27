@@ -649,6 +649,23 @@ p {
   border-radius: var(--radius);
   pointer-events: none;
 }
+/* Over the Move tool's pick (src/placer.js): which one it is, as the names' plates, smaller, in
+   magenta. */
+#tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 6px 1px; /* the letters 1px lower, as the names' */
+  border-radius: 9px;
+  background: var(--magenta);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  color: #fff;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  will-change: transform; /* moved each frame */
+}
 /* At the top in the middle, between the counter and the menu, while the button to walk waits
    for where, and while walking has captured the mouse (src/main.js). */
 #where,

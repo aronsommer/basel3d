@@ -2,9 +2,12 @@
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { toWGS84 } from "./geo.js";
+import { MAGENTA } from "./lines.js";
 import PLACEMENTS from "./placement-data.js";
 
 const CLICK = 5; // px
+const AREA = 200; // metres, the widest figure picked by its box (a flock is up to 180)
+const ABOVE = 0.7; // the tag's bottom up the green arrow, in the gizmo's size (its tip at 0.6)
 const WIDTH = 100; // .prettierrc's printWidth
 const HEAD = `// Written by the Move tool (src/placer.js). Figures: { figure, from, to: [latitude, longitude,
 // metres above sea], heading, x, z }; a kind's one size: { figure, size }; labels: { label, at }.
@@ -29,6 +32,48 @@ const TOOLS = [
 export function createPlacer({ renderer, camera, orbit, scene, figures, labels }) {
   const canvas = renderer.domElement;
   const raycaster = new THREE.Raycaster();
+  const [box, part, size, spot, top] = [
+    new THREE.Box3(),
+    new THREE.Box3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+    new THREE.Vector3(),
+  ];
+  const tag = document.getElementById("tag");
+  // Its box: of the meshes shown only (no drops, nothing hidden).
+  const boxOf = (object) => {
+    object.updateMatrixWorld(true); // as moved this frame
+    box.makeEmpty();
+    object.traverseVisible((o) => {
+      if (!o.isMesh) return;
+      if (o.isInstancedMesh)
+        o.computeBoundingBox(); // they move
+      else if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      box.union(part.copy(o.boundingBox ?? o.geometry.boundingBox).applyMatrix4(o.matrixWorld));
+    });
+    return box;
+  };
+  // Where an item is saved: a figure's place (anchor), a label's middle.
+  const where = ({ object, anchor }) => {
+    if (!anchor) return object.position;
+    object.updateMatrixWorld();
+    return object.localToWorld(spot.copy(anchor));
+  };
+  // A figure's pivot to its box's bottom middle; nothing moves.
+  function centre({ object, inner, anchor }) {
+    if (boxOf(object).isEmpty()) return;
+    const middle = box.getCenter(new THREE.Vector3()).setY(box.min.y);
+    const local = object.worldToLocal(middle.clone());
+    object.position.copy(middle);
+    inner.position.sub(local);
+    anchor.sub(local);
+  }
+  // Round the picked one's box (update), as the graffiti's frame.
+  const frame = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5)),
+    new THREE.LineBasicMaterial({ color: MAGENTA, depthTest: false }),
+  );
+  frame.renderOrder = 1e9;
   const gizmo = new TransformControls(camera, canvas);
   gizmo.setColors(0xe8432a, 0x8ad63d, 0x3a7eeb, 0xffe24a);
   // Only the three positive axes, plus a cube to move it over the ground.
@@ -68,20 +113,29 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
       const { x, y, z } = object.scale;
       const size = [x, y, z].reduce((a, b) => (Math.abs(b - start) > Math.abs(a - start) ? b : a));
       object.scale.setScalar(Math.max(size, 0.01));
-      // The whole kind, city and museum, has one size.
+      // The whole kind, city and museum, has one size; the others keep their places.
       for (const figure of figures)
-        if (figure.key.figure === picked.key.figure) figure.object.scale.copy(object.scale);
+        if (figure !== picked && figure.key.figure === picked.key.figure) {
+          const before = where(figure).clone();
+          figure.object.scale.copy(object.scale);
+          figure.object.position.add(before.sub(where(figure)));
+        }
     }
   });
 
   function pick(item) {
     picked = item;
     show();
+    tag.hidden = !picked?.tag; // a label is its own
+    if (picked?.tag) tag.textContent = picked.tag;
     if (!picked) {
       gizmo.detach();
       gizmo.getHelper().removeFromParent();
+      frame.removeFromParent();
       return;
     }
+    if (!picked.label) centre(picked);
+    scene.add(frame);
     gizmo.setMode(picked.label ? "translate" : mode);
     gizmo.setSpace(picked.label ? "world" : "local");
     gizmo.showY = !picked.label;
@@ -108,11 +162,12 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
     const items = [...figures, ...labels.list().map((object) => ({ object, label: true }))];
     const sizes = new Map();
     for (const item of items) {
-      const { position, quaternion, rotation, scale, userData } = item.object;
+      const { quaternion, rotation, scale, userData } = item.object;
       const made = item.made ?? { position: userData.made, quaternion, scale };
       if (!item.label && !scale.equals(made.scale)) sizes.set(item.key.figure, round(scale.x, 3));
-      if (position.equals(made.position) && quaternion.equals(made.quaternion)) continue;
-      const [lat, lon] = toWGS84(position.x, position.z).map((v) => round(v, 6));
+      const at = where(item);
+      if (at.distanceTo(made.position) < 0.001 && quaternion.equals(made.quaternion)) continue;
+      const [lat, lon] = toWGS84(at.x, at.z).map((v) => round(v, 6));
       let entry, match;
       if (item.label) {
         const label = userData.text.split(" ")[0];
@@ -122,7 +177,7 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
         const [x, z] = [round(rotation.x, 3), round(rotation.z, 3)];
         entry = {
           ...item.key,
-          to: [lat, lon, round(position.y + 250, 1)],
+          to: [lat, lon, round(at.y + 250, 1)],
           heading: round(rotation.y, 3),
           ...(x && { x }),
           ...(z && { z }),
@@ -162,7 +217,16 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
     pointAt(x, y);
     let hit = raycaster.intersectObjects(objects)[0]?.object;
     while (hit && !objects.includes(hit)) hit = hit.parent;
-    return hit ? items[objects.indexOf(hit)] : null;
+    if (hit) return items[objects.indexOf(hit)];
+    // Else the smallest figure whose box the ray crosses, so a group is picked anywhere within it.
+    let best = null;
+    let least = AREA;
+    for (const item of figures) {
+      const { x, z } = boxOf(item.object).getSize(size);
+      const extent = Math.max(x, z);
+      if (extent < least && raycaster.ray.intersectsBox(box)) [best, least] = [item, extent];
+    }
+    return best;
   }
   // Pressing a figure or label picks it and drags it over the ground; a click beside lets go.
   const level = new THREE.Plane();
@@ -233,5 +297,22 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels }
       if (!on) pick(null);
     },
     active: () => on,
+    // The frame round the picked one where it is now; after all that moves.
+    update() {
+      if (!picked) return;
+      frame.visible = !boxOf(picked.object).isEmpty();
+      frame.position.copy(box.min);
+      frame.scale.copy(box.getSize(size));
+      if (!picked.tag) return;
+      // Its tag, which one it is, just above the green arrow, the gizmo sized as it sizes itself.
+      const position = spot.setFromMatrixPosition(picked.object.matrixWorld);
+      const eye = top.setFromMatrixPosition(camera.matrixWorld).distanceTo(position);
+      const fov = Math.min((1.9 * Math.tan((Math.PI * camera.fov) / 360)) / camera.zoom, 7);
+      top.set(0, (ABOVE * eye * fov * gizmo.size) / 4, 0).applyQuaternion(picked.object.quaternion);
+      top.add(position).project(camera);
+      tag.hidden = top.z > 1;
+      const [x, y] = [((top.x + 1) / 2) * innerWidth, ((1 - top.y) / 2) * innerHeight];
+      tag.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+    },
   };
 }

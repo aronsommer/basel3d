@@ -142,8 +142,12 @@ const back = (k, metres) => {
   const { x, z, heading } = SPOTS[k];
   return { x: x - Math.sin(heading) * metres, z: z - Math.cos(heading) * metres };
 };
+// A ferry across the Rhine south of the serpent, as src/ferries.js's LANDINGS (the left bank's
+// landing first), without a name, so not among the city's names.
+export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
 // The catalog's (src/catalog.js), by id, a place per variant in order; any other the next free spot.
 const AT = {
+  T5: [between(FERRY[1], FERRY[2])], // midway between its landings, as the city's
   V1: [spot(0), spot(1)],
   V2: [spot(2)],
   V3: [spot(3)],
@@ -295,13 +299,18 @@ export function platesOf(id, name, places) {
     label(`${names.length > 1 ? `${id}-${k + 1}` : id} ${n}`, 0, 0, city.length ? { city } : {}),
   );
 }
+// A place's variant: what it has but where it is, its plate's -number among its kind's.
+export const variantOf = ({ x, z, heading, ...rest }) => JSON.stringify(rest);
 export function exhibitsOf(id, name, places) {
   if (!OPEN) return [];
   if (id in IN_PLACE) {
     for (const p of places) label(`${id} ${name}`, ...ahead(p, IN_PLACE[id]));
     return [];
   }
-  const keyed = places.map(({ x, z, heading, ...rest }) => [JSON.stringify(rest), rest]);
+  const keyed = places.map((place) => {
+    const { x, z, heading, ...rest } = place;
+    return [variantOf(place), rest];
+  });
   const variants = new Map(places.length ? keyed : [["{}", {}]]); // one, keeping to no place
   return [...variants].map(([key, rest], k) => {
     const city = apart(places.filter((_, i) => keyed[i][0] === key));
@@ -467,10 +476,6 @@ export const SWIM = [
   [47.582332, 7.584186],
   [47.582381, 7.583786],
 ].map(([lat, lon]) => fromWGS84(lat, lon));
-
-// A ferry across the Rhine south of the serpent, as src/ferries.js's LANDINGS (the left bank's
-// landing first), without a name, so not among the city's names.
-export const FERRY = [null, [47.578274, 7.583051], [47.578247, 7.585851]];
 
 // The plates to its overview (src/main.js), for all labels' pins and for the graffiti test.
 if (OPEN) {

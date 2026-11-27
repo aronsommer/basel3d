@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 // Flocks of birds circling above bridges, parks and squares all over the city (flocks, each [x, z],
-// else FLOCKS), flapping their wings. All birds are instances of one V, in one draw call.
+// else FLOCKS), flapping their wings. All birds are instances of one V, a draw call per flock.
 export const FLOCKS = [
   [366, -321], // Mittlere Brücke
   [537, 99], // Münster
@@ -28,12 +28,12 @@ export function createBirds(boost, heightAt, flocks = FLOCKS) {
       3,
     ),
   );
-  const mesh = new THREE.InstancedMesh(
-    v,
-    new THREE.MeshBasicMaterial({ color: 0x2b2b2b, side: THREE.DoubleSide }),
-    flocks.length * BIRDS,
-  );
-  mesh.frustumCulled = false; // they fly around
+  const material = new THREE.MeshBasicMaterial({ color: 0x2b2b2b, side: THREE.DoubleSide });
+  const meshes = flocks.map(() => {
+    const mesh = new THREE.InstancedMesh(v, material, BIRDS);
+    mesh.frustumCulled = false; // they fly around
+    return mesh;
+  });
   // Each bird: its flock's centre, a radius, a height, a speed and a phase, from a stable hash.
   const random = (i, k) => (Math.abs(Math.sin(i * 12.9898 + k * 78.233)) * 43758.5453) % 1;
   const birds = flocks.flatMap(([x, z], f) =>
@@ -71,9 +71,12 @@ export function createBirds(boost, heightAt, flocks = FLOCKS) {
       );
       const b = boost(position) * SIZE;
       scale.set(b, b * Math.sin(seconds * 9 + bird.phase) * 2, b);
-      mesh.setMatrixAt(i, matrix.compose(position, quaternion, scale));
+      meshes[Math.floor(i / BIRDS)].setMatrixAt(
+        i % BIRDS,
+        matrix.compose(position, quaternion, scale),
+      );
     });
-    mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
   };
-  return { mesh, update };
+  return { meshes, update };
 }

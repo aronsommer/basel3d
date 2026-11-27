@@ -130,20 +130,19 @@ const PULLEY = mergeGeometries([
   ]),
 ]);
 
-// The ferries, their masts, cables and ropes in group; each ferry
-// { name, mesh, material, a, r, length, p, keep, keepOff, update }: on the line from its Grossbasel
-// landing a (scene x, z) along r (towards Kleinbasel) length metres long, p metres from a. This
-// frame it keeps off from to metres from a (keepOff(from, to)), and keep(x, z, room) keeps its
-// hull room metres off x, z if it could come there, giving how many metres up or down the river
-// x, z is from that (room metres more than its hull reaches), else 0.
+// A ferry at each of landings (as LANDINGS); each { name, objects, mesh, material, a, r, length, p,
+// keep, keepOff, update }: objects its boat, pulley, masts, cable and rope; on the line from its
+// Grossbasel landing a (scene x, z) along r (towards Kleinbasel) length metres long, p metres
+// from a. This frame it keeps off from to metres from a (keepOff(from, to)), and keep(x, z, room)
+// keeps its hull room metres off x, z if it could come there, giving how many metres up or down
+// the river x, z is from that (room metres more than its hull reaches), else 0.
 // place(latitude, longitude): scene [x, z]; boost(position): how much wider and higher to draw it
-// far away; more: further ferries, as LANDINGS.
-export function createFerries(place, heightAt, boost, more = []) {
-  const group = new THREE.Group();
-  const masts = [];
-  const cables = [];
+// far away.
+export function createFerries(place, heightAt, boost, landings) {
   const painted = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const ferries = [...LANDINGS, ...more].map(([name, grossbasel, kleinbasel, standing], i) => {
+  const lines = new THREE.LineBasicMaterial({ color: 0x2b2b2b });
+  const ferries = landings.map(([name, grossbasel, kleinbasel, standing], i) => {
+    const [masts, cables] = [[], []];
     const [ax, az] = place(...grossbasel);
     const [bx, bz] = place(...kleinbasel);
     const length = Math.hypot(bx - ax, bz - az);
@@ -242,9 +241,22 @@ export function createFerries(place, heightAt, boost, more = []) {
     const mesh = new THREE.Mesh(BOAT, material);
     const pulley = new THREE.Mesh(PULLEY, painted);
     pulley.rotation.y = Math.atan2(x1 - x0, z1 - z0);
-    group.add(mesh, pulley);
-    // Moved dt seconds on, its place and heading seconds in, its pulley over its bow; returns the
-    // rope's ends.
+    const cableLines = new THREE.LineSegments(
+      new THREE.BufferGeometry().setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(cables, 3),
+      ),
+      lines,
+    );
+    // Its rope from the pulley to the bow, moved every frame.
+    const tied = new THREE.BufferAttribute(new Float32Array(6), 3);
+    const rope = new THREE.LineSegments(
+      new THREE.BufferGeometry().setAttribute("position", tied),
+      lines,
+    );
+    rope.frustumCulled = false; // its bounds are never computed
+    // Moved dt seconds on, its place and heading seconds in, its pulley over its bow, its rope
+    // between them.
     const [bow, hook] = [new THREE.Vector3(), new THREE.Vector3()];
     const update = (seconds, dt) => {
       move(dt);
@@ -261,10 +273,13 @@ export function createFerries(place, heightAt, boost, more = []) {
         ((bow.x - x0) * (x1 - x0) + (bow.z - z0) * (z1 - z0)) / ((x1 - x0) ** 2 + (z1 - z0) ** 2);
       cable(THREE.MathUtils.clamp(over, 0, 1), pulley.position);
       hook.copy(pulley.position).y -= 0.6; // the pulley's bottom
-      return [hook, bow];
+      tied.setXYZ(0, hook.x, hook.y, hook.z);
+      tied.setXYZ(1, bow.x, bow.y, bow.z);
+      tied.needsUpdate = true;
     };
     const ferry = {
       name,
+      objects: [mesh, pulley, new THREE.Mesh(mergeGeometries(masts), painted), cableLines, rope],
       mesh,
       material,
       a: { x: ax, z: az },
@@ -277,29 +292,6 @@ export function createFerries(place, heightAt, boost, more = []) {
     };
     return ferry;
   });
-  const lines = new THREE.LineBasicMaterial({ color: 0x2b2b2b });
-  const mastMesh = new THREE.Mesh(mergeGeometries(masts), painted);
-  const cableLines = new THREE.LineSegments(
-    new THREE.BufferGeometry().setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(cables, 3),
-    ),
-    lines,
-  );
-  // The ropes from the pulleys to the bows, moved every frame.
-  const ropeEnds = new THREE.BufferAttribute(new Float32Array(ferries.length * 6), 3);
-  const ropes = new THREE.LineSegments(
-    new THREE.BufferGeometry().setAttribute("position", ropeEnds),
-    lines,
-  );
-  ropes.frustumCulled = false; // its bounds are never computed
-  group.add(mastMesh, cableLines, ropes);
-
-  const update = (seconds, dt) => {
-    ferries.forEach((ferry, i) =>
-      ferry.update(seconds, dt).forEach(({ x, y, z }, k) => ropeEnds.setXYZ(2 * i + k, x, y, z)),
-    );
-    ropeEnds.needsUpdate = true;
-  };
-  return { group, ferries, update };
+  const update = (seconds, dt) => ferries.forEach((ferry) => ferry.update(seconds, dt));
+  return { ferries, update };
 }

@@ -19,11 +19,9 @@ import { createExplosions } from "./explosions.js";
 import { createRockets } from "./rockets.js";
 import { createDriving } from "./drive.js";
 import { createLawn } from "./lawn.js";
-import { createFerries } from "./ferries.js";
 import { BASIN } from "./basilisks.js";
 import { CATALOG } from "./catalog.js";
 import {
-  FERRY,
   MUSEUM,
   OPEN,
   OVERVIEW,
@@ -38,6 +36,7 @@ import {
   platesOf,
   settle,
   toggle as toggleMuseum,
+  variantOf,
 } from "./museum.js";
 import { createStation } from "./station.js";
 import { createFireStation, GREY } from "./firestation.js";
@@ -123,19 +122,22 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 // Builds a catalog kind (src/catalog.js) in the city and the museum and returns what make
-// returns. Each place with its own object or array of them, else the whole kind, goes in a group
-// the Move tool (src/placer.js) moves, placed as src/placement-data.js says.
+// returns. Each place with its own object or array of them goes in a group the Move tool
+// (src/placer.js) moves, placed as src/placement-data.js says.
 const figures = [];
 function build(id, city) {
   const { name, places, make } = CATALOG[id];
   const all = [...places, ...exhibitsOf(id, name, places)];
   const built = make(all, city);
   const { objects } = built;
-  const parts =
-    all.length > 1 && objects.length === all.length
-      ? objects.map((object, k) => ({ place: all[k], objects: [object].flat() }))
-      : [{ place: all.length === 1 ? all[0] : undefined, objects: objects.flat() }];
-  for (const { place, objects } of parts) {
+  if (objects.length !== all.length)
+    throw new Error(`${id}: make must return one object per place`);
+  const parts = objects.map((object, k) => ({ place: all[k], objects: [object].flat(), k }));
+  // Its tags (below): kind-variant as on the plates, .number among a variant's in the city.
+  const variants = places.map(variantOf);
+  const order = [...new Set(variants)];
+  const plate = (v) => (order.length > 1 ? `${id}-${v + 1}` : id);
+  for (const { place, objects, k } of parts) {
     if (!objects.length) continue;
     const box = new THREE.Box3();
     for (const object of objects) box.expandByObject(object);
@@ -171,13 +173,25 @@ function build(id, city) {
       quaternion: quaternion.clone(),
       scale: scale.clone(),
     };
-    figures.push({ key, object: group, made });
+    // anchor: the place in the group's frame, where it is saved (the Move tool moves the middle);
+    // tag: which one it is (the museum has one of each variant, in their order).
+    let tag = `${plate(k - places.length)} museum`;
+    if (k < places.length) {
+      const same = variants.filter((v) => v === variants[k]);
+      const n = variants.slice(0, k + 1).filter((v) => v === variants[k]).length;
+      tag = `${plate(order.indexOf(variants[k]))}${same.length > 1 ? `.${n}` : ""} city`;
+    }
+    figures.push({ key, object: group, inner, anchor: new THREE.Vector3(), made, tag });
   }
   return built;
 }
-// The plates of the kinds it builds otherwise (no make).
-for (const [id, { name, places, make }] of Object.entries(CATALOG))
-  if (!make) platesOf(id, name, places);
+// The plates of the kinds it builds otherwise (no make), those keeping to no place: one with
+// places is built by build, so the Move tool picks each.
+for (const [id, { name, places, make }] of Object.entries(CATALOG)) {
+  if (make) continue;
+  if (places.length) throw new Error(`${id}: places need make`);
+  platesOf(id, name, places);
+}
 // Strong sky light keeps the sides facing away from the sun bright; the sun is warm. Both, and the
 // sky, change with the time of day (createDaylight).
 const hemisphere = new THREE.HemisphereLight(0xe2eaf2, 0xbaa88c, 2);
@@ -714,8 +728,7 @@ for (const mover of movers) {
 }
 // The ferries (src/ferries.js), the museum's too (src/museum.js), which make way for the ships, the
 // swimmers and the swans, and the Basiliskbrunnen (src/catalog.js) on the ground.
-const ferries = createFerries(fromWGS84, heightAt, boost, OPEN ? [FERRY] : []);
-scene.add(ferries.group);
+const ferries = build("T5", { heightAt, boost }); // src/catalog.js
 // On the Rhine the terrain lies flat at the water's surface, at most WATER.
 const WATER = -4.9; // scene y
 // Whether one at x, y, z is in the Rhine, not over it on a bridge.
@@ -3374,6 +3387,7 @@ renderer.setAnimationLoop((time) => {
   if (OPEN && !museumChecked) checkMuseum();
   camera.updateMatrixWorld(); // this frame's view for onScreen, not the last one rendered
   shoot(time / 1000);
+  placer.update();
   updateBadges();
   pointsPanel.update();
   updatePins();

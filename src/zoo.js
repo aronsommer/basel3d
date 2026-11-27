@@ -834,9 +834,9 @@ const GROUPS = {
 // The groups at their places ({ group, x, z, heading }); ground(x, z): the height there; clear(x,
 // z, r): whether no tree reaches within r metres; danger: what they flee from (createFlight). Each
 // animal stands at the nearest spot clear of trees (a ring's middle so the whole ring is); returns
-// { meshes, update(seconds, dt) }: per body and per neck geometry one mesh, its instances the
-// animals with it, in one draw call. Fleeing, one stands on its legs (those in the water put them
-// down), its head up, its legs swinging as it goes; its tail wags all the while.
+// { meshes, update(seconds, dt) }: per place, per body and per neck geometry one mesh, its
+// instances the animals with it, in one draw call. Fleeing, one stands on its legs (those in the
+// water put them down), its head up, its legs swinging as it goes; its tail wags all the while.
 export function createZoo(places, ground, clear, danger) {
   const free = (x, z, r) => {
     for (let d = 0; d <= 40; d += 2)
@@ -898,14 +898,15 @@ export function createZoo(places, ground, clear, danger) {
     [position.x, position.z] = [position.x + px, position.z + pz];
   };
   const loose = ({ gait: { off }, reach }) => off && Math.hypot(off[0], off[1]) > reach;
-  // Per geometry its mesh and the bodies or necks it shows.
-  const shown = new Map();
-  const show = (geometry, object) =>
-    (shown.get(geometry) ?? shown.set(geometry, []).get(geometry)).push(object);
-  for (const { mesh, neck, kind, gait } of animals) {
-    gait.slot = shown.get(kind.body)?.length ?? 0; // its instance
-    show(kind.body, mesh);
-    if (neck) show(kind.swing.geometry, neck);
+  // Per place, per geometry, the bodies or necks it shows.
+  const shown = places.map(() => new Map());
+  const show = (map, geometry, object) =>
+    (map.get(geometry) ?? map.set(geometry, []).get(geometry)).push(object);
+  for (const { herd, mesh, neck, kind, gait } of animals) {
+    const map = shown[herd];
+    gait.slot = map.get(kind.body)?.length ?? 0; // its instance
+    show(map, kind.body, mesh);
+    if (neck) show(map, kind.swing.geometry, neck);
   }
   // The bodies, moving their parts by their strides and the instance's gait (phase, swing, out,
   // its tail's phase): a leg turned about its hip by its way times swing radians, as the sine of
@@ -932,33 +933,40 @@ export function createZoo(places, ground, clear, danger) {
         }`,
       );
   };
-  const gaits = new Map(); // per body its instances' gait
-  const meshes = [...shown].map(([geometry, objects]) => {
-    const body = !!geometry.attributes.stride;
-    const mesh = new THREE.InstancedMesh(geometry, body ? legged : material, objects.length);
-    mesh.frustumCulled = false; // spread over the city
-    if (body) {
-      const gait = new THREE.InstancedBufferAttribute(new Float32Array(4 * objects.length), 4);
-      geometry.setAttribute("gait", gait.setUsage(THREE.DynamicDrawUsage));
-      gaits.set(geometry, gait);
-    }
-    return [mesh, objects];
-  });
+  const gaits = places.map(() => new Map()); // per place, per body its instances' gait
+  const meshes = shown.map((map, herd) =>
+    [...map].map(([geometry, objects]) => {
+      const body = !!geometry.attributes.stride;
+      const own = new THREE.BufferGeometry().setIndex(geometry.index); // its gait its own
+      for (const [name, a] of Object.entries(geometry.attributes)) own.setAttribute(name, a);
+      const mesh = new THREE.InstancedMesh(own, body ? legged : material, objects.length);
+      mesh.frustumCulled = false; // they flee
+      if (body) {
+        const gait = new THREE.InstancedBufferAttribute(new Float32Array(4 * objects.length), 4);
+        own.setAttribute("gait", gait.setUsage(THREE.DynamicDrawUsage));
+        gaits[herd].set(geometry, gait);
+      }
+      return [mesh, objects];
+    }),
+  );
   // Their instances where the animals are now.
   const write = () => {
     for (const { mesh } of animals) mesh.updateMatrixWorld(true);
-    for (const [mesh, objects] of meshes) {
+    for (const [mesh, objects] of meshes.flat()) {
       objects.forEach((object, i) => mesh.setMatrixAt(i, object.matrixWorld));
       mesh.instanceMatrix.needsUpdate = true;
     }
   };
   write();
   return {
-    meshes: meshes.map(([mesh]) => mesh),
+    meshes: meshes.map((list) => list.map(([mesh]) => mesh)),
     // Off its place while it flees, on the ground there, facing its way.
     update(seconds, dt) {
       animals.forEach(
-        ({ mesh, neck, kind, turn, k, lift, foot, scale, center, facing, reach, gait }, i) => {
+        (
+          { herd, mesh, neck, kind, turn, k, lift, foot, scale, center, facing, reach, gait },
+          i,
+        ) => {
           const { swing, pace, swims } = kind;
           let [x, z, heading] = [center.x, center.z, facing];
           // On its ring, which waits while it is off it.
@@ -992,7 +1000,7 @@ export function createZoo(places, ground, clear, danger) {
           gait.swing += (most - gait.swing) * Math.min(1, EASE * dt);
           gait.wag += (WAG + (FAST * gait.swing) / SWING) * dt;
           [gait.x, gait.z] = [x, z];
-          gaits
+          gaits[herd]
             .get(kind.body)
             .array.set([gait.phase, gait.swing, gait.out, gait.wag], 4 * gait.slot);
         },
@@ -1015,7 +1023,7 @@ export function createZoo(places, ground, clear, danger) {
             push(a, (-ux * overlap) / 2, (-uz * overlap) / 2);
             push(b, (ux * overlap) / 2, (uz * overlap) / 2);
           }
-      for (const instances of gaits.values()) instances.needsUpdate = true;
+      for (const map of gaits) for (const instances of map.values()) instances.needsUpdate = true;
       write();
     },
   };
