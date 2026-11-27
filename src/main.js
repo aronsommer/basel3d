@@ -3273,7 +3273,7 @@ function showPoints(points) {
   camera.position.copy(orbit.target).add(offset);
   fling.set(0, 0, 0);
 }
-const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints);
+const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints, overlay);
 // C, a right click (the tap handler above) or letting go of a lone finger held still for HOLD
 // copies the coordinates there (pointsPanel's quick copy); the held finger's spot is pinned when
 // HOLD has passed. The next press unpins it.

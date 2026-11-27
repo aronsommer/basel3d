@@ -1,19 +1,22 @@
 // "Points" in the menu: while ticked, a panel at the left (below the Dev panel,
 // src/dev.js, when both show) marks points on the scene with numbers. Record points: while
-// recording, each click on the scene marks what is there, after the marks so far; Delete last
-// removes the last; Stop recording ends it. Clear points removes all marks.
+// recording, each click on the scene marks what is there, after the marks so far, and one on a mark
+// removes it, numbering those after it anew; Delete last removes the last; Stop recording ends it.
+// Clear points removes all marks. While Line is ticked, a line joins the marks in their order.
 // Paste points reads "latitude, longitude, altitude" lines from the clipboard (only over https or
 // on localhost), marks them instead, numbered in their order, and moves the view to show them;
 // other lines are skipped, and a clipboard without any keeps the marks. Copy points copies the
-// marks as such lines. Unticking hides the marks. The tick and the marks are remembered in this
-// browser. Apart from the panel, the quick copy (src/main.js: C, a right click, a held finger)
-// copies one such line and pins its spot with a mark without a number, "Coordinates copied" above
-// it ("Release to copy" while a finger is held), until the next press.
+// marks as such lines. Unticking hides the marks and line. The tick and the marks, not Line, are
+// remembered in this browser. Apart from the panel, the quick copy (src/main.js: C, a right click,
+// a held finger) copies one such line and pins its spot with a mark without a number, "Coordinates
+// copied" above it ("Release to copy" while a finger is held), until the next press.
 import { copy } from "./copy.js";
+import { checkLines } from "./lines.js";
 
 const PANEL_KEY = "basel3d.pointsPanel"; // "1" (on) or "0"
 const POINTS_KEY = "basel3d.points"; // the marks' lines, as Copy points copies them
 export const TIP = 11 * Math.SQRT2; // px from a mark's middle down to its tip, on its point (style.css)
+const HIT = 16; // px from a mark's middle a click removes it within
 
 // Shows a mark with its tip at x, y while inside (onScreen), else hides it.
 export function moveMark(mark, { x, y, inside }) {
@@ -25,8 +28,8 @@ export function moveMark(mark, { x, y, inside }) {
 
 // pointAt(x, y): the scene point at a screen point (px), or null; toText(point): its line;
 // fromText(line): its point, or null; onScreen(point): { x, y, inside }; show(points): moves the
-// view to them (src/main.js).
-export function createPoints(pointAt, toText, fromText, onScreen, show) {
+// view to them; overlay: the scene the line is drawn in (src/main.js).
+export function createPoints(pointAt, toText, fromText, onScreen, show, overlay) {
   const box = document.getElementById("points-box");
   const layer = document.getElementById("badges");
   const panel = document
@@ -39,8 +42,14 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   const deleteLast = add("Delete last");
   const copyAll = add("Copy points");
   const clearAll = add("Clear points");
+  const label = panel.appendChild(document.createElement("label"));
+  const lineBox = label.appendChild(
+    Object.assign(document.createElement("input"), { type: "checkbox" }),
+  );
+  label.append("Line");
   const points = []; // { point, mark }
   let on = false;
+  let route = null; // the line joining the marks, if shown
   const clear = () => points.splice(0).forEach(({ mark }) => mark.remove());
   const place = (point) =>
     points.push({
@@ -87,10 +96,25 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   } catch {} // storage blocked
   // After each change: the panel while ticked; its buttons: Delete last while recording, else
   // Paste points; Delete last, Copy and Clear points disabled without marks; the marks hidden while
-  // unticked (update shows them), their numbers smaller from 100 marks on (style.css); the tick and
-  // the marks stored, unless store is false.
+  // unticked (update shows them), their numbers smaller from 100 marks on (style.css); the line
+  // rebuilt while it and Line are ticked; the tick and the marks stored, unless store is false.
   const sync = (store = true) => {
     panel.hidden = !box.checked;
+    if (route) {
+      overlay.remove(route);
+      route.geometry.dispose();
+      route.material.dispose();
+      route = null;
+    }
+    if (points.length > 1 && !panel.hidden && lineBox.checked) {
+      route = checkLines(
+        points.slice(1).flatMap(({ point: b }, i) => {
+          const a = points[i].point;
+          return [a.x, a.y, a.z, b.x, b.y, b.z];
+        }),
+      );
+      overlay.add(route);
+    }
     layer.classList.toggle("long", points.length >= 100);
     if (panel.hidden) for (const { mark } of points) mark.hidden = true;
     record.textContent = on ? "Stop recording" : "Record points";
@@ -106,6 +130,7 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   sync(false); // nothing stored before a change
 
   box.addEventListener("change", () => sync());
+  lineBox.addEventListener("change", () => sync(false)); // nothing stored changes
   record.addEventListener("click", () => {
     on = !on;
     sync();
@@ -143,11 +168,20 @@ export function createPoints(pointAt, toText, fromText, onScreen, show) {
   return {
     // Whether clicks mark points now.
     recording,
-    // Marks the point at a click while recording; whether it did.
+    // While recording, removes the mark at a click (the top one), else marks the point there;
+    // whether recording.
     click(x, y) {
       if (!recording()) return false;
-      const point = pointAt(x, y);
-      if (point) place(point);
+      const hit = points.findLastIndex(
+        ({ mark }) => !mark.hidden && Math.hypot(mark.at[0] - x, mark.at[1] - TIP - y) < HIT,
+      );
+      if (hit >= 0) {
+        points.splice(hit, 1)[0].mark.remove();
+        for (let i = hit; i < points.length; i++) points[i].mark.textContent = i + 1;
+      } else {
+        const point = pointAt(x, y);
+        if (point) place(point);
+      }
       sync();
       return true;
     },

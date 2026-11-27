@@ -258,7 +258,8 @@ p {
 #dev .page[hidden] {
   display: none;
 }
-#dev label {
+#dev label,
+#points label {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -349,7 +350,8 @@ p {
 #spray input[type="range"] {
   flex: 1;
 }
-#dev input {
+#dev input,
+#points input {
   width: 14px;
   height: 14px;
   margin: 0;
@@ -382,6 +384,7 @@ p {
 #points button,
 #spray button,
 #dev label,
+#points label,
 #spray .row {
   white-space: nowrap;
 }
