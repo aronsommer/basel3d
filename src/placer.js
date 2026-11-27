@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { toWGS84 } from "./geo.js";
-import { MAGENTA } from "./lines.js";
+import { frameLines } from "./lines.js";
 import PLACEMENTS from "./placement-data.js";
 import { MOVES, NUDGE, SHIFT, TURNS } from "./sprayer.js";
 
@@ -63,11 +63,7 @@ export function createPlacer({ renderer, camera, orbit, scene, figures, labels, 
     anchor.sub(local);
   }
   // Round the picked one's box (update), as the graffiti's frame.
-  const frame = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5)),
-    new THREE.LineBasicMaterial({ color: MAGENTA, depthTest: false }),
-  );
-  frame.renderOrder = 1e9;
+  const frame = frameLines(new THREE.BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5));
   const gizmo = new TransformControls(camera, canvas);
   gizmo.setColors(0xe8432a, 0x8ad63d, 0x3a7eeb, 0xffe24a);
   // Only the three positive axes, plus a cube to move it over the ground.

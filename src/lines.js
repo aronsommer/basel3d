@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
@@ -14,6 +15,17 @@ export function checkLines(vertices, color = MAGENTA) {
     new LineMaterial({ color, linewidth: 4, depthTest: false, toneMapped: false }),
   );
   lines.renderOrder = 1;
+  return lines;
+}
+
+// The Dev tools' frames round what they pick: a geometry's edges in MAGENTA, 1 px, drawn over
+// everything, last.
+export function frameLines(geometry) {
+  const lines = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: MAGENTA, depthTest: false }),
+  );
+  lines.renderOrder = 1e9;
   return lines;
 }
 

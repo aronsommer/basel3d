@@ -2461,7 +2461,9 @@ const footRide = {
 const walkButton = document.getElementById("walk");
 const where = document.getElementById("where");
 let placing = false; // the next click or tap sets one down, as #where says meanwhile
+// Walking ends editing points (src/points.js), as editing them ends walking (pointsPanel).
 function setPlacing(on) {
+  if (on) pointsPanel.stop();
   placing = on;
   walkButton.setAttribute("aria-pressed", on);
   where.hidden = !on;
@@ -2681,7 +2683,7 @@ const raycaster = new THREE.Raycaster();
 // A click or tap that did not drag (5 px with the mouse, 10 px with a finger), except one that
 // only stopped the gliding map, a right one (or Ctrl + left, as on a Mac) copies the coordinates
 // there (pointsPanel.copyAt), as letting go of a finger held for HOLD does of its pin (held), else
-// is recorded while recording (src/points.js), else sets one down (setDown; with a mouse,
+// goes to the points while editing them (src/points.js), else sets one down (setDown; with a mouse,
 // captures it: mouseLook), else destroys or rebuilds in God mode but while walking (godAt;
 // godly), else rides what is there, else, walking with a mouse, captures it again; nothing while
 // steering. While it is captured, rides what the dot in the middle is on, if anything.
@@ -2936,7 +2938,7 @@ function vehicleOn(clientX, clientY) {
 // The vehicle under the mouse (but the one ridden), unless the museum's switch or a label with pins
 // is, shows HIGHLIGHT and gets the hand cursor, as those do;
 // checked at most once per frame, only after the mouse moved, and not while dragging or steering
-// nor while clicks set one down, destroy (God mode) or record points: then it gets a crosshair.
+// nor while clicks set one down, destroy (God mode) or edit points: then it gets a crosshair.
 // Walking with the mouse captured, the one under the dot in the middle, every frame.
 let hover = null; // { x, y } of the mouse since the last check
 renderer.domElement.addEventListener("pointermove", (e) => {
@@ -2945,7 +2947,7 @@ renderer.domElement.addEventListener("pointermove", (e) => {
 function updateHover() {
   if (mouseLook()) hover = { x: innerWidth / 2, y: innerHeight / 2 };
   if (!hover) return;
-  const aiming = placing || godly() || pointsPanel.recording(); // clicks pick a point, not a vehicle
+  const aiming = placing || godly() || pointsPanel.editing(); // clicks pick a point, not a vehicle
   const free = !pointers.size && !steered() && !aiming && !placer.active();
   // The museum's switch or a label with pins goes before a vehicle, as a click does.
   const clickable =
@@ -2972,7 +2974,7 @@ function pointAt(x, y) {
   return raycaster.intersectObjects([buildings.scene, bridges.scene, terrain])[0]?.point ?? null;
 }
 // A scene point <-> "latitude, longitude, altitude" (WGS84 degrees, 6 decimals; metres above sea,
-// 1 decimal), as copied, recorded and pasted; fromText gives null for any other text.
+// 1 decimal), as copied, marked and pasted; fromText gives null for any other text.
 function toText(point) {
   const [lat, lon] = toWGS84(point.x, point.z);
   return `${lat.toFixed(6)}, ${lon.toFixed(6)}, ${(point.y + 250).toFixed(1)}`;
@@ -3273,10 +3275,12 @@ function showPoints(points) {
   camera.position.copy(orbit.target).add(offset);
   fling.set(0, 0, 0);
 }
-const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints, overlay);
+const pointsPanel = createPoints(pointAt, toText, fromText, onScreen, showPoints, overlay, () =>
+  setPlacing(false),
+);
 // C, a right click (the tap handler above) or letting go of a lone finger held still for HOLD
-// copies the coordinates there (pointsPanel's quick copy); the held finger's spot is pinned when
-// HOLD has passed. The next press unpins it.
+// copies the coordinates there (pointsPanel's quick copy), but while editing points; the held
+// finger's spot is pinned when HOLD has passed. The next press unpins it.
 const HOLD = 500; // ms
 let held = null; // once a finger is held for HOLD: { point } pinned there (null off the scene)
 let holding = 0; // timeout

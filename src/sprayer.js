@@ -15,7 +15,7 @@
 // the scene do nothing else meanwhile (active).
 import * as THREE from "three";
 import { toWGS84 } from "./geo.js";
-import { MAGENTA } from "./lines.js";
+import { MAGENTA, frameLines } from "./lines.js";
 import {
   STYLES,
   artOf,
@@ -133,11 +133,7 @@ export function createSprayer({ renderer, camera, orbit, scene, surfaces, meshes
   let state = null; // while ticked: { picked, place, drag }
   let ui = null; // the panel's elements, made once
   // Round the one picked, as its plane (lay) is: a child of it.
-  const frame = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0)),
-    new THREE.LineBasicMaterial({ color: MAGENTA, depthTest: false }),
-  );
-  frame.renderOrder = 1e9; // over every graffito (their renderOrder)
+  const frame = frameLines(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0)); // over all graffiti
   // A dot at each corner, to turn it by.
   const dots = new THREE.Points(
     new THREE.BufferGeometry().setAttribute(

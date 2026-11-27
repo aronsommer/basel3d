@@ -24,13 +24,16 @@ body {
     sans-serif;
   color: #f1f5f9;
   -webkit-tap-highlight-color: transparent; /* no blue flash on tap on mobile */
+  -webkit-touch-callout: none; /* no callout on a held finger */
+  -webkit-user-select: none; /* Safari */
+  user-select: none; /* nothing selected but the text fields and the Dev panel's numbers */
 }
-/* Holding a finger on it copies coordinates (src/main.js), so no callout or selection. */
+textarea {
+  -webkit-user-select: text; /* Safari */
+  user-select: text;
+}
 canvas {
   display: block;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none; /* Safari */
-  user-select: none;
 }
 /* While aiming with the mouse (shoot in src/main.js), the crosshair is the pointer. */
 canvas.aiming {
@@ -47,7 +50,7 @@ p {
 #dev,
 #points,
 #spray,
-#badges .spot span,
+#badges .mark span,
 #where,
 #esc,
 #steer button {
@@ -90,7 +93,7 @@ p {
 #dev,
 #points,
 #spray,
-#badges .spot span {
+#badges .mark span {
   box-sizing: border-box;
   padding: 8px 14px;
   font: inherit;
@@ -99,8 +102,6 @@ p {
   text-align: center;
   border: 0;
   border-radius: var(--radius);
-  -webkit-user-select: none; /* Safari */
-  user-select: none;
 }
 /* Right: the closed menu, below it the button to get off (riding) or to walk (else), below that
    the one to look straight down, north up; each only an icon in a square, as the steering
@@ -423,7 +424,7 @@ p {
   text-decoration: none;
 }
 /* Open: as wide as its entries need, left-aligned; above all else (nothing
-   else has a z-index). */
+   else has a z-index but within #badges). */
 #menu[open] {
   z-index: 1;
   width: auto;
@@ -600,6 +601,7 @@ p {
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  isolation: isolate; /* the z-indexes within stay within */
 }
 #badges div {
   position: absolute;
@@ -638,12 +640,20 @@ p {
   transform: rotate(-45deg);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
-/* The museum's pins (src/main.js): marks without a number, in magenta. */
-#badges .pin::before {
+/* The museum's pins (src/main.js): marks without a number, in magenta; so the Points panel's
+   pick (src/points.js). */
+#badges .pin::before,
+#badges .picked::before {
   background: var(--magenta);
 }
-/* The quick copy's pin (src/points.js): its text above it, unless empty. */
-#badges .spot span {
+/* The quick copy's pin and the Points panel's pick over all other marks, with their text. */
+#badges .spot,
+#badges .picked {
+  z-index: 1;
+}
+/* The quick copy's pin and the Points panel's pick (src/points.js): their text above them, unless
+   empty. */
+#badges .mark span {
   position: absolute;
   bottom: 30px;
   left: 50%;
@@ -652,7 +662,7 @@ p {
   font-weight: 400;
   white-space: nowrap;
 }
-#badges .spot span:empty {
+#badges .mark span:empty {
   display: none;
 }
 /* Over the Move tool's pick (src/placer.js): which one it is, as the names' plates, smaller, in
@@ -769,9 +779,6 @@ p {
   cursor: pointer;
   pointer-events: auto;
   touch-action: none;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none; /* Safari */
-  user-select: none;
 }
 #steer [data-key="Space"],
 #steer #stop {
@@ -834,8 +841,6 @@ p {
   color: #fff;
   font-variant-numeric: tabular-nums;
   filter: drop-shadow(0 1px 2px rgba(10, 15, 40, 0.8)) drop-shadow(0 0 8px rgba(10, 15, 40, 0.5));
-  -webkit-user-select: none; /* Safari */
-  user-select: none;
 }
 #counter p {
   display: flex;
