@@ -123,8 +123,8 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 // Builds a catalog kind (src/catalog.js) in the city and the museum and returns what make
-// returns. Each place with its own object, else the whole kind, goes in a group the Move tool
-// (src/placer.js) moves, placed as src/placement-data.js says.
+// returns. Each place with its own object or array of them, else the whole kind, goes in a group
+// the Move tool (src/placer.js) moves, placed as src/placement-data.js says.
 const figures = [];
 function build(id, city) {
   const { name, places, make } = CATALOG[id];
@@ -133,8 +133,8 @@ function build(id, city) {
   const { objects } = built;
   const parts =
     all.length > 1 && objects.length === all.length
-      ? objects.map((object, k) => ({ place: all[k], objects: [object] }))
-      : [{ place: all.length === 1 ? all[0] : undefined, objects }];
+      ? objects.map((object, k) => ({ place: all[k], objects: [object].flat() }))
+      : [{ place: all.length === 1 ? all[0] : undefined, objects: objects.flat() }];
   for (const { place, objects } of parts) {
     if (!objects.length) continue;
     const box = new THREE.Box3();
@@ -942,6 +942,7 @@ const ufos = build("V12", {
   boost,
   roof: (x, z) => Math.max(heightAt(x, z), structures.top(x, z, Infinity)),
 }).vehicles;
+scene.add(...ufos.flatMap(({ shots }) => shots)); // in the scene, not moved with it
 scene.add(...createPassage());
 // The map's rails (src/rails.js), on the ground and on the decks, but those of destroyed bridges.
 function addRails() {

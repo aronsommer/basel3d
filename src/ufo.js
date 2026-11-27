@@ -206,7 +206,7 @@ export function createUfo(boost, roof, [cx, cz] = PLACE) {
   }
   return {
     group,
-    meshes: [group, bolts, flashes],
+    shots: [bolts, flashes], // in the scene apart
     // Flown at speed metres per second, turning up to turn radians per second (createFlight in
     // src/main.js): far faster than the helicopter.
     speed: 220,

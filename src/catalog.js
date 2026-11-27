@@ -1,8 +1,9 @@
 // The catalog: what is placed in the city (INVENTORY.md), each kind once, under an id given to no
 // other, ever (L landmarks, A animals, S scenes, P people moving, V what one drives or flies, T
 // traffic): its name, its places in the city (scene x, z, …) and make(places, city), which builds
-// it there and returns { objects: for the scene, … what else others need of it }; city: what the
-// maker takes from src/main.js. src/main.js builds each at its places (build); those without make
+// it there and returns { objects: for the scene, one per place (an object or an array of them)
+// where they are apart, … what else others need of it }; city: what the maker takes from
+// src/main.js. src/main.js builds each at its places (build); those without make
 // it builds itself (see below).
 import * as THREE from "three";
 import { createHelicopter, createPlanes } from "./aircraft.js";
@@ -303,7 +304,7 @@ function standing(points, looks, toward) {
   return {
     places: [middleOf(city)],
     make: (places, { parked }) => ({
-      objects: places.flatMap((place) =>
+      objects: places.map((place) =>
         createPeople(
           parked(
             place.museum
@@ -335,7 +336,10 @@ function dancing(places, { roofAt, heightAt }) {
   for (const place of places) {
     const { x, z } = place;
     const roof = place.museum ? { x, y: heightAt(x, z), z } : roofAt(TOWERS[place.tower]);
-    if (!roof) continue;
+    if (!roof) {
+      objects.push([]); // one entry per place
+      continue;
+    }
     const meshes = createPeople(
       [3, 1, -1, -3].map((k) => {
         const heading = (k * Math.PI) / 4;
@@ -345,7 +349,7 @@ function dancing(places, { roofAt, heightAt }) {
       FRIENDS.slice(2 * place.tower),
       place.museum || "roof",
     );
-    objects.push(...meshes);
+    objects.push(meshes);
     if (!place.museum) roofs.push([roof.number, meshes]);
   }
   return { objects, roofs };
@@ -463,7 +467,7 @@ const afloat =
       onWater,
     );
     return {
-      objects: boats.flatMap(({ group, spray }) => (spray ? [group, spray] : group)),
+      objects: boats.map(({ group, spray }) => (spray ? [group, spray] : group)),
       vehicles: boats,
     };
   };
@@ -487,7 +491,7 @@ export const CATALOG = {
     make(places, city) {
       const scenes = places.map((place) => feeder(place, city));
       return {
-        objects: scenes.flatMap(({ objects }) => objects),
+        objects: scenes.map(({ objects }) => objects),
         update: (seconds, dt) => scenes.forEach(({ update }) => update(seconds, dt)),
       };
     },
@@ -495,7 +499,7 @@ export const CATALOG = {
   S2: {
     name: "Sunbathing, yoga and dancing",
     places: [PARK.middle],
-    make: (places, city) => ({ objects: places.flatMap((place) => park(place, city)) }),
+    make: (places, city) => ({ objects: places.map((place) => park(place, city)) }),
   },
   S3: { name: "Men in Kleinbasel", ...standing(MEN, MEN_LOOKS) },
   S4: { name: "Women in Kleinbasel", ...standing(WOMEN, WOMEN_LOOKS, [2611565.3, 1267979.1]) },
@@ -517,7 +521,7 @@ export const CATALOG = {
         ),
       );
       return {
-        objects: rides.flatMap(({ objects }) => objects),
+        objects: rides.map(({ objects }) => objects),
         update: (dt) => rides.forEach(({ update }) => update(dt)),
       };
     },
@@ -531,7 +535,7 @@ export const CATALOG = {
         createTraining(parked(moved(GOALS, x - middle.x, z - middle.z)), PLAYERS, ASIDE, DRILL),
       );
       return {
-        objects: games.flatMap(({ objects }) => objects),
+        objects: games.map(({ objects }) => objects),
         update: (dt) => games.forEach(({ update }) => update(dt)),
       };
     },
@@ -547,7 +551,7 @@ export const CATALOG = {
           heightAt,
         ),
       );
-      return { objects: cliques.flatMap(({ meshes }) => meshes), cliques };
+      return { objects: cliques.map(({ meshes }) => meshes), cliques };
     },
   },
   A1: {
@@ -687,7 +691,7 @@ export const CATALOG = {
         if (roof) landOn(roof.number, rega.land, p);
         return rega;
       });
-      return { objects: regas.flatMap(({ pad, group }) => [pad, group]), vehicles: regas };
+      return { objects: regas.map(({ pad, group }) => [pad, group]), vehicles: regas };
     },
   },
   V11: {
@@ -712,7 +716,7 @@ export const CATALOG = {
     places: [{ x: UFO[0], z: UFO[1] }],
     make(places, { boost, roof }) {
       const ufos = places.map(({ x, z }) => createUfo(boost, roof, [x, z]));
-      return { objects: ufos.flatMap(({ meshes }) => meshes), vehicles: ufos };
+      return { objects: ufos.map(({ group }) => group), vehicles: ufos };
     },
   },
   V13: {
